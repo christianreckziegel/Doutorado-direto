@@ -1,0 +1,21 @@
+### random
+Random:setSeed = on
+Random:seed = 130145275
+
+### beams
+Beams:idA = 2212 # incoming particle A PDG
+Beams:idB = 2212 # incoming particle B PDG
+Beams:eCM = 13600.000000 # collision energy in GeV (in Heavy Ion case it's the energy per nucleon-nucleon collision)
+
+
+### processes
+HardQCD:all = on
+
+### decays
+ParticleDecays:limitTau0 = on
+ParticleDecays:tau0Max = 10.
+
+### phase space cuts
+#PhaseSpace:pTHatMinDiverge force= 0.1
+PhaseSpace:pTHatMin = 5.000000 # a lower transverse-momentum cutoff (for processes are divergent in the pT->0 limit)
+#PhaseSpace:pTHatMax = -1.000000
