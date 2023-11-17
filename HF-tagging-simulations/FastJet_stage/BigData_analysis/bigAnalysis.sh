@@ -1,15 +1,17 @@
 #! /bin/bash
 
+start_time=$(date +%M)
+
 source /home/christian/Softwares/root/bin/thisroot.sh
 g++ -g myAnalysisParameter.cc -o myAnalysisParameter `/home/christian/Softwares/fastjet-install/bin/fastjet-config --cxxflags --libs --plugins` `root-config --cflags --libs`
-echo "myAnalysisParameter.cc compiled."
+echo "Analysis compiled."
 
 # total number of events to be analysed
-numOfEvents=1000
-numberOfEventsInFileString="1k"
+numOfEvents=10000
+numberOfEventsInFileString="10k"
 
 # number of events per run = 10k
-eventsPerRun=100
+eventsPerRun=1000
 # running 10k events per analysis run
 numOfRuns=$((numOfEvents/eventsPerRun))
 
@@ -66,5 +68,11 @@ done
 
 echo "Merging files"
 g++ -g bigAnalysisMerging.C -o bigAnalysisMerging `root-config --cflags --libs`
+echo "Merging macro compiled."
 ./bigAnalysisMerging "$numberOfEventsInFileString" $numOfRuns
+echo "Execution finalized."
 
+end_time=$(date +%M)
+elapsed_time=$((end_time - start_time))
+# Print execution elapsed time
+echo "Elapsed time: $elapsed_time minutes"

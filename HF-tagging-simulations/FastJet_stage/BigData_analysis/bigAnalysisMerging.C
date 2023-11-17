@@ -18,6 +18,7 @@
 #include "TString.h" // for appropriate organization of I/O read and saving
 #include <TSystem.h>  // Include this line for gSystem usage
 #include <iostream> // for printing with cerr
+#include <cstdio>  // for remove iteration files after reading content
 
 using namespace std;
 
@@ -110,6 +111,7 @@ int main(int argc, char* argv[]){
         // Clean up
         file1->Close();
         delete file1;
+        std::remove(Form("AnalysisResults_"+sNumEvents+"_events_option_b%d.root",iFile));  // This removes the file from the filesystem
     }
 
     // storing in resulting big file
