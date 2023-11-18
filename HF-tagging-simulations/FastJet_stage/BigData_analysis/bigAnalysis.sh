@@ -1,17 +1,17 @@
 #! /bin/bash
 
-start_time=$(date +%M)
+start_time=$(date +%s)
 
 source /home/christian/Softwares/root/bin/thisroot.sh
 g++ -g myAnalysisParameter.cc -o myAnalysisParameter `/home/christian/Softwares/fastjet-install/bin/fastjet-config --cxxflags --libs --plugins` `root-config --cflags --libs`
 echo "Analysis compiled."
 
 # total number of events to be analysed
-numOfEvents=10000
-numberOfEventsInFileString="10k"
+numOfEvents=1000000
+numberOfEventsInFileString="1m"
 
 # number of events per run = 10k
-eventsPerRun=1000
+eventsPerRun=10000 # it's safe until 10000
 # running 10k events per analysis run
 numOfRuns=$((numOfEvents/eventsPerRun))
 
@@ -28,37 +28,27 @@ do
     # show processing progress
     if [ $(($i + 1)) -eq $(($numOfRuns*10/100)) ]
     then
-        echo "10% done"
-        echo "|==>                  |"
+        echo -en "\r10% done |==>                  |\n"
     elif [ $(($i + 1)) -eq $(($numOfRuns*20/100)) ]; then
-        echo "20% done"
-        echo "|====>                |"
+        echo -en "\r20% done|====>                |\n"
     elif [ $(($i + 1)) -eq $(($numOfRuns*30/100)) ]; then
-        echo "30% done"
-        echo "|======>              |"
+        echo -en "\r30% done|======>              |\n"
     elif [ $(($i + 1)) -eq $(($numOfRuns*40/100)) ]; then
-        echo "40% done"
-        echo "|========>            |"
+        echo -en "\r40% done|========>            |\n"
     elif [ $(($i + 1)) -eq $(($numOfRuns*50/100)) ]; then
-        echo "50% done"
-        echo "|==========>          |"
+        echo -en "\r50% done|==========>          |\n"
     elif [ $(($i + 1)) -eq $(($numOfRuns*60/100)) ]; then
-        echo "60% done"
-        echo "|============>        |"
+        echo -en "\r60% done|============>        |\n"
     elif [ $(($i + 1)) -eq $(($numOfRuns*70/100)) ]; then
-        echo "70% done"
-        echo "|==============>      |"
+        echo -en "\r70% done|==============>      |\n"
     elif [ $(($i + 1)) -eq $(($numOfRuns*80/100)) ];then
-        echo "80% done"
-        echo "|================>    |"
+        echo -en "\r80% done|================>    |\n"
     elif [ $(($i + 1)) -eq $(($numOfRuns*90/100)) ]; then
-        echo "90% done"
-        echo "|==================>  |"
+        echo -en "\r90% done|==================>  |\n"
     elif [ $(($i + 1)) -eq $(($numOfRuns*100/100)) ]; then
-        echo "100% done."
-        echo "|====================>|"
-        echo "Analysis loop done."
-        echo "" # jump line
+        echo -en "\r100% done.|====================>|\n"
+        echo -en "\rAnalysis loop done.\n"
+        echo -en "" # jump line
     fi
 
 
@@ -72,7 +62,8 @@ echo "Merging macro compiled."
 ./bigAnalysisMerging "$numberOfEventsInFileString" $numOfRuns
 echo "Execution finalized."
 
-end_time=$(date +%M)
+end_time=$(date +%s)
 elapsed_time=$((end_time - start_time))
+elapsed_time_minutes=$((elapsed_time / 60))
 # Print execution elapsed time
-echo "Elapsed time: $elapsed_time minutes"
+echo "Elapsed time: $elapsed_time_minutes minute(s)"

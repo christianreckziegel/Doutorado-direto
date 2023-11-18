@@ -31,12 +31,12 @@ int main(int argc, char* argv[]){
     // defining merging histograms
     TH1F* hMergedLeadPt = new TH1F("hMergedLeadPt","Leading jet p_{T};p_{T} (GeV);counts",1000,0,50);
     TH1F* hMergedJetsPt = new TH1F("hMergedJetsPt","Inclusive jets p_{T};p_{T} (GeV);counts",1000,0,40);
-    TH1I* hMergedNumJets = new TH1I("hMergedNumJets","Number of jets found per event;# of jets;counts",100,0,100);
+    TH1I* hMergedNumJets = new TH1I("hMergedNumJets","Number of jets found per event;# of jets;counts",1000,0,1000);
     TH1I* hMergedNumMCPart = new TH1I("hMergedNumMCPart","Number of MC particles in 0 jets event;# of particles;counts",1000,0,1000);
-    TH1F* hMergedPairDist = new TH1F("hMergedPairDist","Production distance between K^{-} and #pi^{+};d (mm);counts",100,-1,1);
+    TH1F* hMergedPairDist = new TH1F("hMergedPairDist","Production distance between K^{-} and #pi^{+};d (#mum);counts",2000,-4,4);
     TH1F* hMergedPartJet_Dist = new TH1F("hMergedPartJet_Dist","Distance between decay candidate and jet it contains;#DeltaR (a.u.);counts",2000,0,10);
     TH1F* hMergedKaonProdDist = new TH1F("hMergedKaonProdDist","K^{-} decay length;L (#mum);counts",10000,0,200000);
-    TH1F* hMergedCandInvMass = new TH1F("hMergedCandInvMass","K^{-}#pi^{+} pair candidate invariant mass;m(K^{-}#pi^{+}) MeV;counts",3000,0,3000);
+    TH1F* hMergedCandInvMass = new TH1F("hMergedCandInvMass","K^{-}#pi^{+} selected pair candidate invariant mass;m(K^{-}#pi^{+}) MeV;counts",6000,0,3000);
     TH1F* hMergedEnergyDiff = new TH1F("hMergedEnergyDiff","#DeltaE = |E_{jet} - E_{decay cand}|;#DeltaE (GeV);counts",2000,0,1000);
 
     TFile* file1;

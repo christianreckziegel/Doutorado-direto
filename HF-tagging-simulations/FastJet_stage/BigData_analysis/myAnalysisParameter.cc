@@ -109,16 +109,16 @@ int main(int argc, char* argv[]){
     TString sNumEvents = argv[3];// 1k, 10k, 100k, 1m
     TString path = "/home/christian/cernbox/Analyses/With_Mauro/Pythia_simulation/Outside_O2/Pythia_examples/SimOutput_"+sNumEvents+"_events_option_b.root";
     TString sFileDivision = Form ("%d", startingEventNumber/numberEvents);
-    cout << "Input file path = " << path << endl;
+    //cout << "Input file path = " << path << endl;
     // Creating storage data
     TH1F* hLeadPt = new TH1F("hLeadPt","Leading jet p_{T};p_{T} (GeV);counts",1000,0,50);
     TH1F* hJetsPt = new TH1F("hJetsPt","Inclusive jets p_{T};p_{T} (GeV);counts",1000,0,40);
-    TH1I* hNumJets = new TH1I("hNumJets","Number of jets found per event;# of jets;counts",100,0,100);
+    TH1I* hNumJets = new TH1I("hNumJets","Number of jets found per event;# of jets;counts",1000,0,1000);
     TH1I* hNumMCPart = new TH1I("hNumMCPart","Number of MC particles in 0 jets event;# of particles;counts",1000,0,1000);
-    TH1F* hPairDist = new TH1F("hPairDist","Production distance between K^{-} and #pi^{+};d (mm);counts",100,-1,1);
+    TH1F* hPairDist = new TH1F("hPairDist","Production distance between K^{-} and #pi^{+};d (#mum);counts",2000,-4,4);
     TH1F* hPartJet_Dist = new TH1F("hPartJet_Dist","Distance between decay candidate and jet it contains;#DeltaR (a.u.);counts",2000,0,10);
     TH1F* hKaonProdDist = new TH1F("hKaonProdDist","K^{-} decay length;L (#mum);counts",10000,0,200000);
-    TH1F* hCandInvMass = new TH1F("hCandInvMass","K^{-}#pi^{+} pair candidate invariant mass;m(K^{-}#pi^{+}) MeV;counts",3000,0,3000);
+    TH1F* hCandInvMass = new TH1F("hCandInvMass","K^{-}#pi^{+} selected pair candidate invariant mass;m(K^{-}#pi^{+}) MeV;counts",6000,0,3000);
     TH1F* hEnergyDiff = new TH1F("hEnergyDiff","#DeltaE = |E_{jet} - E_{decay cand}|;#DeltaE (GeV);counts",2000,0,1000);
 
     // defining particles for accessing in the TTree storage
@@ -133,8 +133,8 @@ int main(int argc, char* argv[]){
     }
 
     TTree* tOutPart;
-    cout << "Starting to loop over " << sNumEvents << " events...\n";
-    for (int ev = startingEventNumber; ev < numberEvents; ev++){
+    //cout << "Starting to loop over " << sNumEvents << " events...\n";
+    for (int ev = startingEventNumber; ev < startingEventNumber+numberEvents; ev++){
         
         // accessing data from current event
         inputFile->GetObject(Form("top/Event_%d/EventTree",ev),tOutPart);
@@ -208,7 +208,7 @@ int main(int argc, char* argv[]){
             if(input_particles[jKaon].has_user_info()){
                 // ask if it's a kaon
                 if(input_particles[jKaon].user_info<JetUserInfo>().GetIsKaon()){
-                    float distance = 0.002;//distance between kaon and pion produced cut of 0.002 mm
+                    float distance = 0.002;//distance between kaon and pion produced cut of 0.002 mm = 2 micrometers
                     int pionIndex = -1;// closest pion in stack
                     TLorentzVector kaon4Vec(input_particles[jKaon].px(), input_particles[jKaon].py(), input_particles[jKaon].pz(), input_particles[jKaon].e());
                     // look for closest pion
@@ -216,7 +216,7 @@ int main(int argc, char* argv[]){
                         // protection for against trying to access non existent data
                         if(input_particles[kPion].has_user_info()){
                             if(input_particles[kPion].user_info<JetUserInfo>().GetIsPion()){
-                                // calculate distance between kaon and pion production vertex
+                                // calculate distance between kaon and pion production vertex in mm
                                 float distDelta = distanceCalc(input_particles[jKaon].user_info<JetUserInfo>().GetXProd(),input_particles[jKaon].user_info<JetUserInfo>().GetYProd(),input_particles[jKaon].user_info<JetUserInfo>().GetZProd(), input_particles[kPion].user_info<JetUserInfo>().GetXProd(),input_particles[kPion].user_info<JetUserInfo>().GetYProd(),input_particles[kPion].user_info<JetUserInfo>().GetZProd());
                                 if(distDelta < distance){
                                     distance = distDelta;
@@ -236,7 +236,7 @@ int main(int argc, char* argv[]){
                         if((kaon4Vec+pion4Vec).E() >= d0Mass){
                             
                             float invMass = (kaon4Vec+pion4Vec).Mag(); // square root of the invariant
-                            hPairDist->Fill(distance);
+                            hPairDist->Fill(distance*1000); // fill in micrometers
                             // kaon production distance in micrometers
                             double kaonProdDist = 1000*sqrt(pow(input_particles[jKaon].user_info<JetUserInfo>().GetXProd(),2) + pow(input_particles[jKaon].user_info<JetUserInfo>().GetYProd(),2) + pow(input_particles[jKaon].user_info<JetUserInfo>().GetZProd(),2));
                             
@@ -336,8 +336,8 @@ int main(int argc, char* argv[]){
 
     }// end events loop
     
-    cout << "Events loop ended.\n" 
-         << "Closing input file and saving data to output file...\n";
+    //cout << "Events loop ended.\n" 
+    //     << "Closing input file and saving data to output file...\n";
     
     //cLeadPt->cd();
     //hLeadPt->Draw();
