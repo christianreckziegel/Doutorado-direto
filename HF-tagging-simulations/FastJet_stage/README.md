@@ -7,12 +7,12 @@ The main analysis and variations were implemented:
 - **myAnalysis_onRoot.C**: initial attempt of analysis running FastJet inside ROOT.
 
 ### Result files
-Stored with a name patter as
-"AnalysisResults_<number_of_events>_events_option_<data_storing_option>.root"
+Stored with a name patter as\
+"AnalysisResults_<number_of_events>_events_option_<data_storing_option>.root"\
 Obs.: more about data storing option of /Pythia_stage.
 
 ### Memory leak
-All options seems to have memory leak issues which were investigated but not solved. It appears to be related to my Cling library but not specifically the analysis implemented. The output message after running with Valgrind can be found in errorOutAnalysis3.txt for the analysis number 3.
+All options seems to have memory leak issues which were investigated but not solved. It appears to be related to my Cling library but not specifically the analysis implemented. The output message after running with Valgrind can be found in errorOutAnalysis3.txt for the analysis number 3.\
 The way it's implemented it can process 10k events but not 100k without consuming all my computer memory (32 GB).
 For that reason, and as an imediate solution, the analysis was segmented in steps of 10k events and automatized in the workflow in /BigData_analysis.
 
