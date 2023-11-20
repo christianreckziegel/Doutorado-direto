@@ -30,7 +30,8 @@ int main(int argc, char* argv[]){
 
     // defining merging histograms
     TH1F* hMergedLeadPt = new TH1F("hMergedLeadPt","Leading jet p_{T};p_{T} (GeV);counts",1000,0,50);
-    TH1F* hMergedJetsPt = new TH1F("hMergedJetsPt","Inclusive jets p_{T};p_{T} (GeV);counts",1000,0,40);
+    TH1F* hMergedJetsPt = new TH1F("hMergedJetsPt","Inclusive jets p_{T};p_{T} (GeV);counts",2000,0,80);
+    TH1F* hMergedHFCandidateJetsPt = new TH1F("hMergedHFCandidateJetsPt","HF candidate jets p_{T};p_{T} (GeV);counts",2000,0,80);
     TH1I* hMergedNumJets = new TH1I("hMergedNumJets","Number of jets found per event;# of jets;counts",1000,0,1000);
     TH1I* hMergedNumMCPart = new TH1I("hMergedNumMCPart","Number of MC particles in 0 jets event;# of particles;counts",1000,0,1000);
     TH1F* hMergedPairDist = new TH1F("hMergedPairDist","Production distance between K^{-} and #pi^{+};d (#mum);counts",2000,-4,4);
@@ -42,6 +43,7 @@ int main(int argc, char* argv[]){
     TFile* file1;
     TH1F* hLeadPt;
     TH1F* hJetsPt;
+    TH1F* hHFCandidateJetsPt;
     TH1I* hNumJets;
     TH1I* hNumMCPart;
     TH1F* hPairDist;
@@ -70,6 +72,11 @@ int main(int argc, char* argv[]){
         hJetsPt = (TH1F*)file1->Get("hJetsPt");
         // adding histogram to the merged one
         hMergedJetsPt->Add(hJetsPt);
+
+        // histogram
+        hHFCandidateJetsPt = (TH1F*)file1->Get("hHFCandidateJetsPt");
+        // adding histogram to the merged one
+        hMergedHFCandidateJetsPt->Add(hHFCandidateJetsPt);
 
         // histogram
         hNumJets = (TH1I*)file1->Get("hNumJets");
@@ -118,6 +125,7 @@ int main(int argc, char* argv[]){
     TFile* mergedOutputFile = new TFile("AnalysisResults_"+sNumEvents+"_events_option_b_Merged.root","RECREATE");
     hMergedLeadPt->Write();
     hMergedJetsPt->Write();
+    hMergedHFCandidateJetsPt->Write();
     hMergedNumJets->Write();
     hMergedNumMCPart->Write();
     hMergedPairDist->Write();
@@ -131,6 +139,7 @@ int main(int argc, char* argv[]){
     // deleting iterator histograms
     hLeadPt = nullptr;
     hJetsPt = nullptr;
+    hHFCandidateJetsPt = nullptr;
     hNumJets = nullptr;
     hNumMCPart = nullptr;
     hPairDist = nullptr;
@@ -141,6 +150,7 @@ int main(int argc, char* argv[]){
     //deleting merged histograms and file
     delete hMergedLeadPt;
     delete hMergedJetsPt;
+    delete hMergedHFCandidateJetsPt;
     delete hMergedNumJets;
     delete hMergedNumMCPart;
     delete hMergedPairDist;

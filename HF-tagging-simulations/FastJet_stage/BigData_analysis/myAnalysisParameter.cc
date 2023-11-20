@@ -112,7 +112,8 @@ int main(int argc, char* argv[]){
     //cout << "Input file path = " << path << endl;
     // Creating storage data
     TH1F* hLeadPt = new TH1F("hLeadPt","Leading jet p_{T};p_{T} (GeV);counts",1000,0,50);
-    TH1F* hJetsPt = new TH1F("hJetsPt","Inclusive jets p_{T};p_{T} (GeV);counts",1000,0,40);
+    TH1F* hJetsPt = new TH1F("hJetsPt","Inclusive jets p_{T};p_{T} (GeV);counts",2000,0,80);
+    TH1F* hHFCandidateJetsPt = new TH1F("hHFCandidateJetsPt","HF candidate jets p_{T};p_{T} (GeV);counts",2000,0,80);
     TH1I* hNumJets = new TH1I("hNumJets","Number of jets found per event;# of jets;counts",1000,0,1000);
     TH1I* hNumMCPart = new TH1I("hNumMCPart","Number of MC particles in 0 jets event;# of particles;counts",1000,0,1000);
     TH1F* hPairDist = new TH1F("hPairDist","Production distance between K^{-} and #pi^{+};d (#mum);counts",2000,-4,4);
@@ -231,7 +232,7 @@ int main(int argc, char* argv[]){
                     if(pionIndex > -1){
                         TLorentzVector pion4Vec(input_particles[pionIndex].px(), input_particles[pionIndex].py(), input_particles[pionIndex].pz(), input_particles[pionIndex].e());
                         // kinematical D0 production mass cut
-                        const double d0Mass = 1.864; // The known mass of the D0 meson in GeV/c^2
+                        const double d0Mass = 1.86484; // The known mass of the D0 meson in GeV/c^2
                         //if(true){
                         if((kaon4Vec+pion4Vec).E() >= d0Mass){
                             
@@ -242,15 +243,23 @@ int main(int argc, char* argv[]){
                             
                             // apply topological cut
                             if(kaonProdDist > 0){
-                                // tag HF decay candidates
-                                //const JetUserInfo* inputPartUserInfoKaon = &(input_particles[jKaon].user_info<JetUserInfo>()); // option 2
-                                JetUserInfo* inputPartUserInfoKaon = const_cast<JetUserInfo*>(&(input_particles[jKaon].user_info<JetUserInfo>())); // option 1
-                                inputPartUserInfoKaon->SetHeavyFlavour(true); // option 1
-                                //const JetUserInfo* inputPartUserInfoPion = &(input_particles[pionIndex].user_info<JetUserInfo>()); // option 2
-                                JetUserInfo* inputPartUserInfoPion = const_cast<JetUserInfo*>(&(input_particles[pionIndex].user_info<JetUserInfo>())); // option 1
-                                inputPartUserInfoPion->SetHeavyFlavour(true); // option1
                                 hKaonProdDist->Fill(kaonProdDist); 
                                 hCandInvMass->Fill(invMass*1000);
+                                double invMassMin = d0Mass*1000 - 10.;
+                                double invMassMax = d0Mass*1000 + 10.;
+                                // selecting only candidantes around D0 mass +- 10 MeV
+                                if((invMass*1000 > invMassMin) && (invMass*1000 < invMassMax)){
+                                    // tag HF decay candidates
+                                    //const JetUserInfo* inputPartUserInfoKaon = &(input_particles[jKaon].user_info<JetUserInfo>()); // option 2
+                                    JetUserInfo* inputPartUserInfoKaon = const_cast<JetUserInfo*>(&(input_particles[jKaon].user_info<JetUserInfo>())); // option 1
+                                    inputPartUserInfoKaon->SetHeavyFlavour(true); // option 1
+                                    //const JetUserInfo* inputPartUserInfoPion = &(input_particles[pionIndex].user_info<JetUserInfo>()); // option 2
+                                    JetUserInfo* inputPartUserInfoPion = const_cast<JetUserInfo*>(&(input_particles[pionIndex].user_info<JetUserInfo>())); // option 1
+                                    inputPartUserInfoPion->SetHeavyFlavour(true); // option1
+                                    
+                                }
+
+                                
                             }
 
                             
@@ -305,6 +314,7 @@ int main(int argc, char* argv[]){
                         // fill histograms
                         hPartJet_Dist->Fill(DeltaR);
                         hEnergyDiff->Fill(abs(inclusive_jets[iJet].e()-constituents[iConst].e()));
+                        hHFCandidateJetsPt->Fill(inclusive_jets[iJet].pt());
 
                         // if there are other HF decay candidates, they are ignored (their distance from the jet axis is not calculated)
 
@@ -348,6 +358,7 @@ int main(int argc, char* argv[]){
     TFile f("AnalysisResults_"+sNumEvents+"_events_option_b"+sFileDivision+".root","recreate");
     hLeadPt->Write();
     hJetsPt->Write();
+    hHFCandidateJetsPt->Write();
     hNumJets->Write();
     hNumMCPart->Write();
     hPairDist->Write();
