@@ -63,17 +63,21 @@ class JetUserInfo : public fastjet::PseudoJet::UserInfoBase{
         // TODO: create new constructor
         // Constructor 1
         JetUserInfo(): isHeavyFlavour(false),  isKaon(false), isPion(false){}
-        // Constructor 2
-        JetUserInfo(bool value1, bool value2, bool value3): isHeavyFlavour(value1),  isKaon(value2), isPion(value3){}
+        // Constructor 2: for HF, kaon and pion information
+        //JetUserInfo(bool value1, bool value2, bool value3): isHeavyFlavour(value1),  isKaon(value2), isPion(value3){}
+        // Constructor 3: for prompt D0 information
+        JetUserInfo(bool value1, bool value2, bool value3, bool value4): isHeavyFlavour(value1),  isKaon(value2), isPion(value3), isNonPrompt(value4){}
         // Destructor
         virtual ~JetUserInfo(){};
         //Accessor method to get the heavy flavour status
         bool GetIsHeavyFlavour() const { return isHeavyFlavour; }
-        void SetHeavyFlavour(bool value4) { isHeavyFlavour = value4; }
+        void SetHeavyFlavour(bool value5) { isHeavyFlavour = value5; }
         bool GetIsKaon() const { return isKaon; }
-        void SetKaon(bool value5) { isKaon = value5; }
+        void SetKaon(bool value6) { isKaon = value6; }
         bool GetIsPion() const { return isPion; }
-        void SetPion(bool value6) { isPion = value6; }
+        void SetPion(bool value7) { isPion = value7; }
+        bool GetIsNonPrompt() const { return isNonPrompt; }
+        void SetNonPrompt(bool value8) { isNonPrompt = value8; }
         float GetXProd() const { return xProd; }
         void SetXProd(float newXProd) {xProd = newXProd; }
         float GetYProd() const { return yProd; }
@@ -86,6 +90,7 @@ class JetUserInfo : public fastjet::PseudoJet::UserInfoBase{
         bool isHeavyFlavour = false; // if asked to input_particles/constituents tells if it's a decay candidate, if asked to jets tells if it's a HF jet candidate
         bool isKaon = false;
         bool isPion = false;
+        bool isNonPrompt = false;
         float xProd = -1000;
         float yProd = -1000;
         float zProd = -1000;
@@ -111,9 +116,11 @@ int main(int argc, char* argv[]){
     TString sFileDivision = Form ("%d", startingEventNumber/numberEvents);
     //cout << "Input file path = " << path << endl;
     // Creating storage data
-    TH1F* hLeadPt = new TH1F("hLeadPt","Leading jet p_{T};p_{T} (GeV);counts",1000,0,50);
-    TH1F* hJetsPt = new TH1F("hJetsPt","Inclusive jets p_{T};p_{T} (GeV);counts",2000,0,80);
-    TH1F* hHFCandidateJetsPt = new TH1F("hHFCandidateJetsPt","HF candidate jets p_{T};p_{T} (GeV);counts",2000,0,80);
+    TH1F* hLeadPt = new TH1F("hLeadPt","Leading jet p_{T};p_{T} (GeV/c);counts",1000,0,50);
+    TH1F* hJetsPt = new TH1F("hJetsPt","Inclusive jets p_{T};p_{T} (GeV/c);counts",2000,0,80);
+    TH1F* hHFCandidateJetsPt = new TH1F("hHFCandidateJetsPt","HF candidate jets p_{T};p_{T} (GeV/c);counts",2000,0,80);
+    TH1F* hPromptD0_JetsPt = new TH1F("hPromptD0_JetsPt","Prompt HF candidate jets p_{T};p_{T} (GeV/c);counts",2000,0,80);
+    TH1F* hNonPromptD0_JetsPt = new TH1F("hNonPromptD0_JetsPt","Non-prompt HF candidate jets p_{T};p_{T} (GeV/c);counts",2000,0,80);
     TH1I* hNumJets = new TH1I("hNumJets","Number of jets found per event;# of jets;counts",1000,0,1000);
     TH1I* hNumMCPart = new TH1I("hNumMCPart","Number of MC particles in 0 jets event;# of particles;counts",1000,0,1000);
     TH1F* hPairDist = new TH1F("hPairDist","Production distance between K^{-} and #pi^{+};d (#mum);counts",2000,-4,4);
@@ -123,8 +130,10 @@ int main(int argc, char* argv[]){
     TH1F* hEnergyDiff = new TH1F("hEnergyDiff","#DeltaE = |E_{jet} - E_{decay cand}|;#DeltaE (GeV);counts",2000,0,1000);
 
     // defining particles for accessing in the TTree storage
-    int pEvent,pPDG, pStatCode, pMom1, pMom2, pDaughter1, pDaughter2;
+    int pEvent,pPDG, pStatCode, pMom1, pMom2, pDaughter1, pDaughter2; // main particle
     float pPx, pPy, pPz, pEnergy, pProdX, pProdY, pProdZ, pProdT;
+    int possD0PDG, possD0Mom1, possD0Mom2, possD0Daughter1, possD0Daughter2; // possible D0 data
+    int D0motherPDG, D0motherMom1, D0motherMom2, D0motherDaughter1, D0motherDaughter2; // D0 mother data
 
     // accessing data in simulation file
     TFile* inputFile = TFile::Open(path,"READ");
@@ -136,8 +145,7 @@ int main(int argc, char* argv[]){
     TTree* tOutPart;
     //cout << "Starting to loop over " << sNumEvents << " events...\n";
     for (int ev = startingEventNumber; ev < startingEventNumber+numberEvents; ev++){
-        
-        // accessing data from current event
+        // accessing data from current event (main particle)
         inputFile->GetObject(Form("top/Event_%d/EventTree",ev),tOutPart);
         tOutPart->SetBranchAddress("partPDG",&pPDG);
         tOutPart->SetBranchAddress("partStatCode",&pStatCode);
@@ -156,14 +164,12 @@ int main(int argc, char* argv[]){
 
         // get a vector of particles for each event
         vector<fastjet::PseudoJet> input_particles;
-        //vector<JetUserInfo*> user_info_pointers;
-        //JetUserInfo* userInfoHandler;
 
         // index for accessing final state particle stored
         int finalStateIndex = 0;
         // search for kaons and pions and save Pseudojets
         for (int iPart = 0; iPart < tOutPart->GetEntries(); iPart++){
-            tOutPart->GetEntry(iPart); // TODO: check that this index is appropriate for managing the input_particles vector inside the if conditional
+            tOutPart->GetEntry(iPart);
             // check if it's a final state particle
             if (pStatCode > 0){
                 // collect particles data
@@ -172,28 +178,50 @@ int main(int argc, char* argv[]){
                 input_particles.push_back(particle);
                 // if particle observed is a K- save data
                 if(pPDG == -321){
-                    JetUserInfo* inputPartUIKaon = new JetUserInfo(false, true, false); // mark as a kaon - option 2
+                    JetUserInfo* inputPartUIKaon = new JetUserInfo(false, true, false, false); // mark as a kaon - option 2
                     input_particles[finalStateIndex].set_user_info(inputPartUIKaon); // option 2
                     //input_particles[finalStateIndex].set_user_info(new JetUserInfo(false, true, false)); // mark as a kaon - option 1
                     inputPartUIKaon->SetXProd(pProdX);
                     inputPartUIKaon->SetYProd(pProdY);
                     inputPartUIKaon->SetZProd(pProdZ);
                     //double kaonProdDistance = 1000*sqrt(pow(pProdX,2) + pow(pProdY,2) + pow(pProdZ,2)); // in micrometers
+
+                    //
+                    // search for non-prompt D0 (no need to mark pion as well, since this would imply tagging twice the jet)
+                    //
+                    double particleMotherIndex = pMom1;
+                    tOutPart->GetEntry(particleMotherIndex);
+                    // if kaon mother is a D0
+                    if(pPDG == 421){
+                        // search for D0 mother
+                        double D0MotherIndex = pMom1;
+                        tOutPart->GetEntry(D0MotherIndex);
+                        // if D0 mother is B0 or B+ or B- or B0_s or B+_c or B-_c
+                        if((pPDG == 511) || (pPDG == 521) || (pPDG == -521) || (pPDG == 531) || (pPDG == 541) || (pPDG == -541)){
+                            // tag as a decay particle from non-prompt D0
+                            inputPartUIKaon->SetNonPrompt(true);
+                            //cout << "Non-prompt D0 found with mother PDG = " << pPDG << endl;
+                        }
+                    }
+
                 } else if(pPDG == 211){// if particle observed is a pi+ save data
-                    JetUserInfo* inputPartUIPion = new JetUserInfo(false, false, true); // mark as a pion
+                    JetUserInfo* inputPartUIPion = new JetUserInfo(false, false, true, false); // mark as a pion
                     input_particles[finalStateIndex].set_user_info(inputPartUIPion); // mark as a pion
                     //input_particles[finalStateIndex].set_user_info(new JetUserInfo(false, false, true)); // mark as a pion
                     inputPartUIPion->SetXProd(pProdX);
                     inputPartUIPion->SetYProd(pProdY);
                     inputPartUIPion->SetZProd(pProdZ);
                     //double pionProdDistance = 1000*sqrt(pow(pProdX,2) + pow(pProdY,2) + pow(pProdZ,2)); // in micrometers
+                } else{
+                    JetUserInfo* inputPartUIOther = new JetUserInfo(false, false, false, false); // mark as false for all flags
+                    input_particles[finalStateIndex].set_user_info(inputPartUIOther); 
                 }
                 finalStateIndex++;
             }
             
             
         }// end particles from same event loop
-
+        
         // IMPORTANT NOTE: set_user_info(...) takes a pointer as an
         // argument. It will "own" that pointer i.e. will delete it when
         // all the PseudoJet's using it will be deleted.
@@ -270,6 +298,12 @@ int main(int argc, char* argv[]){
             }
         }
         
+        // protection against empty input data vector events
+        if(input_particles.size() < 1){
+            cout << "Continuing to next iteration due to empty input_particles vector.\n";
+            continue;
+        }
+
         ///////////////////////////////////////////////////
         // Reconstruct the jets with all event particles //
         ///////////////////////////////////////////////////
@@ -278,6 +312,7 @@ int main(int argc, char* argv[]){
         fastjet::ClusterSequence clust_seq(input_particles, jet_def);
         double ptmin = 0.0; // 5 GeV for HF
         vector<fastjet::PseudoJet> inclusive_jets = sorted_by_pt(clust_seq.inclusive_jets(ptmin));
+        
         // if jets were found
         if(inclusive_jets.size()){
             hLeadPt->Fill(inclusive_jets[0].pt());
@@ -300,13 +335,21 @@ int main(int argc, char* argv[]){
                 if(constituents[iConst].has_user_info()){
                     // check if it has D0 decay candidates
                     if(constituents[iConst].user_info<JetUserInfo>().GetIsHeavyFlavour()){
+                        bool nonPrompt = false;
+                        // storing non-prompt HF jets pT
+                        if(constituents[iConst].user_info<JetUserInfo>().GetIsNonPrompt()){
+                            // tag as jet containing HF non-prompt decay product candidate
+                            nonPrompt = true;
+                            // fill non-prompt jet pT histogram
+                            hNonPromptD0_JetsPt->Fill(inclusive_jets[iJet].pt());
+                        } else{
+                            // mark as jet containing HF prompt decay product candidate
+                            nonPrompt = false;
+                            // fill prompt jet pT histogram
+                            hPromptD0_JetsPt->Fill(inclusive_jets[iJet].pt());
+                        }
                         // tag jet as HF jet candidate
-                        //JetUserInfo* inclusiveJUInfo = const_cast<JetUserInfo*>(&(inclusive_jets[iJet].user_info<JetUserInfo>())); // option 1
-                        //inclusiveJUInfo->SetHeavyFlavour(true); // option 1
-                        inclusive_jets[iJet].set_user_info(new JetUserInfo(true, false, false)); // mark as jet containing HF decay product candidates
-                        //inclusiveJUInfo = nullptr;
-                        //user_info_pointersJets[jKaon]->SetHeavyFlavour(true);
-                        //inclusive_jets[iJet].user_info<JetUserInfo>().SetHeavyFlavour(true);
+                        inclusive_jets[iJet].set_user_info(new JetUserInfo(true, false, false, nonPrompt)); // mark as jet containing HF decay product candidates
 
                         // calculate distance between HF decay candidate and jet axis in eta-phi plane
                         DeltaR = sqrt(pow(constituents[iConst].eta()-inclusive_jets[iJet].eta(),2) + pow(constituents[iConst].phi()-inclusive_jets[iJet].phi(),2));
@@ -315,8 +358,7 @@ int main(int argc, char* argv[]){
                         hPartJet_Dist->Fill(DeltaR);
                         hEnergyDiff->Fill(abs(inclusive_jets[iJet].e()-constituents[iConst].e()));
                         hHFCandidateJetsPt->Fill(inclusive_jets[iJet].pt());
-
-                        // if there are other HF decay candidates, they are ignored (their distance from the jet axis is not calculated)
+                        // if there are other HF decay candidates (other counter part of the pair), they are ignored (their distance from the jet axis is not calculated)
 
                         // get out of constituents loop
                         iConst = constituents.size();
@@ -359,6 +401,8 @@ int main(int argc, char* argv[]){
     hLeadPt->Write();
     hJetsPt->Write();
     hHFCandidateJetsPt->Write();
+    hPromptD0_JetsPt->Write();
+    hNonPromptD0_JetsPt->Write();
     hNumJets->Write();
     hNumMCPart->Write();
     hPairDist->Write();
@@ -370,6 +414,9 @@ int main(int argc, char* argv[]){
     f.Close();
     delete hLeadPt;
     delete hJetsPt;
+    delete hHFCandidateJetsPt;
+    delete hPromptD0_JetsPt;
+    delete hNonPromptD0_JetsPt;
     delete hNumJets;
     delete hNumMCPart;
     delete hPairDist;

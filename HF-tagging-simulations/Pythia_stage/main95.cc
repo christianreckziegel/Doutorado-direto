@@ -42,6 +42,7 @@ int main() {
   TH1F* hD0Pt = new TH1F("hD0Pt","D^{0} p_{T};p_{T} (GeV/c);counts",1000,1,1);
   TH1I* hD0Num = new TH1I("hD0Num","Number of D^{0} mesons generated per event;p_{T} (GeV/c);counts",1000,1,1);
   TH1F* hD0Mass = new TH1F("hD0Mass","D^{0} invariant mass;m (MeV/c^{2});counts",2000,0,2000);
+  TH1I* hD0_ParentPDG = new TH1I("hD0_ParentPDG","D^{0} parent's PDG;PDG;counts",20000,1,1);
   TH1F* hPairMass = new TH1F("hPairMass","K^{-}#pi^{+} invariant mass;m (K^{-}#pi^{+}) MeV/c^{2};counts",2000,0,2000);
   TH1F* hD0DecayLength = new TH1F("hD0DecayLength","D^{0} decay length;L (#mum);counts",1000,1,1);
   TH1F* hPartProdX = new TH1F("hPartProdX","Particles production position x;x_{prod} (mm);counts",1000,1,1);
@@ -112,7 +113,17 @@ int main() {
       hPartProdX->Fill(pythia.event[i].xProd());
       // if D0 particle has been found
       if(pythia.event[i].id() == 421){
+        // count the number of D0's produced per event
         D0_counts++;
+        // get parents
+        int mother1Index = pythia.event[i].mother1();
+        int mother2Index = pythia.event[i].mother2();
+        hD0_ParentPDG->Fill(pythia.event[mother1Index].id());
+        hD0_ParentPDG->Fill(pythia.event[mother2Index].id());
+        // TDatabasePDG::Instance()->GetParticle(particleId)->Charge()
+        cout << "D0 mother 1 = " << pythia.event[mother1Index].name() << endl;
+        cout << "D0 mother 2 = " << pythia.event[mother2Index].name() << endl;
+        // get daughters
         int daughter1Index = pythia.event[i].daughter1();
         int daughter2Index = pythia.event[i].daughter2();
         //cout << "D0 found!\n";
@@ -195,6 +206,7 @@ int main() {
   hD0Pt->Write();
   hD0Num->Write();
   hD0Mass->Write();
+  hD0_ParentPDG->Write();
   hPairMass->Write();
   hD0DecayLength->Write();
   hPartProdX->Write();

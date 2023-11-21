@@ -29,9 +29,11 @@ int main(int argc, char* argv[]){
     int numOfRuns = atoi(argv[2]);
 
     // defining merging histograms
-    TH1F* hMergedLeadPt = new TH1F("hMergedLeadPt","Leading jet p_{T};p_{T} (GeV);counts",1000,0,50);
-    TH1F* hMergedJetsPt = new TH1F("hMergedJetsPt","Inclusive jets p_{T};p_{T} (GeV);counts",2000,0,80);
-    TH1F* hMergedHFCandidateJetsPt = new TH1F("hMergedHFCandidateJetsPt","HF candidate jets p_{T};p_{T} (GeV);counts",2000,0,80);
+    TH1F* hMergedLeadPt = new TH1F("hMergedLeadPt","Leading jet p_{T};p_{T} (GeV/c);counts",1000,0,50);
+    TH1F* hMergedJetsPt = new TH1F("hMergedJetsPt","Inclusive jets p_{T};p_{T} (GeV/c);counts",2000,0,80);
+    TH1F* hMergedHFCandidateJetsPt = new TH1F("hMergedHFCandidateJetsPt","HF candidate jets p_{T};p_{T} (GeV/c);counts",2000,0,80);
+    TH1F* hMergedPromptD0_JetsPt = new TH1F("hMergedPromptD0_JetsPt","Prompt HF candidate jets p_{T};p_{T} (GeV/c);counts",2000,0,80);
+    TH1F* hMergedNonPromptD0_JetsPt = new TH1F("hMergedNonPromptD0_JetsPt","Non-prompt HF candidate jets p_{T};p_{T} (GeV/c);counts",2000,0,80);
     TH1I* hMergedNumJets = new TH1I("hMergedNumJets","Number of jets found per event;# of jets;counts",1000,0,1000);
     TH1I* hMergedNumMCPart = new TH1I("hMergedNumMCPart","Number of MC particles in 0 jets event;# of particles;counts",1000,0,1000);
     TH1F* hMergedPairDist = new TH1F("hMergedPairDist","Production distance between K^{-} and #pi^{+};d (#mum);counts",2000,-4,4);
@@ -44,6 +46,8 @@ int main(int argc, char* argv[]){
     TH1F* hLeadPt;
     TH1F* hJetsPt;
     TH1F* hHFCandidateJetsPt;
+    TH1F* hPromptD0_JetsPt;
+    TH1F* hNonPromptD0_JetsPt;
     TH1I* hNumJets;
     TH1I* hNumMCPart;
     TH1F* hPairDist;
@@ -77,6 +81,16 @@ int main(int argc, char* argv[]){
         hHFCandidateJetsPt = (TH1F*)file1->Get("hHFCandidateJetsPt");
         // adding histogram to the merged one
         hMergedHFCandidateJetsPt->Add(hHFCandidateJetsPt);
+
+        // histogram
+        hPromptD0_JetsPt = (TH1F*)file1->Get("hPromptD0_JetsPt");
+        // adding histogram to the merged one
+        hMergedPromptD0_JetsPt->Add(hPromptD0_JetsPt);
+
+        // histogram
+        hNonPromptD0_JetsPt = (TH1F*)file1->Get("hNonPromptD0_JetsPt");
+        // adding histogram to the merged one
+        hMergedNonPromptD0_JetsPt->Add(hNonPromptD0_JetsPt);
 
         // histogram
         hNumJets = (TH1I*)file1->Get("hNumJets");
@@ -126,6 +140,8 @@ int main(int argc, char* argv[]){
     hMergedLeadPt->Write();
     hMergedJetsPt->Write();
     hMergedHFCandidateJetsPt->Write();
+    hMergedPromptD0_JetsPt->Write();
+    hMergedNonPromptD0_JetsPt->Write();
     hMergedNumJets->Write();
     hMergedNumMCPart->Write();
     hMergedPairDist->Write();
@@ -140,6 +156,8 @@ int main(int argc, char* argv[]){
     hLeadPt = nullptr;
     hJetsPt = nullptr;
     hHFCandidateJetsPt = nullptr;
+    hPromptD0_JetsPt = nullptr;
+    hNonPromptD0_JetsPt = nullptr;
     hNumJets = nullptr;
     hNumMCPart = nullptr;
     hPairDist = nullptr;
@@ -151,6 +169,8 @@ int main(int argc, char* argv[]){
     delete hMergedLeadPt;
     delete hMergedJetsPt;
     delete hMergedHFCandidateJetsPt;
+    delete hMergedPromptD0_JetsPt;
+    delete hMergedNonPromptD0_JetsPt;
     delete hMergedNumJets;
     delete hMergedNumMCPart;
     delete hMergedPairDist;

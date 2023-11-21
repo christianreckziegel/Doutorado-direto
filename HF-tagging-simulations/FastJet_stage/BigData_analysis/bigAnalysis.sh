@@ -7,8 +7,8 @@ g++ -g myAnalysisParameter.cc -o myAnalysisParameter `/home/christian/Softwares/
 echo "Analysis compiled."
 
 # total number of events to be analysed
-numOfEvents=1000000
-numberOfEventsInFileString="1m"
+numOfEvents=100000
+numberOfEventsInFileString="100k"
 
 # number of events per run = 10k
 eventsPerRun=10000 # it's safe until 10000
@@ -23,7 +23,8 @@ do
     # Add your analysis command here
     #./myAnalysisParameter <numberOfEventsPerRun> <startingEventNumber> <numberOfEventsInFile>
     ./myAnalysisParameter $eventsPerRun $(($i*$eventsPerRun)) "$numberOfEventsInFileString"
-    #echo "$eventsPerRun events per run, starting event number: $(($i*$eventsPerRun))"
+    #echo "$eventsPerRun events per run, starting event number: $(($i*$eventsPerRun))", input file string
+    #example: ./myAnalysisParameter 100 0 1k
 
     # show processing progress
     if [ $(($i + 1)) -eq $(($numOfRuns*10/100)) ]
