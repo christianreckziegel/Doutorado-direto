@@ -7,8 +7,8 @@ g++ -g myAnalysisParameter.cc -o myAnalysisParameter `/home/christian/Softwares/
 echo "Analysis compiled."
 
 # total number of events to be analysed
-numOfEvents=100000
-numberOfEventsInFileString="100k"
+numOfEvents=1000000
+numberOfEventsInFileString="1m"
 
 # number of events per run = 10k
 eventsPerRun=10000 # it's safe until 10000
