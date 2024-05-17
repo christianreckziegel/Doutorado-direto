@@ -1,0 +1,14 @@
+{ "OutputDirector": {
+    "debug_mode": true,
+    "resfile": "AnalysisResults_trees",
+    "OutputDescriptors": [
+      {
+        "table": "AOD/MCPJETDISTTABLE/0"
+      },
+      {
+        "table":"AOD/MCDJETDISTTABLE/0"
+      }
+    ],
+    "ntfmerge": 1000
+  } 
+}
