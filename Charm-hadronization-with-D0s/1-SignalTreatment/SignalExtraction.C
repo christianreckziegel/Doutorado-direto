@@ -54,7 +54,8 @@ Double_t customFitFunction(Double_t* x, Double_t* par) {
 
 
 
-// Module to create TH2D histograms including interest variable
+//__________________________________________________________________________________________________________________________
+// Module to create TH2D histograms including interest variable: uniform bin sizes
 std::vector<TH2D*> createHistograms(const std::vector<const char*>& names, const std::vector<const char*>& titles,
                                     int xbins, double xmin, double xmax, int ybins, double ymin, double ymax) {
     std::vector<TH2D*> histograms;
@@ -65,14 +66,35 @@ std::vector<TH2D*> createHistograms(const std::vector<const char*>& names, const
     }
     return histograms;
 }
+// Overloading function
+// Module to create TH2D histograms including interest variable: variable bin sizes
+std::vector<TH2D*> createHistograms(const std::vector<const char*>& names, const std::vector<const char*>& titles,
+                                    int xbins, double xmin, double xmax, const std::vector<double>& yBinEdges) {
+    std::vector<TH2D*> histograms;
+    for (size_t i = 0; i < names.size(); ++i) {
+        histograms.push_back(new TH2D(names[i], titles[i], xbins, xmin, xmax, yBinEdges.size() - 1, yBinEdges.data()));
+        histograms[i]->Sumw2();
+        
+    }
+    return histograms;
+}
+//__________________________________________________________________________________________________________________________
 
 // Module to fill 2D histograms from TTree data
-void fillHistograms(TTree* tree, const std::vector<TH2D*>& histograms, double jetptMin, double jetptMax) {
+void fillHistograms(TFile* file, const std::vector<TH2D*>& histograms, double jetptMin, double jetptMax) {
+    // Defining cuts
+    double jetRadius = 0.4;
+    double etaCut = 0.9 - jetRadius; // on jet
+    double yCut = 0.8; // on D0
+    
+    // Accessing TTree
+    TTree* tree = (TTree*)file->Get("DF_2261906078621696/O2jetdisttable");
+    
     // Assuming histograms and tree data correspond in some way
     if (!tree) {
         cout << "Error opening tree.\n";
     }
-    // defining variables for accessing the TTree
+    // Defining variables for accessing the TTree
     float axisDistance, jetPt, jetEta, jetPhi;
     float hfPt, hfEta, hfPhi, hfMass, hfY;
 
@@ -92,28 +114,31 @@ void fillHistograms(TTree* tree, const std::vector<TH2D*>& histograms, double je
 
         // calculating delta R
         double deltaR = sqrt(pow(jetEta-hfEta,2) + pow(DeltaPhi(jetPhi,hfPhi),2));
-        //double deltaR = sqrt(pow(jetEta-hfEta,2) + pow(jetPhi-hfPhi,2));
 
         // Fill each histogram with their respective pT intervals
-        if ((hfPt > 3 && hfPt < 4) && (histograms.size() > 0) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            histograms[0]->Fill(hfMass, deltaR);
-        } else if ((hfPt > 4 && hfPt < 5) && (histograms.size() > 1) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            histograms[1]->Fill(hfMass, deltaR);
-        } else if ((hfPt > 5 && hfPt < 6) && (histograms.size() > 2) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            histograms[2]->Fill(hfMass, deltaR);
-        } else if ((hfPt > 6 && hfPt < 7) && (histograms.size() > 3) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            histograms[3]->Fill(hfMass, deltaR);
-        } else if ((hfPt > 7 && hfPt < 8) && (histograms.size() > 4) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            histograms[4]->Fill(hfMass, deltaR);
-        } else if ((hfPt > 8 && hfPt < 10) && (histograms.size() > 5) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            histograms[5]->Fill(hfMass, deltaR);
-        } else if ((hfPt > 10 && hfPt < 12) && (histograms.size() > 6) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            histograms[6]->Fill(hfMass, deltaR);
-        } else if ((hfPt > 12 && hfPt < 15) && (histograms.size() > 7) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            histograms[7]->Fill(hfMass, deltaR);
-        } else if ((hfPt > 15 && hfPt < 30) && (histograms.size() > 8) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            histograms[8]->Fill(hfMass, deltaR);
+        if ((abs(hfEta) < etaCut) && (abs(hfY) < yCut) && (jetPt > jetptMin && jetPt < jetptMax)) {
+            if ((hfPt > 3 && hfPt < 4) && (histograms.size() > 0)) {
+                histograms[0]->Fill(hfMass, deltaR);
+            } else if ((hfPt > 4 && hfPt < 5) && (histograms.size() > 1)) {
+                histograms[1]->Fill(hfMass, deltaR);
+            } else if ((hfPt > 5 && hfPt < 6) && (histograms.size() > 2)) {
+                histograms[2]->Fill(hfMass, deltaR);
+            } else if ((hfPt > 6 && hfPt < 7) && (histograms.size() > 3)) {
+                histograms[3]->Fill(hfMass, deltaR);
+            } else if ((hfPt > 7 && hfPt < 8) && (histograms.size() > 4)) {
+                histograms[4]->Fill(hfMass, deltaR);
+            } else if ((hfPt > 8 && hfPt < 10) && (histograms.size() > 5)) {
+                histograms[5]->Fill(hfMass, deltaR);
+            } else if ((hfPt > 10 && hfPt < 12) && (histograms.size() > 6)) {
+                histograms[6]->Fill(hfMass, deltaR);
+            } else if ((hfPt > 12 && hfPt < 15) && (histograms.size() > 7)) {
+                histograms[7]->Fill(hfMass, deltaR);
+            } else if ((hfPt > 15 && hfPt < 30) && (histograms.size() > 8)) {
+                histograms[8]->Fill(hfMass, deltaR);
+            }
         }
+        
+        
     }
     cout << "Histograms filled.\n";
 }
@@ -127,7 +152,7 @@ struct InitialParam {
 };
 
 // Find best combination of initial parameter values for each histogram fit
-std::vector<double> bestFit(TH1D* histogram, double minMass, double maxMass, int numParameters){
+std::vector<double> bestFit(TH1D* histogram, double minMass, double maxMass, int numParameters) {
     // Create array of best parameter initial values
     std::vector<double> optimalParameters(numParameters);
 
@@ -217,33 +242,48 @@ std::vector<double> bestFit(TH1D* histogram, double minMass, double maxMass, int
  *
  * This function takes the 2D histograms, perfom the fit of the signal+background model
  * and store the n TF1 signal+background model fit objects and n TF1 background model 
- * fit objects .
+ * fit objects in a vector.
  *
  * @param[in] names Histogram names vector
  * @param[in] histograms Histograms vector
  * @return Vector of fit objects TF1.
  */
 // Module to perform fits to histograms
-std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::vector<TH2D*>& histograms2d, InitialParam parametersVectors, 
-                             double minMass, double maxMass, double minDeltaR, double maxDeltaR, int numberOfPoints, std::vector<TFitResultPtr>& fitresultptr) {
+std::vector<TF1*> performFit(const std::vector<const char*>& names, 
+                             const std::vector<TH2D*>& histograms2d, 
+                             InitialParam parametersVectors, 
+                             std::vector<TFitResultPtr>& fitresultptr) {
     // creating temporary histogram for storing to the vector
     TH1D* tempHist;
 
     // creating 1D mass projection histograms
     std::vector<TH1D*> histograms;
 
-    double deltaRinterval = (maxDeltaR-minDeltaR)/numberOfPoints;
+    // histogram limits and number of bins
+    int deltaRbins;
+    double minDeltaR;
+    double maxDeltaR;
+    double minMass;
+    double maxMass;
 
     // obtaining 1D invariant mass histograms from the projection
     for (size_t iHist = 0; iHist < histograms2d.size(); iHist++) {
-        // create numberOfPoints histograms for each selection cut (jet pT and HF pT)
-        for (size_t iPoint = 0; iPoint < numberOfPoints; iPoint++) {
-            double minBin = histograms2d[iHist]->GetYaxis()->FindBin(deltaRinterval*iPoint);
-            double maxBin = histograms2d[iHist]->GetYaxis()->FindBin(deltaRinterval*(iPoint+1));
-            tempHist = histograms2d[iHist]->ProjectionX(Form("h_mass_proj_%zu_%zu", iHist, iPoint), minBin, maxBin);
+        // accessing histogram limits and number of bins for each histogram
+        deltaRbins = histograms2d[iHist]->GetNbinsY();
+        minDeltaR = histograms2d[iHist]->GetYaxis()->GetXmin();
+        maxDeltaR = histograms2d[iHist]->GetYaxis()->GetXmax();
+        minMass = histograms2d[iHist]->GetXaxis()->GetXmin();
+        maxMass = histograms2d[iHist]->GetXaxis()->GetXmax();
+
+        // create numberOfPoints (=deltaRbins) histograms for each selection cut (jet pT and HF pT)
+        for (size_t iPoint = 0; iPoint < deltaRbins; iPoint++) {
+            // bin numbers start with 1 instead of 0
+            int minBin = iPoint + 1;
+            // include only the current minBin in the projection
+            tempHist = histograms2d[iHist]->ProjectionX(Form("h_mass_proj_%zu_%zu", iHist, iPoint), minBin, minBin);
             histograms.push_back(tempHist);
         }
-        // histograms are filled in vector as
+        // histograms are filled in vector as:
         // histograms = {histMass_0_0, histMass_0_1, histMass_0_2, ..., histMass_0_(numberOfPoints-1), histMass_1_0, histMass_1_1, histMass_1_2, ...}
     }
     
@@ -259,17 +299,23 @@ std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::v
     double C_parameter;
     
     // Perform total fit to each histogram
-    for (size_t iHisto = 0; iHisto < (histograms.size()/numberOfPoints); ++iHisto) {
-        //cout << "iHisto = " << iHisto << endl;
-        for (size_t iPoint = 0; iPoint < numberOfPoints; iPoint++) {
+    for (size_t iHist = 0; iHist < histograms2d.size(); ++iHist) {
+        // accessing histogram limits and number of bins for each histogram
+        deltaRbins = histograms2d[iHist]->GetNbinsY();
+        minDeltaR = histograms2d[iHist]->GetYaxis()->GetXmin();
+        maxDeltaR = histograms2d[iHist]->GetYaxis()->GetXmax();
+        minMass = histograms2d[iHist]->GetXaxis()->GetXmin();
+        maxMass = histograms2d[iHist]->GetXaxis()->GetXmax();
+
+        for (size_t iPoint = 0; iPoint < deltaRbins; iPoint++) {
            // cout << "iPoint = " << iPoint << endl;
             // variables necessary for calculating parameters
-            double K = histograms[iHisto*numberOfPoints+iPoint]->GetBinContent(1); // Content of the first bin
-            double J = histograms[iHisto*numberOfPoints+iPoint]->GetBinContent(histograms[iHisto*numberOfPoints+iPoint]->GetNbinsX()); // Content of the last bin
-            double m_min = histograms[iHisto*numberOfPoints+iPoint]->GetBinLowEdge(1); // Lower limit of the first bin
-            double m_max = histograms[iHisto*numberOfPoints+iPoint]->GetBinLowEdge(histograms[iHisto*numberOfPoints+iPoint]->GetNbinsX() + 1); // Upper limit of the last bin
-            double I_tot = histograms[iHisto*numberOfPoints+iPoint]->Integral();
-            double I_3sigma = histograms[iHisto*numberOfPoints+iPoint]->Integral(histograms[iHisto*numberOfPoints+iPoint]->FindBin(m_0_parameter - 3 * sigma_parameter), histograms[iHisto*numberOfPoints+iPoint]->FindBin(m_0_parameter + 3 * sigma_parameter));
+            double K = histograms[iHist*deltaRbins+iPoint]->GetBinContent(1); // Content of the first bin
+            double J = histograms[iHist*deltaRbins+iPoint]->GetBinContent(histograms[iHist*deltaRbins+iPoint]->GetNbinsX()); // Content of the last bin
+            double m_min = histograms[iHist*deltaRbins+iPoint]->GetBinLowEdge(1); // Lower limit of the first bin
+            double m_max = histograms[iHist*deltaRbins+iPoint]->GetBinLowEdge(histograms[iHist*deltaRbins+iPoint]->GetNbinsX() + 1); // Upper limit of the last bin
+            double I_tot = histograms[iHist*deltaRbins+iPoint]->Integral();
+            double I_3sigma = histograms[iHist*deltaRbins+iPoint]->Integral(histograms[iHist*deltaRbins+iPoint]->FindBin(m_0_parameter - 3 * sigma_parameter), histograms[iHist*deltaRbins+iPoint]->FindBin(m_0_parameter + 3 * sigma_parameter));
             
             // Calculating parameter initial values
             b_parameter = (K > 0 && J > 0) ? TMath::Log(K / J) / (m_max - m_min) : -1;
@@ -285,13 +331,13 @@ std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::v
             }
             
             // Store a fit object regardless of the histogram being empty or not
-            if (histograms[iHisto*numberOfPoints+iPoint]->GetEntries() == 0) {
+            if (histograms[iHist*deltaRbins+iPoint]->GetEntries() == 0) {
                 // Store empty TF1 object for associated empty histogram
-                fittings.push_back(new TF1(Form("totalFit_%s_%zu",names[iHisto],iPoint),"")); // 0 parameters
-                //cout << histograms[iHisto*numberOfPoints+iPoint]->GetTitle() << endl;
+                fittings.push_back(new TF1(Form("totalFit_%s_%zu",names[iHist],iPoint),"")); // 0 parameters
+                //cout << histograms[iHist*deltaRbins+iPoint]->GetTitle() << endl;
             } else{
                 // Create the fit function, enforce constraints on some parameters, set initial parameter values and performing fit
-                fittings.push_back(new TF1(Form("totalFit_%s_%zu",names[iHisto],iPoint), customFitFunction, minMass, maxMass, 5)); // 5 parameters
+                fittings.push_back(new TF1(Form("totalFit_%s_%zu",names[iHist],iPoint), customFitFunction, minMass, maxMass, 5)); // 5 parameters
             }
             
             // fittings are filled in vector as
@@ -299,11 +345,11 @@ std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::v
 
             bool usePreSetParam = false; // use given pre-set initial parameter value
             if (usePreSetParam) {
-                a_parameter = parametersVectors.paramA[iHisto];
-                b_parameter = parametersVectors.paramB[iHisto];
-                C_parameter = parametersVectors.paramC[iHisto];
-                m_0_parameter = parametersVectors.paramM0[iHisto];
-                sigma_parameter = parametersVectors.paramSigma[iHisto];
+                a_parameter = parametersVectors.paramA[iHist];
+                b_parameter = parametersVectors.paramB[iHist];
+                C_parameter = parametersVectors.paramC[iHist];
+                m_0_parameter = parametersVectors.paramM0[iHist];
+                sigma_parameter = parametersVectors.paramSigma[iHist];
             }
             
 
@@ -311,20 +357,20 @@ std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::v
             double m_0_upper_limit = 1.95 * m_0_parameter;
             
             // Perform fit only for not empty TF1 objects
-            if (fittings[iHisto*numberOfPoints+iPoint]->GetNpar() > 0 && histograms[iHisto*numberOfPoints+iPoint]->GetEntries() != 0) { // histograms[iHisto*numberOfPoints+iPoint]->GetEntries() != 0, fittings[iHisto*numberOfPoints+iPoint]->GetNpar() > 0
+            if (fittings[iHist*deltaRbins+iPoint]->GetNpar() > 0 && histograms[iHist*deltaRbins+iPoint]->GetEntries() != 0) { // histograms[iHist*deltaRbins+iPoint]->GetEntries() != 0, fittings[iHist*deltaRbins+iPoint]->GetNpar() > 0
                 // Calculating optimal parameters
-                std::vector<double> optimalParameters = bestFit(histograms[iHisto*numberOfPoints+iPoint], minMass, maxMass, 5);
+                std::vector<double> optimalParameters = bestFit(histograms[iHist*deltaRbins+iPoint], minMass, maxMass, 5);
                 
-                //fittings[iHisto*numberOfPoints+iPoint]->SetParLimits(2, 0., DBL_MAX); // Set lower boundary of parameter iC to 0, and higher to maximum representable value for a double -> no negative gaussians
-                fittings[iHisto*numberOfPoints+iPoint]->SetParLimits(3, m_0_lower_limit, m_0_upper_limit); // constraints on m_0_parameter: [0.95*m0, 1.05*m0]
-                fittings[iHisto*numberOfPoints+iPoint]->SetParLimits(4, 0, 1); // constraints on sigma: [0, 1]
-                //fittings[iHisto*numberOfPoints+iPoint]->SetParameters(a_parameter, b_parameter, C_parameter, m_0_parameter, sigma_parameter);
-                fittings[iHisto*numberOfPoints+iPoint]->SetParameters(optimalParameters[0], optimalParameters[1], optimalParameters[2], optimalParameters[3], optimalParameters[4]);
-                fittings[iHisto*numberOfPoints+iPoint]->SetParNames("a","b", "C", "m_0", "sigma");
-                fittings[iHisto*numberOfPoints+iPoint]->SetLineColor(kBlue);
-                histograms[iHisto*numberOfPoints+iPoint]->Fit(fittings[iHisto*numberOfPoints+iPoint], "Q");// "Q" option performs quiet fit without drawing the fit function
+                //fittings[iHist*deltaRbins+iPoint]->SetParLimits(2, 0., DBL_MAX); // Set lower boundary of parameter iC to 0, and higher to maximum representable value for a double -> no negative gaussians
+                fittings[iHist*deltaRbins+iPoint]->SetParLimits(3, m_0_lower_limit, m_0_upper_limit); // constraints on m_0_parameter: [0.95*m0, 1.05*m0]
+                fittings[iHist*deltaRbins+iPoint]->SetParLimits(4, 0, 1); // constraints on sigma: [0, 1]
+                //fittings[iHist*deltaRbins+iPoint]->SetParameters(a_parameter, b_parameter, C_parameter, m_0_parameter, sigma_parameter);
+                fittings[iHist*deltaRbins+iPoint]->SetParameters(optimalParameters[0], optimalParameters[1], optimalParameters[2], optimalParameters[3], optimalParameters[4]);
+                fittings[iHist*deltaRbins+iPoint]->SetParNames("a","b", "C", "m_0", "sigma");
+                fittings[iHist*deltaRbins+iPoint]->SetLineColor(kBlue);
+                histograms[iHist*deltaRbins+iPoint]->Fit(fittings[iHist*deltaRbins+iPoint], "Q");// "Q" option performs quiet fit without drawing the fit function
             } else{
-                cout << "No fit performed (empty histogram)\n";
+                cout << "No fit performed (empty histogram).\n";
             }
             
         }
@@ -335,20 +381,27 @@ std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::v
 
 
     // Create and store signal only fit to each histogram
-    for (size_t iHisto = 0; iHisto < (histograms.size()/numberOfPoints); iHisto++) {
-        for (size_t iPoint = 0; iPoint < numberOfPoints; iPoint++) {
+    for (size_t iHist = 0; iHist < histograms2d.size(); iHist++) {
+        // accessing histogram limits and number of bins for each histogram
+        deltaRbins = histograms2d[iHist]->GetNbinsY();
+        minDeltaR = histograms2d[iHist]->GetYaxis()->GetXmin();
+        maxDeltaR = histograms2d[iHist]->GetYaxis()->GetXmax();
+        minMass = histograms2d[iHist]->GetXaxis()->GetXmin();
+        maxMass = histograms2d[iHist]->GetXaxis()->GetXmax();
+
+        for (size_t iPoint = 0; iPoint < deltaRbins; iPoint++) {
             // For non empty fits
-            if (fittings[iHisto*numberOfPoints+iPoint]->GetNpar() > 0 && histograms[iHisto*numberOfPoints+iPoint]->GetEntries() != 0) { // histograms[iHisto*numberOfPoints+iPoint]->GetEntries() != 0, fittings[iHisto*numberOfPoints+iPoint]->GetNpar() > 0
+            if (fittings[iHist*deltaRbins+iPoint]->GetNpar() > 0 && histograms[iHist*deltaRbins+iPoint]->GetEntries() != 0) { // histograms[iHist*deltaRbins+iPoint]->GetEntries() != 0, fittings[iHist*deltaRbins+iPoint]->GetNpar() > 0
                 // Getting total parameter values
-                double c_par = fittings[iHisto*numberOfPoints+iPoint]->GetParameter(2); // Get the value of parameter 'c'
-                double m_par = fittings[iHisto*numberOfPoints+iPoint]->GetParameter(3); // Get the value of parameter 'm_0'
-                double sigma_par = fittings[iHisto*numberOfPoints+iPoint]->GetParameter(4); // Get the value of parameter 'sigma'
-                fittings.push_back(new TF1(Form("sigFit_%s_%zu", names[iHisto],iPoint), signalFunction, minMass, maxMass, 3));
+                double c_par = fittings[iHist*deltaRbins+iPoint]->GetParameter(2); // Get the value of parameter 'c'
+                double m_par = fittings[iHist*deltaRbins+iPoint]->GetParameter(3); // Get the value of parameter 'm_0'
+                double sigma_par = fittings[iHist*deltaRbins+iPoint]->GetParameter(4); // Get the value of parameter 'sigma'
+                fittings.push_back(new TF1(Form("sigFit_%s_%zu", names[iHist],iPoint), signalFunction, minMass, maxMass, 3));
                 fittings[fittings.size()-1]->SetParameters(c_par,m_par,sigma_par); // fittings.size()-1 = index from the latest fitting added
                 fittings[fittings.size()-1]->SetLineStyle(kDashed);
                 fittings[fittings.size()-1]->SetLineColor(kGreen);
             } else{
-                fittings.push_back(new TF1(Form("sigFit_%s_%zu", names[iHisto],iPoint),""));
+                fittings.push_back(new TF1(Form("sigFit_%s_%zu", names[iHist],iPoint),""));
             }
 
             
@@ -370,8 +423,37 @@ struct ExtractionResult {
     std::vector<TH1D*> signalHist; // 1D signal histograms vector
 };
 
-ExtractionResult PointsExtraction(const std::vector<TH2D*>& histograms2d, const std::vector<TF1*>& fittings, int signalSigmas, int startingBackSigma, int backgroundSigmas,
-                                  double minDeltaR, double maxDeltaR, int numberOfPoints, double minMass, double maxMass){
+// Obtain the bin edges of a histogram (useful for asymmetrical bin sizes)
+std::vector<double> getBinEdgesFromHistogram(const TH2D* histogram) {
+    // vector for storing bin edges
+    std::vector<double> binEdges;
+
+    // number of bins of histogram
+    int nBins = histogram->GetYaxis()->GetNbins();
+    std::cout << "binEdges = {";
+    // loop over all bins manually
+    for (int iBin = 0; iBin < nBins; iBin++) {
+        double lowEdgeBin = histogram->GetYaxis()->GetBinLowEdge(iBin+1);
+        binEdges.push_back(lowEdgeBin);
+        std::cout << lowEdgeBin << ",";
+    }
+    // add upper edge of the last bin
+    double upEdgeBin = histogram->GetYaxis()->GetBinUpEdge(nBins);
+    binEdges.push_back(upEdgeBin);
+    std::cout << upEdgeBin << "}\n";
+
+    return binEdges;
+}
+
+ExtractionResult PointsExtraction(const std::vector<TH2D*>& histograms2d, 
+                                  const std::vector<TF1*>& fittings, 
+                                  int signalSigmas, int startingBackSigma, int backgroundSigmas) {
+    // histogram limits and number of bins
+    int deltaRbins;
+    double minDeltaR;
+    double maxDeltaR;
+    double minMass;
+    double maxMass;
     
     // Creating temporary histogram for collecting data
     TH1D* tempHist;
@@ -379,16 +461,22 @@ ExtractionResult PointsExtraction(const std::vector<TH2D*>& histograms2d, const 
     // Creating output struct object with histogram vectors
     ExtractionResult vectorOutputs;
 
-    double deltaRinterval = (maxDeltaR-minDeltaR)/numberOfPoints;
+    double deltaRinterval = (maxDeltaR-minDeltaR)/deltaRbins;
 
     // obtaining 1D invariant mass histograms from the projection
-    for (size_t iHisto = 0; iHisto <  histograms2d.size(); iHisto++) {
-        cout << "iHisto = " << iHisto << endl;
-        // create numberOfPoints histograms for each selection cut (jet pT and HF pT)
-        for (size_t iPoint = 0; iPoint < numberOfPoints; iPoint++) {
-            double minBin = histograms2d[iHisto]->GetYaxis()->FindBin(deltaRinterval*iPoint);
-            double maxBin = histograms2d[iHisto]->GetYaxis()->FindBin(deltaRinterval*(iPoint+1));
-            tempHist = histograms2d[iHisto]->ProjectionX(Form("h_mass_proj_%zu_%zu", iHisto, iPoint), minBin,maxBin);
+    for (size_t iHist = 0; iHist <  histograms2d.size(); iHist++) {
+        // accessing histogram limits and number of bins for each histogram
+        deltaRbins = histograms2d[iHist]->GetNbinsY();
+        minDeltaR = histograms2d[iHist]->GetYaxis()->GetXmin();
+        maxDeltaR = histograms2d[iHist]->GetYaxis()->GetXmax();
+        minMass = histograms2d[iHist]->GetXaxis()->GetXmin();
+        maxMass = histograms2d[iHist]->GetXaxis()->GetXmax();
+
+        // create numberOfPoints (=deltaRbins) histograms for each selection cut (jet pT and HF pT)
+        for (size_t iPoint = 0; iPoint < deltaRbins; iPoint++) {
+            double minBin = iPoint+1;
+            double maxBin = iPoint+2;
+            tempHist = histograms2d[iHist]->ProjectionX(Form("h_mass_proj_%zu_%zu", iHist, iPoint), minBin,minBin);
             cout << "Number of entries on point histogram " << iPoint << " = " << tempHist->GetEntries() << endl;
             vectorOutputs.histograms.push_back(tempHist);
         }
@@ -398,17 +486,26 @@ ExtractionResult PointsExtraction(const std::vector<TH2D*>& histograms2d, const 
 
     TF1* tempFit;
     // Calculating delta R histograms for signal area only
-    for (size_t iHisto = 0; iHisto < histograms2d.size(); iHisto++) { // loop through selection cuts: HF pT intervals
-        // define asymmetrical bin widths manually chosen
-        Double_t binEdges[] = {0., 0.05, 0.075, 0.1, 0.125, 0.15, 0.2};
+    for (size_t iHist = 0; iHist < histograms2d.size(); iHist++) { // loop through selection cuts: HF pT intervals
+        // accessing histogram limits and number of bins for each histogram
+        deltaRbins = histograms2d[iHist]->GetNbinsY();
+        minDeltaR = histograms2d[iHist]->GetYaxis()->GetXmin();
+        maxDeltaR = histograms2d[iHist]->GetYaxis()->GetXmax();
+        minMass = histograms2d[iHist]->GetXaxis()->GetXmin();
+        maxMass = histograms2d[iHist]->GetXaxis()->GetXmax();
+        
+        // obtaining bin edges for delta R distribution
+        std::vector<double> deltaRBinEdges = getBinEdgesFromHistogram(histograms2d[iHist]);
+
         // Creating histogram delta R
-        tempHist = new TH1D(Form("h_sig_extracted_%zu",iHisto),";#DeltaR;dN/d(#DeltaR)",numberOfPoints,minDeltaR, maxDeltaR);
+        //tempHist = new TH1D(Form("h_sig_extracted_%zu",iHist),";#DeltaR;dN/d(#DeltaR)",deltaRbins,minDeltaR, maxDeltaR); // uniform bins
+        tempHist = new TH1D(Form("h_sig_extracted_%zu",iHist),";#DeltaR;dN/d(#DeltaR)", deltaRBinEdges.size() - 1, deltaRBinEdges.data()); // asymmentrical bin widths
 
         // Construct each histogram bin-by-bin
-        for (size_t iPoint = 0; iPoint < numberOfPoints; iPoint++) { // loop through delta R intervals (for each HF pT interval)
+        for (size_t iPoint = 0; iPoint < deltaRbins; iPoint++) { // loop through delta R intervals (for each HF pT interval)
             
-            //int signalFitIndex = vectorOutputs.histograms.size() + iHisto + iPoint;
-            int signalFitIndex = vectorOutputs.histograms.size() + iHisto*numberOfPoints + iPoint; 
+            //int signalFitIndex = vectorOutputs.histograms.size() + iHist + iPoint;
+            int signalFitIndex = vectorOutputs.histograms.size() + iHist*deltaRbins + iPoint; 
             
             // Calculating signal area
             double binWidth;
@@ -416,16 +513,17 @@ ExtractionResult PointsExtraction(const std::vector<TH2D*>& histograms2d, const 
             double sigma; // Get the value of parameter 'sigma'
             double fitSigIntegral;
             double fitSigIntegralError;
-
-            if (fittings[signalFitIndex]->GetNpar() > 0) { // if fit is not empty
+            
+            // if fit is not empty
+            if (fittings[signalFitIndex]->GetNpar() > 0) {
                 // Calculating signal area
-                binWidth = vectorOutputs.histograms[iHisto*numberOfPoints + iPoint]->GetXaxis()->GetBinWidth(1);
+                binWidth = vectorOutputs.histograms[iHist*deltaRbins + iPoint]->GetXaxis()->GetBinWidth(iPoint+1);
                 m_0 = fittings[signalFitIndex]->GetParameter(1); // Get the value of parameter 'm_0'
                 sigma = fittings[signalFitIndex]->GetParameter(2); // Get the value of parameter 'sigma'
                 fitSigIntegral = fittings[signalFitIndex]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma) / binWidth;
                 //fitSigIntegralError = fittings[signalFitIndex]->IntegralError(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma,fittings[signalFitIndex]->GetParams(), fittings[signalFitIndex]->GetCovarianceMatrix()->GetMatrixArray() );
                 cout << "Fitting number " << signalFitIndex << " has integral of " << fitSigIntegral << endl;
-                //cout << "Chi2 = " << fittings[iHisto*numberOfPoints + iPoint]->GetChisquare() << ", NDF = " << fittings[iHisto*numberOfPoints + iPoint]->GetNDF() << endl;
+                //cout << "Chi2 = " << fittings[iHist*deltaRbins + iPoint]->GetChisquare() << ", NDF = " << fittings[iHist*deltaRbins + iPoint]->GetNDF() << endl;
             } else{ // if fit is empty
                 fitSigIntegral = 0.;
                 fitSigIntegralError = 0.;
@@ -434,18 +532,18 @@ ExtractionResult PointsExtraction(const std::vector<TH2D*>& histograms2d, const 
             }
 
             bool test = false;
-            if (fittings[iHisto*numberOfPoints+iPoint]->GetNpar() > 0 && test) {
-                double c_par = fittings[iHisto*numberOfPoints+iPoint]->GetParameter(2); // Get the value of parameter 'c'
-                double m_par = fittings[iHisto*numberOfPoints+iPoint]->GetParameter(3); // Get the value of parameter 'm_0'
-                double sigma_par = fittings[iHisto*numberOfPoints+iPoint]->GetParameter(4); // Get the value of parameter 'sigma'
-                tempFit = new TF1(Form("newsigFit_%s_%zu", histograms2d[iHisto]->GetName(),iPoint), signalFunction, minMass, maxMass, 3);
+            if (fittings[iHist*deltaRbins+iPoint]->GetNpar() > 0 && test) {
+                double c_par = fittings[iHist*deltaRbins+iPoint]->GetParameter(2); // Get the value of parameter 'c'
+                double m_par = fittings[iHist*deltaRbins+iPoint]->GetParameter(3); // Get the value of parameter 'm_0'
+                double sigma_par = fittings[iHist*deltaRbins+iPoint]->GetParameter(4); // Get the value of parameter 'sigma'
+                tempFit = new TF1(Form("newsigFit_%s_%zu", histograms2d[iHist]->GetName(),iPoint), signalFunction, minMass, maxMass, 3);
                 tempFit->SetParameters(c_par,m_par,sigma_par); // fittings.size()-1 = index from the latest fitting added
 
-                binWidth = vectorOutputs.histograms[iHisto*numberOfPoints + iPoint]->GetXaxis()->GetBinWidth(1);
+                binWidth = vectorOutputs.histograms[iHist*deltaRbins + iPoint]->GetXaxis()->GetBinWidth(iPoint+1);
                 m_0 = tempFit->GetParameter(1); // Get the value of parameter 'm_0'
                 sigma = tempFit->GetParameter(2); // Get the value of parameter 'sigma'
                 fitSigIntegral = tempFit->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma) / binWidth;
-                cout << "Fitting number " << iHisto*numberOfPoints+iPoint << " has integral of " << fitSigIntegral << endl;
+                cout << "Fitting number " << iHist*deltaRbins+iPoint << " has integral of " << fitSigIntegral << endl;
                 delete tempFit;
             }
             
@@ -472,9 +570,14 @@ ExtractionResult PointsExtraction(const std::vector<TH2D*>& histograms2d, const 
     
 }
 
-void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF1*>& fittings, ExtractionResult outputStruct, double jetptMin, double jetptMax,
-                    int numberOfPoints) {
-    
+void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF1*>& fittings, ExtractionResult outputStruct, double jetptMin, double jetptMax) {
+    // histogram limits and number of bins
+    int deltaRbins;
+    double minDeltaR;
+    double maxDeltaR;
+    double minMass;
+    double maxMass;
+
     // creating 1D mass projection histograms
     TH1D* tempHist;
     std::vector<TH1D*> histograms;
@@ -494,27 +597,43 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     // Plotting point mass histograms
     std::vector<TCanvas*> cPointMass;
     //TCanvas* cPointMass = new TCanvas("cPointMass", "Point mass histograms", 800, 600);
-    //cPointMass->Divide(2+1,numberOfPoints / 2); // columns, lines
+    //cPointMass->Divide(2+1,deltaRbins / 2); // columns, lines
 
-    for (size_t iHisto = 0; iHisto < histograms2d.size(); iHisto++) {
-        //
-        cPointMass.push_back(new TCanvas(Form("histoMass_%zu",iHisto),Form("Points histograms for interval number %zu",iHisto)));
-        if(numberOfPoints%2 == 1){
-            cPointMass[iHisto]->Divide(2+1,numberOfPoints / 2); // columns, lines
+    for (size_t iHist = 0; iHist < histograms2d.size(); iHist++) {
+        // accessing histogram limits and number of bins for each histogram
+        deltaRbins = histograms2d[iHist]->GetNbinsY();
+        minDeltaR = histograms2d[iHist]->GetYaxis()->GetXmin();
+        maxDeltaR = histograms2d[iHist]->GetYaxis()->GetXmax();
+        minMass = histograms2d[iHist]->GetXaxis()->GetXmin();
+        maxMass = histograms2d[iHist]->GetXaxis()->GetXmax();
+        // storing canvas
+        cPointMass.push_back(new TCanvas(Form("histoMass_%zu",iHist),Form("Points histograms for interval number %zu",iHist)));
+
+        // divide differently if the number of canvases is even or odd
+        if(deltaRbins%2 == 1){
+            cPointMass[iHist]->Divide(2+1,deltaRbins / 2); // columns, lines
         } else{
-            cPointMass[iHisto]->Divide(2,numberOfPoints / 2); // columns, lines
+            cPointMass[iHist]->Divide(2,deltaRbins / 2); // columns, lines
         }
-        for (size_t iPoint = 0; iPoint < numberOfPoints; iPoint++) {
-            cPointMass[iHisto]->cd(iPoint+1);
-            double statBoxPos = gPad->GetUxmax();
-            outputStruct.histograms[iHisto*numberOfPoints + iPoint]->SetMarkerStyle(kFullDotMedium);
-            outputStruct.histograms[iHisto*numberOfPoints + iPoint]->SetMarkerColor(kBlack);
-            outputStruct.histograms[iHisto*numberOfPoints + iPoint]->SetLineColor(kGray);
-            outputStruct.histograms[iHisto*numberOfPoints + iPoint]->GetYaxis()->SetTitle("counts");
-            outputStruct.histograms[iHisto*numberOfPoints + iPoint]->Draw();
-            fittings[iHisto*numberOfPoints + iPoint]->Draw("same");
-            //cout << "Number of entries on point histogram " << iPoint << " = " << outputStruct.histograms[iPoint]->GetEntries() << endl;
-            latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
+        for (size_t iPoint = 0; iPoint < deltaRbins; iPoint++) {
+            cPointMass[iHist]->cd(iPoint+1);
+            double statBoxPos = gPad->GetUxmax(); // Height of the stat box
+            gStyle->SetOptStat(0); // Turn off the default stats box
+            outputStruct.histograms[iHist*deltaRbins + iPoint]->SetMarkerStyle(kFullDotMedium);
+            outputStruct.histograms[iHist*deltaRbins + iPoint]->SetMarkerColor(kBlack);
+            outputStruct.histograms[iHist*deltaRbins + iPoint]->SetLineColor(kGray);
+            outputStruct.histograms[iHist*deltaRbins + iPoint]->GetYaxis()->SetTitle("counts");
+            outputStruct.histograms[iHist*deltaRbins + iPoint]->Draw();
+            fittings[iHist*deltaRbins + iPoint]->Draw("same");
+
+            double m_0 = fittings[iHist*deltaRbins + iPoint]->GetParameter(3); // Get the value of parameter 'm_0'
+            double sigma = fittings[iHist*deltaRbins + iPoint]->GetParameter(4); // Get the value of parameter 'sigma'
+            double chi2 = fittings[iHist*deltaRbins + iPoint]->GetChisquare();
+            double degOfFreedom = fittings[iHist*deltaRbins + iPoint]->GetNDF();
+            
+            latex->DrawLatex(statBoxPos-0.35, 0.70, Form("m_{0} = %.3f #pm %.3f GeV/c^{2}", m_0,sigma)); // Display parameter 'm_0' value
+            latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax)); // Display jet pT cut applied
+            latex->DrawLatex(statBoxPos-0.35, 0.58, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
         }
     }
     
@@ -526,18 +645,18 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     TCanvas* cSignal = new TCanvas("cSignal", "delta R for extracted signal", 800, 600);
     cSignal->Divide(3,static_cast<int>(outputStruct.signalHist.size() / 3)); // columns, lines
 
-    for (size_t iHisto = 0; iHisto < outputStruct.signalHist.size(); iHisto++) {
-        cSignal->cd(iHisto+1);
-        outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
-        outputStruct.signalHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
-        outputStruct.signalHist[iHisto]->GetYaxis()->SetTitle("yields");
-        outputStruct.signalHist[iHisto]->SetMarkerStyle(kOpenCircle);
-        outputStruct.signalHist[iHisto]->SetMarkerColor(kRed);
-        outputStruct.signalHist[iHisto]->SetLineColor(kRed);
-        outputStruct.signalHist[iHisto]->SetTitle(histograms2d[iHisto]->GetTitle());
+    for (size_t iHist = 0; iHist < outputStruct.signalHist.size(); iHist++) {
+        cSignal->cd(iHist+1);
+        outputStruct.signalHist[iHist]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        outputStruct.signalHist[iHist]->GetXaxis()->SetTitle("#DeltaR");
+        outputStruct.signalHist[iHist]->GetYaxis()->SetTitle("yields");
+        outputStruct.signalHist[iHist]->SetMarkerStyle(kOpenCircle);
+        outputStruct.signalHist[iHist]->SetMarkerColor(kRed);
+        outputStruct.signalHist[iHist]->SetLineColor(kRed);
+        outputStruct.signalHist[iHist]->SetTitle(histograms2d[iHist]->GetTitle());
         double statBoxPos = gPad->GetUxmax();
-        outputStruct.signalHist[iHisto]->Sumw2();
-        outputStruct.signalHist[iHisto]->Draw();
+        outputStruct.signalHist[iHist]->Sumw2();
+        outputStruct.signalHist[iHist]->Draw();
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
     }
     
@@ -546,12 +665,12 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     cout << "Plotting...\n";
 
     // Save the canvas as an image or display it
-    for (size_t iHisto = 0; iHisto < histograms2d.size(); iHisto++) {
-        //cPointMass[iHisto]->SetCanvasSize(1800,1800);
-        if (iHisto == 0) {
-            cPointMass[iHisto]->Print(Form("sig_extraction_deltaR_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    for (size_t iHist = 0; iHist < histograms2d.size(); iHist++) {
+        //cPointMass[iHist]->SetCanvasSize(1800,1800);
+        if (iHist == 0) {
+            cPointMass[iHist]->Print(Form("sig_extraction_deltaR_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
         } else{
-            cPointMass[iHisto]->Print(Form("sig_extraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+            cPointMass[iHist]->Print(Form("sig_extraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
         }
         
         
@@ -564,9 +683,9 @@ void SaveData(ExtractionResult outputStruct, double jetptMin, double jetptMax){
     // Open output file
     TFile* outFile = new TFile(Form("sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
     // Loop over signal extracted histograms
-    for (size_t iHisto = 0; iHisto < outputStruct.signalHist.size(); iHisto++) {
+    for (size_t iHist = 0; iHist < outputStruct.signalHist.size(); iHist++) {
         // store each histogram in file
-        outputStruct.signalHist[iHisto]->Write();
+        outputStruct.signalHist[iHist]->Write();
     }
     outFile->Close();
     delete outFile;
@@ -586,10 +705,12 @@ void SignalExtraction(){
     double jetptMin = 5; // GeV
     double jetptMax = 30; // GeV
     // deltaR histogram
-    int deltaRbins = 50; // 20 bins
+    int deltaRbins = 50; // default = 50 bins
     double minDeltaR = 0.;
     double maxDeltaR = 0.4;
-    int numberOfPoints = 10;
+    // define asymmetrical bin widths manually chosen
+    std::vector<double> deltaRBinEdges = {0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4}; // TODO: investigate structure before 0.005
+    int numberOfPoints = deltaRBinEdges.size() - 1; // default = 10
     // mass histogram
     int massBins = 50; 
     double minMass = 1.67;
@@ -618,21 +739,21 @@ void SignalExtraction(){
                                        "10 < p_{T,D} < 12 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", "12 < p_{T,D} < 15 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", "15 < p_{T,D} < 30 GeV/c;m(K#pi) GeV/c^{2};#DeltaR"}; // Titles of histograms
     std::vector<TH2D*> histograms = createHistograms(names, titles, 
                                                        massBins, minMass, maxMass, // mass histograms
-                                                       deltaRbins, minDeltaR, maxDeltaR); // deltaR histograms
+                                                       deltaRBinEdges); // deltaR histograms with asymmetrical bin widths
+                                                       //deltaRbins, minDeltaR, maxDeltaR); // deltaR histograms
     
     // bin sizes
     cout << "Mass bin width = " << (maxMass-minMass)/massBins << endl;
     cout << "DeltaR bin width = " << (maxDeltaR-minDeltaR)/deltaRbins << endl;
 
-    // Accessing TTree
-    TTree* tDist = (TTree*)fDist->Get("DF_2261906078621696/O2jetdisttable");
+    
 
     // Fill histograms
-    fillHistograms(tDist, histograms, jetptMin, jetptMax);
+    fillHistograms(fDist, histograms, jetptMin, jetptMax);
 
     std::vector<TFitResultPtr> fitResult;
     // Perform fits
-    std::vector<TF1*> fittings = performFit(names,histograms, parametersVectors, minMass, maxMass, minDeltaR, maxDeltaR, numberOfPoints, fitResult);
+    std::vector<TF1*> fittings = performFit(names,histograms, parametersVectors, fitResult);
 
     // signal/side-band region parameters
     int signalSigmas = 2; // 2
@@ -643,10 +764,10 @@ void SignalExtraction(){
     cout << "Right side-band: " << startingBackSigma << "sigmas << |m - m_0| < " << (startingBackSigma+backgroundSigmas) << "sigmas\n";
 
     // Subtract side-band from signal
-    ExtractionResult finalDeltaR = PointsExtraction(histograms, fittings, signalSigmas, startingBackSigma, backgroundSigmas, minDeltaR, maxDeltaR, numberOfPoints, minMass, maxMass);
+    ExtractionResult finalDeltaR = PointsExtraction(histograms, fittings, signalSigmas, startingBackSigma, backgroundSigmas);
     
     // Plot histograms
-    PlotHistograms(histograms, fittings, finalDeltaR, jetptMin, jetptMax, numberOfPoints);
+    PlotHistograms(histograms, fittings, finalDeltaR, jetptMin, jetptMax);
 
     // Storing final histograms to output file
     SaveData(finalDeltaR,jetptMin,jetptMax);

@@ -60,7 +60,7 @@ void Investigation(){
     }
 
     // opening file
-    TFile* fDist = new TFile("AO2D.root","read");
+    TFile* fDist = new TFile("../ExperimentalData/Hyperloop_output/AO2D.root","read");
     if (!fDist || fDist->IsZombie()) {
         std::cerr << "Error: Unable to open the ROOT file." << std::endl;
     }

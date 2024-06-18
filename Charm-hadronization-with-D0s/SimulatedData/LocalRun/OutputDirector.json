@@ -7,6 +7,9 @@
       },
       {
         "table":"AOD/MCDJETDISTTABLE/0"
+      },
+      {
+        "table":"AOD/MATCHTABLE/0"
       }
     ],
     "ntfmerge": 1000
