@@ -48,25 +48,26 @@ double DeltaPhi(double phi1, double phi2) {
 
 struct FeedDownData {
     std::vector<RooUnfoldResponse> response; // inclusive = 0, prompt only = 1, non-prompt only = 2
-    std::vector<RooUnfoldResponse> responseNonPrompt;
-    std::vector<TH2D*> hPowheg; // deltaR vs pT,D; [0] = generator level, [1] = treated but not yet detector level
+    std::vector<TH3D*> hPowheg; // deltaR vs pT,D vs pT,jet; [0] = generator level, [1] = treated but not yet detector level
+    std::vector<TH2D*> hAllptDPowheg; // deltaR vs pT,D; [0] = generator level, [1] = folded detector level
     std::vector<TH1D*> hEfficiencies; // inclusive = 0, prompt only = 1, non-prompt only = 2
     std::vector<TH1D*> hBackSubCorrected; // prompt efficiency corrected Delta R distributions
+    std::vector<TH1D*> hSBFeedDown; // non-prompt subtracted Delta R distributions
+    // remove the above objects
+    std::vector<RooUnfoldResponse> responseNonPrompt;
     std::vector<TH1D*> hTrueNonPrompt;
     std::vector<TH1D*> hDetectorNonPrompt;
-    std::vector<TH1D*> hSBFeedDown; // non-prompt subtracted Delta R distributions
     std::vector<TH1D*> hSigExtCorrected;
 };
 
 // Module to create TH2D histograms including interest variable
-FeedDownData createHistograms(size_t xNumBinEdges, const double xBinEdges[], size_t yNumBinEdges, const double yBinEdges[]) {
+FeedDownData createHistograms(const size_t& xNumBinEdges, const double& xBinEdges[], const size_t& yNumBinEdges, const double& yBinEdges[], const double& jetptMin, const double& jetptMax) {
     // Create struct to store data
     FeedDownData dataContainer;
 
     // Create 2D histogram
-    dataContainer.hPowheg[0] = new TH2D("h_deltaR_vs_pt", ";#Delta R;p_{T,D}^{gen}", xNumBinEdges-1, xBinEdges, yNumBinEdges-1, yBinEdges);
-    dataContainer.hPowheg[0]->GetXaxis()->SetTitle("p_{T,D}^{truth}");
-    dataContainer.hPowheg[0]->GetYaxis()->SetTitle("dN/dp_{T,D}^{truth}");
+    int ptjetBins = 25;
+    dataContainer.hPowheg[0] = new TH3D("h_deltaR_vs_pt", ";#Delta R;p_{T,D}^{gen};p_{T,jet}^{ch}", xNumBinEdges-1, xBinEdges, yNumBinEdges-1, yBinEdges, ptjetBins, jetptMin, jetptMax);
     dataContainer.hPowheg[0]->SetMarkerColor(kGreen);
     dataContainer.hPowheg[0]->SetLineColor(kGreen);
     dataContainer.hPowheg[0]->SetMarkerStyle(kCircle);
@@ -78,8 +79,8 @@ FeedDownData createHistograms(size_t xNumBinEdges, const double xBinEdges[], siz
     return dataContainer;
 }
 
-// Module to fill histograms from POWHEG+PYTHIA TFile data
-void fillHistograms(TFile* file, const FeedDownData& dataContainer, double jetptMin, double jetptMax) {
+// Module to fill histograms from POWHEG+PYTHIA TFile data (all data in file is non-prompt and on particle level)
+void fillHistograms(TFile* fPowheg, const FeedDownData& dataContainer, double jetptMin, double jetptMax) {
     // Defining cuts
     double jetRadius = 0.4;
     double etaCut = 0.9 - jetRadius; // on jet
@@ -88,58 +89,37 @@ void fillHistograms(TFile* file, const FeedDownData& dataContainer, double jetpt
     // MC generator level tree and histograms
     //
     // Accessing TTree
-    TTree* tree = (TTree*)file->Get("O2matchtable");
+    TTree* tree = (TTree*)fPowheg->Get("tree_D0");
 
     // Check for correct access
     if (!tree) {
         cout << "Error opening tree.\n";
     }
-    // defining variables for accessing particle level data on TTree
-    float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
-    float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
-    bool MCPhfprompt, MCPhfmatch;
-    // defining variables for accessing detector level data on TTree
-    float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
-    float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
-    bool MCDhfprompt;
+    
+    // defining variables for accessing data on TTree
+    float pt_cand, eta_cand, phi_cand, y_cand;
+    float pt_jet, eta_jet, phi_jet, delta_r_jet;
 
-    // particle level branches
-    tree->SetBranchAddress("fMCJetHfDist",&MCPaxisDistance);
-    tree->SetBranchAddress("fMCJetPt",&MCPjetPt);
-    tree->SetBranchAddress("fMCJetEta",&MCPjetEta);
-    tree->SetBranchAddress("fMCJetPhi",&MCPjetPhi);
-    tree->SetBranchAddress("fMCHfPt",&MCPhfPt);
-    tree->SetBranchAddress("fMCHfEta",&MCPhfEta);
-    tree->SetBranchAddress("fMCHfPhi",&MCPhfPhi);
-    MCPhfMass = 1.86483; // D0 rest mass in GeV/c^2
-    tree->SetBranchAddress("fMCHfY",&hfY);
-    tree->SetBranchAddress("fMCHfPrompt",&MCPhfprompt);
-    tree->SetBranchAddress("fMCHfMatch",&MCPhfmatch);
-    // detector level branches
-    tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance);
-    tree->SetBranchAddress("fJetPt",&MCDjetPt);
-    tree->SetBranchAddress("fJetEta",&MCDjetEta);
-    tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
-    tree->SetBranchAddress("fHfPt",&MCDhfPt);
-    tree->SetBranchAddress("fHfEta",&MCDhfEta);
-    tree->SetBranchAddress("fHfPhi",&MCDhfPhi);
-    tree->SetBranchAddress("fHfMass",&MCDhfMass);
-    tree->SetBranchAddress("fHfY",&hfY);
-    tree->SetBranchAddress("fHfPrompt",&MCDhfprompt);
-    tree->SetBranchAddress("fHfMatch",&MCDhfmatch);
+    tree->SetBranchAddress("pt_cand",pt_cand);
+    tree->SetBranchAddress("eta_cand",eta_cand);
+    tree->SetBranchAddress("phi_cand",phi_cand);
+    tree->SetBranchAddress("y_cand",y_cand);
+    tree->SetBranchAddress("pt_jet",pt_jet);
+    tree->SetBranchAddress("eta_jet",eta_jet);
+    tree->SetBranchAddress("phi_jet",phi_jet);
+    tree->SetBranchAddress("delta_r_jet",delta_r_jet);
 
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
-        
-        /* Particle level histograms*/
+
         // calculating delta R
-        double deltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
+        //double deltaR = sqrt(pow(eta_jet-eta_cand,2) + pow(DeltaPhi(phi_jet,phi_cand),2));
 
         // Fill 2D histogram considering jet pT and detector acceptance
-        if ((abs(MCPhfEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && MCPjetPt > MCPjetptMin && MCPjetPt < MCPjetptMax) {
+        if ((abs(eta_cand) < etaCut) && (abs(y_cand) < yCut) && (pt_jet > jetptMin) && (pt_jet < jetptMax)) {
             
-            dataContainer.hPowheg[0]->Fill(deltaR, MCPhfPt);
+            dataContainer.hPowheg[0]->Fill(delta_r_jet, pt_cand, pt_jet);
             
         }
         
@@ -152,7 +132,8 @@ void fillHistograms(TFile* file, const FeedDownData& dataContainer, double jetpt
 void createResponseMatrix(FeedDownData& dataContainer, size_t& xNumBinEdges, const double& xBinEdges[], size_t& yNumBinEdges, const double& yBinEdges[]) {
     // Create lambda function for repetitive operation
     auto addResponse = [&](std::vector<RooUnfoldResponse>& container) {
-        container.emplace_back(xNumBinEdges, xBinEdges, yNumBinEdges, yBinEdges);
+        // 4D response matrix for Delta R and pT,jet
+        container.emplace_back(xNumBinEdges, xBinEdges, yNumBinEdges, yBinEdges, xNumBinEdges, xBinEdges, yNumBinEdges, yBinEdges); //(DeltaR_detector, pTjet_detector, DeltaR_particle, pTjet_particle)
     };
 
     // Create response matrix of inclusive, prompt and non-prompt for overall pT,D
@@ -160,29 +141,18 @@ void createResponseMatrix(FeedDownData& dataContainer, size_t& xNumBinEdges, con
     addResponse(dataContainer.response); // Prompt
     addResponse(dataContainer.response); // Non-prompt
     
-    // number of pT,D bins considered
-    int numberOfBins = 9; 
-    // Pre-allocate space for non-prompt D0s response matrices for each pT,D bin (for perfomance improvement)
-    dataContainer.responseNonPrompt.reserve(numberOfBins);
-
-    // Create a response matrix of non-prompt D0s for each pT,D bin
-    for (int iBin = 0; iBin < numberOfBins; iBin++) {
-        
-        RooUnfoldResponse response(xNumBinEdges, xBinEdges, yNumBinEdges, yBinEdges);
-        dataContainer.responseNonPrompt.push_back(response);
-    }
     std::cout << "Response matrices created.\n";
 }
 
 // Module to build response matrix
-void fillResponseMatrix(TFile* fSimulated, const FeedDownData& dataContainer, double jetptMin, double jetptMax){
+void fillResponseMatrix(TFile* fSimulatedO2, const FeedDownData& dataContainer, double jetptMin, double jetptMax){
     // Defining cuts
     double jetRadius = 0.4;
     double etaCut = 0.9 - jetRadius; // on jet
     double yCut = 0.8; // on D0
 
     // Accessing TTree
-    TTree* tree = (TTree*)fSimulated->Get("O2matchtable");
+    TTree* tree = (TTree*)fSimulatedO2->Get("O2matchtable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening tree.\n";
@@ -233,36 +203,14 @@ void fillResponseMatrix(TFile* fSimulated, const FeedDownData& dataContainer, do
         // Fill histograms considering jet pT and detector acceptance
         if ((abs(MCPhfEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && (MCPjetPt > MCPjetptMin) && (MCPjetPt < MCPjetptMax)) {
             // fill inclusive histogram
-            dataContainer.response[0].Fill(MCDDeltaR, MCPDeltaR); // Fill(measured, true)
+            dataContainer.response[0].Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt); // Fill(measured, true)
 
             if (MCPhfprompt) {
                 // fill prompt efficiency histogram
-                dataContainer.response[1].Fill(MCDDeltaR, MCPDeltaR); // Fill(measured, true)
+                dataContainer.response[1].Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt); // Fill(measured, true)
             } else{
                 // fill non-prompt efficiency histogram
-                dataContainer.response[2].Fill(MCDDeltaR, MCPDeltaR); // Fill(measured, true)
-            }
-            
-
-            // Fill each response matrix accourding to their respective pT,D interval
-            if ((hfPt > 3 && hfPt < 4) && (dataContainer.responseNonPrompt.size() > 0)) {
-                dataContainer.responseNonPrompt[0].Fill(MCDDeltaR, MCPDeltaR);
-            } else if ((hfPt > 4 && hfPt < 5) && (dataContainer.responseNonPrompt.size() > 1)) {
-                dataContainer.responseNonPrompt[1].Fill(MCDDeltaR, MCPDeltaR);
-            } else if ((hfPt > 5 && hfPt < 6) && (dataContainer.responseNonPrompt.size() > 2)) {
-                dataContainer.responseNonPrompt[2].Fill(MCDDeltaR, MCPDeltaR);
-            } else if ((hfPt > 6 && hfPt < 7) && (dataContainer.responseNonPrompt.size() > 3)) {
-                dataContainer.responseNonPrompt[3].Fill(MCDDeltaR, MCPDeltaR);
-            } else if ((hfPt > 7 && hfPt < 8) && (dataContainer.responseNonPrompt.size() > 4)) {
-                dataContainer.responseNonPrompt[4].Fill(MCDDeltaR, MCPDeltaR);
-            } else if ((hfPt > 8 && hfPt < 10) && (dataContainer.responseNonPrompt.size() > 5)) {
-                dataContainer.responseNonPrompt[5].Fill(MCDDeltaR, MCPDeltaR);
-            } else if ((hfPt > 10 && hfPt < 12) && (dataContainer.responseNonPrompt.size() > 6)) {
-                dataContainer.responseNonPrompt[6].Fill(MCDDeltaR, MCPDeltaR);
-            } else if ((hfPt > 12 && hfPt < 15) && (dataContainer.responseNonPrompt.size() > 7)) {
-                dataContainer.responseNonPrompt[7].Fill(MCDDeltaR, MCPDeltaR);
-            } else if ((hfPt > 15 && hfPt < 30) && (dataContainer.responseNonPrompt.size() > 8)) {
-                dataContainer.responseNonPrompt[8].Fill(MCDDeltaR, MCPDeltaR);
+                dataContainer.response[2].Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt); // Fill(measured, true)
             }
         
         }
@@ -276,15 +224,15 @@ void fillResponseMatrix(TFile* fSimulated, const FeedDownData& dataContainer, do
 // Module for folding particle level data from POWHEG simulation
 void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, TFile* fEfficiency, std::vector<const char*>& titles) {
     //
-    // 0th step: clone 2D histogram in order to save the smeared at the end (while keeping the original)
+    // 0th step: clone 3D histogram in order to save the smeared at the end (while keeping the original)
     //
-    TH2D* hSmearedPowheg = static_cast<TH2D*>(dataContainer.hPowheg[0]->Clone("h_subtraction_Bs"));
-    hSmearedPowheg->SetTitle(";#frac{#epsilon_{non-prompt}}{prompt}#frac{1}{L_{int}}p_{T,D}^{b #rightarrow D^{0}};#frac{1}{L_{int}}#Delta R^{b #rightarrow D^{0}}");
+    TH3D* hTreatedPowheg = static_cast<TH3D*>(dataContainer.hPowheg[0]->Clone("h_subtraction_Bs"));
+    hTreatedPowheg->SetTitle(";#frac{1}{L_{int}}#Delta R^{b #rightarrow D^{0}};#frac{#epsilon_{non-prompt}}{prompt}#frac{1}{L_{int}}p_{T,D}^{b #rightarrow D^{0}};p_{T,jet}^{ch}");
 
     //
     // 1st step: scale by integrated luminosity
-    //
-    hSmearedPowheg->Scale(1/luminosity);
+    // (skip this step for now)
+    //hTreatedPowheg->Scale(1/luminosity);
 
     //
     // 2nd step: scale by efficiency ratio
@@ -294,61 +242,52 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, TFile* 
     hEffPrompt = (TH1D*)fEfficiency->Get("efficiency_prompt");
     hEffNonPrompt = (TH1D*)fEfficiency->Get("efficiency_nonprompt");
     // manually scaling over each bin of pT,D dimension of 2D histogram (y-axis)
-    int nBinsX = hSmearedPowheg->GetNbinsX();
-    int nBinsY = hSmearedPowheg->GetNbinsY();
+    int nBinsX = hTreatedPowheg->GetNbinsX();
+    int nBinsY = hTreatedPowheg->GetNbinsY();
+    int nBinsZ = hTreatedPowheg->GetNbinsZ();
     // the order of nested loop dictates which is the scaled axis
     for (int xBin = 1; xBin <= nBinsX; xBin++) {
-        for (int yBin = 1; yBin <= nBinsY; yBin++) { // Inner loop over y-axis bins: this is scaled axis (pT,D bins)
-            double binContent = hSmearedPowheg->GetBinContent(xBin, yBin);
-            double binError = hSmearedPowheg->GetBinError(xBin, yBin);
+        for (int zBin = 1; zBin < nBinsZ; zBin++) {
+            // Inner loop over y-axis bins: this is scaled axis (pT,D bins)
+            for (int yBin = 1; yBin <= nBinsY; yBin++) {
+                double binContent = hTreatedPowheg->GetBinContent(xBin, yBin, zBin);
+                double binError = hTreatedPowheg->GetBinError(xBin, yBin, zBin);
 
-            // Obtain efficiencies ratio for specific bin
-            double effPrompt = hEffPrompt->GetBinContent(yBin);
-            double effNonPrompt = hEffNonPrompt->GetBinContent(yBin);
+                // Obtain efficiencies ratio for specific bin
+                double effPrompt = hEffPrompt->GetBinContent(yBin);
+                double effNonPrompt = hEffNonPrompt->GetBinContent(yBin);
 
-            // Scale the y-axis content and error by non-prompt efficiency/prompt efficiency
-            hSmearedPowheg->SetBinContent(i, j, binContent * effNonPrompt / effPrompt);
-            hSmearedPowheg->SetBinError(i, j, binError * effNonPrompt / effPrompt);
+                // Scale the y-axis content and error by non-prompt efficiency/prompt efficiency
+                hTreatedPowheg->SetBinContent(xBin, yBin, zBin, binContent * effNonPrompt / effPrompt);
+                hTreatedPowheg->SetBinError(xBin, yBin, zBin, binError * effNonPrompt / effPrompt);
+            }
         }
         
+        
+        
     }
-    // Save modified 2D histogram
-    dataContainer.hPowheg.emplace_back(hSmearedPowheg);
+    // Save modified 3D histogram
+    dataContainer.hPowheg.emplace_back(hTreatedPowheg);
+    
     
     //
-    // 3rd step: obtain Delta R projections for each pT,D bin (or is it one histogram projection of Delta R?)
+    // 3rd step: obtain the Delta R vs pT,jet projection for all pT,D bins
     //
+    TH2D* hAllptDPow = hTreatedPowheg->ProjectionXZ("h_true_nonprompt", 1, nBinsY);
+    hAllptDPow->SetTitle(";#frac{1}{L_{int}}#Delta R^{b #rightarrow D^{0}};p_{T,jet}^{ch}");
+    dataContainer.hAllptDPowheg.emplace_back(hAllptDPow);
 
-    // loop over pT,D bins
-    int ptBins = hSmearedPowheg->GetNbinsY();
-    for (size_t iBin = 1; iBin <= ptBins; iBin++) {
-        // bin numbers start with 1 instead of 0
-        dataContainer.hTrueNonPrompt.emplace_back(hSmearedPowheg->ProjectionX(Form("h_true_nonprompt_%zu", iBin), iBin, iBin)); // minBin, maxBin
-        dataContainer.hTrueNonPrompt[iBin-1]->SetTitle(titles[iBin-1]);
-        dataContainer.hTrueNonPrompt[iBin-1]->SetLineColor(kRed);
-        dataContainer.hTrueNonPrompt[iBin-1]->SetMarkerColor(kRed);
-        dataContainer.hTrueNonPrompt[iBin-1]->SetMarkerStyle(kCircle);
-        dataContainer.hTrueNonPrompt[iBin-1]->SetStats(0);
-        dataContainer.hTrueNonPrompt[iBin-1]->Sumw2();
-    }
+    //
+    // 4th step: fold Delta R vs pT,jet distribution using detector response matrices of non-prompt D0 jets
+    // (this can be done by ApplyToTruth() method from a RooUnfoldResponse object or by matrix multiplication - compare methods in the future)
+    // by AppluTruth() method
+    int responseOption = 2; // inclusive = 0, prompt only = 1, non-prompt only = 2
+    TH2D* hFoldedNonPrompt = (TH2D*)dataContainer.response[responseOption].ApplyToTruth(hAllptDPow);
+    dataContainer.hAllptDPowheg.emplace_back(hFoldedNonPrompt);
     
+    // by matrix multiplication
+    // since TH2D objects can't be used for 4D object, each bin needs to be treated directly
 
-    //
-    // 4th step: fold Delta R distributions using detector response matrices of non-prompt D0 jets
-    //
-
-    // loop and fold Delta R distribution for each pT,D bin interval
-    for (size_t iBin = 0; iBin < ptBins; iBin++) {
-        TH1D* hDetectorLevel = (TH1D*)response[iBin].ApplyToTruth(dataContainer.hTrueNonPrompt[iBin]);
-        hDetectorLevel->SetName(Form("h_detector_nonprompt_%d", iBin));
-        dataContainer.hDetectorNonPrompt.emplace_back(hDetectorLevel);
-        dataContainer.hDetectorNonPrompt[iBin]->SetTitle(titles[iBin]);
-        dataContainer.hDetectorNonPrompt[iBin]->SetLineColor(kGreen);
-        dataContainer.hDetectorNonPrompt[iBin]->SetMarkerColor(kGreen);
-        dataContainer.hDetectorNonPrompt[iBin]->SetMarkerStyle(kOpenCircle);
-        dataContainer.hDetectorNonPrompt[iBin]->SetStats(0);
-        dataContainer.hDetectorNonPrompt[iBin]->Sumw2();
-    }
     
     std::cout << "Generator data smeared.\n";
 }
@@ -494,10 +433,12 @@ void FeedDownSubtraction(){
     int ptBins = 100;
     double minPt = 0.;
     double maxPt = 30.;
-    double ptBinEdges[] = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
+    double ptDBinEdges[] = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
+    double ptjetBinEdges[] = {5., 10., 15., 20., 25., 30.};
 
     // opening files
-    TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
+    TFile* fSimulatedO2 = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/AO2D_merged_All.root","read");
+    TFile* fPowheg = new TFile("../SimulatedData/POWHEG/trees_powheg_fd_central.root.root","read");
     TFile* fEfficiency = new TFile(Form()"../2-Efficiency/backSubEfficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fBackSub = new TFile(Form("../1-SignalTreatment/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fSigExt = new TFile(Form("../1-SignalTreatment/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
@@ -518,18 +459,19 @@ void FeedDownSubtraction(){
                                        "6 < p_{T,D} < 7 GeV/c", "7 < p_{T,D} < 8 GeV/c", "8 < p_{T,D} < 10 GeV/c",
                                        "10 < p_{T,D} < 12 GeV/c", "12 < p_{T,D} < 15 GeV/c", "15 < p_{T,D} < 30 GeV/c"};    // Titles of histograms
     FeedDownData dataContainer = createHistograms(sizeof(deltaRBinEdges)/sizeof(deltaRBinEdges[0]), deltaRBinEdges,         // Delta R
-                                                  sizeof(ptBinEdges)/sizeof(ptBinEdges[0]), ptBinEdges);                    // pT,D
+                                                  sizeof(ptDBinEdges)/sizeof(ptDBinEdges[0]), ptDBinEdges,                  // pT,D
+                                                  jetptMin, jetptMax);                                                      //pT,jet
 
-    // Fill histograms
-    fillHistograms(fSimulated, dataContainer, jetptMin, jetptMax);
+    // Fill histograms with POWHEG simulation data
+    fillHistograms(fPowheg, dataContainer, jetptMin, jetptMax);
 
     // Create response matrices for all pT,D bins considered
     createResponseMatrix(dataContainer, 
                          sizeof(deltaRBinEdges)/sizeof(deltaRBinEdges[0]), deltaRBinEdges, 
-                         sizeof(ptBinEdges)/sizeof(ptBinEdges[0]), ptBinEdges);
+                         sizeof(ptDBinEdges)/sizeof(ptDBinEdges[0]), ptDBinEdges);
 
     // Fill response matrix
-    fillResponseMatrix(fSimulated, dataContainer, jetptMin, jetptMax);
+    fillResponseMatrix(fSimulatedO2, dataContainer, jetptMin, jetptMax);
 
     smearGeneratorData(dataContainer, luminosity, fEfficiency, titles);
 
