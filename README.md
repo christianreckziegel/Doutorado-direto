@@ -18,7 +18,7 @@ Give credit to any tools, libraries, or people who have contributed to your work
 
 ## Contact
 
-If you have questions or want to collaborate, feel free to reach out:
+If you have questions, feel free to reach out:
 
 - CERN email: christian.reckziegel@cern.ch
 - University email: christian.reckziegel@aluno.ufabc.edu.br

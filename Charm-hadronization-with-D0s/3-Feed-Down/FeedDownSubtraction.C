@@ -49,7 +49,7 @@ double DeltaPhi(double phi1, double phi2) {
 struct FeedDownData {
     std::vector<RooUnfoldResponse> response; // inclusive = 0, prompt only = 1, non-prompt only = 2
     std::vector<RooUnfoldResponse> responseNonPrompt;
-    std::vector<TH2D*> hPowheg; // deltaR vs pT,D; [0] = generator level, [1] = smeared detector level
+    std::vector<TH2D*> hPowheg; // deltaR vs pT,D; [0] = generator level, [1] = treated but not yet detector level
     std::vector<TH1D*> hEfficiencies; // inclusive = 0, prompt only = 1, non-prompt only = 2
     std::vector<TH1D*> hBackSubCorrected; // prompt efficiency corrected Delta R distributions
     std::vector<TH1D*> hTrueNonPrompt;
@@ -149,7 +149,7 @@ void fillHistograms(TFile* file, const FeedDownData& dataContainer, double jetpt
 }
 
 // Module to create response matrices
-void createResponseMatrix(FeedDownData& dataContainer, size_t xNumBinEdges, const double xBinEdges[], size_t yNumBinEdges, const double yBinEdges[]) {
+void createResponseMatrix(FeedDownData& dataContainer, size_t& xNumBinEdges, const double& xBinEdges[], size_t& yNumBinEdges, const double& yBinEdges[]) {
     // Create lambda function for repetitive operation
     auto addResponse = [&](std::vector<RooUnfoldResponse>& container) {
         container.emplace_back(xNumBinEdges, xBinEdges, yNumBinEdges, yBinEdges);
@@ -175,14 +175,14 @@ void createResponseMatrix(FeedDownData& dataContainer, size_t xNumBinEdges, cons
 }
 
 // Module to build response matrix
-void fillResponseMatrix(TFile* file, const FeedDownData& dataContainer, double jetptMin, double jetptMax){
+void fillResponseMatrix(TFile* fSimulated, const FeedDownData& dataContainer, double jetptMin, double jetptMax){
     // Defining cuts
     double jetRadius = 0.4;
     double etaCut = 0.9 - jetRadius; // on jet
     double yCut = 0.8; // on D0
 
     // Accessing TTree
-    TTree* tree = (TTree*)file->Get("O2matchtable");
+    TTree* tree = (TTree*)fSimulated->Get("O2matchtable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening tree.\n";
@@ -274,7 +274,7 @@ void fillResponseMatrix(TFile* file, const FeedDownData& dataContainer, double j
 
 
 // Module for folding particle level data from POWHEG simulation
-void smearGeneratorData(FeedDownData& dataContainer, double luminosity, TFile* fEfficiency, std::vector<const char*>& titles) {
+void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, TFile* fEfficiency, std::vector<const char*>& titles) {
     //
     // 0th step: clone 2D histogram in order to save the smeared at the end (while keeping the original)
     //
@@ -329,6 +329,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double luminosity, TFile* f
         dataContainer.hTrueNonPrompt[iBin-1]->SetMarkerColor(kRed);
         dataContainer.hTrueNonPrompt[iBin-1]->SetMarkerStyle(kCircle);
         dataContainer.hTrueNonPrompt[iBin-1]->SetStats(0);
+        dataContainer.hTrueNonPrompt[iBin-1]->Sumw2();
     }
     
 
@@ -346,8 +347,10 @@ void smearGeneratorData(FeedDownData& dataContainer, double luminosity, TFile* f
         dataContainer.hDetectorNonPrompt[iBin]->SetMarkerColor(kGreen);
         dataContainer.hDetectorNonPrompt[iBin]->SetMarkerStyle(kOpenCircle);
         dataContainer.hDetectorNonPrompt[iBin]->SetStats(0);
+        dataContainer.hDetectorNonPrompt[iBin]->Sumw2();
     }
     
+    std::cout << "Generator data smeared.\n";
 }
 
 // Module to subtract non-prompt D0 jets from prompt efficiency corrected distribution
@@ -370,11 +373,11 @@ void feedDown(FeedDownData& dataContainer, const double jetptMin, const double j
         dataContainer.hSBFeedDown[iHisto]->SetStats(0);
     }
     
-
+    std::cout << "Feed-down subtracted from experimental data.\n";
 }
 
 
-void plotHistograms(const FeedDownData& dataContainer, const double jetptMin, const double jetptMax) {
+void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, const double& jetptMax) {
     cout << "Plotting histograms...\n";
 
     // Create a TLatex object to display text on the canvas
@@ -391,7 +394,21 @@ void plotHistograms(const FeedDownData& dataContainer, const double jetptMin, co
     cPowheg->cd(1);
     dataContainer.hPowheg[0]->Draw("colz");
     cPowheg->cd(2);
-    dataContainer.hPowheg[1]->Draw("colz");    
+    dataContainer.hPowheg[1]->Draw("colz");
+
+    //
+    // Response matrix representations in 2D histograms
+    //
+    TCanvas* cResponse = new TCanvas("cResponse","Response matrices for all pT,D bins");
+    cResponse->SetCanvasSize(1800,1000);
+    cResponse->Divide(3,static_cast<int>(dataContainer.responseNonPrompt.size() / 3));
+    for (size_t iBin = 0; iBin < dataContainer.responseNonPrompt.size(); iBin++) {
+        cResponse->cd(iBin+1);
+        TH2D* hResponse = dataContainer.responseNonPrompt[iBin].Hresponse();
+        hResponse->SetTitle(Form("%s;#Delta R_{reco}^{b #rightarrow D^{0}};#Delta R_{truth}^{b #rightarrow D^{0}}",titles[iBin]));
+        hResponse->Draw("colz");
+    }
+    
 
     //
     // True prompt and non-prompt Delta R distribution for each pT,D bin
@@ -401,12 +418,13 @@ void plotHistograms(const FeedDownData& dataContainer, const double jetptMin, co
     legendNonPrompt->AddEntry(dataContainer.hDetectorNonPrompt[0],"Reconstructed", "lpe");
     TCanvas* cNonPrompt = new TCanvas("cNonPrompt","Non-prompt Delta R plots");
     cNonPrompt->SetCanvasSize(1800,1000);
-    cNonPrompt->Divide(3,static_cast<int>(histStruct.hTrueNonPrompt.size() / 3));
+    cNonPrompt->Divide(3,static_cast<int>(dataContainer.hTrueNonPrompt.size() / 3));
     
     for (size_t iBin = 0; iBin < dataContainer.hTrueNonPrompt.size(); iBin++) {
         cNonPrompt->cd(iBin+1);
         dataContainer.hTrueNonPrompt[iBin]->Draw();
         dataContainer.hDetectorNonPrompt[iBin]->Draw("same");
+        legendNonPrompt->Draw();
         double statBoxPos = gPad->GetUxmax();
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
         latex->DrawLatex(statBoxPos-0.35, 0.75, "Folded non-prompt D0 jets");
@@ -417,7 +435,7 @@ void plotHistograms(const FeedDownData& dataContainer, const double jetptMin, co
     //
     TCanvas* cSBFeedDown = new TCanvas("cSBFeedDown","Non-prompt subtracted Delta R plots");
     cSBFeedDown->SetCanvasSize(1800,1000);
-    cSBFeedDown->Divide(3,static_cast<int>(histStruct.hTrueNonPrompt.size() / 3));
+    cSBFeedDown->Divide(3,static_cast<int>(dataContainer.hTrueNonPrompt.size() / 3));
 
     for (size_t iBin = 0; iBin < dataContainer.hTrueNonPrompt.size(); iBin++) {
         cSBFeedDown->cd(iBin+1);
@@ -429,11 +447,13 @@ void plotHistograms(const FeedDownData& dataContainer, const double jetptMin, co
 
 
     cPowheg->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
-    cNonPrompt->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cNonPrompt->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cResponse->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cSBFeedDown->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 
 }
 
-void saveData(const FeedDownData& dataContainer, double jetptMin, double jetptMax){
+void saveData(const FeedDownData& dataContainer, const double& jetptMin, const double& jetptMax){
     // Open output file
     TFile* outFile = new TFile(Form("backSubFeedDown_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
     // Loop over signal extracted histograms
@@ -444,13 +464,16 @@ void saveData(const FeedDownData& dataContainer, double jetptMin, double jetptMa
     outFile->Close();
     delete outFile;
     
-    cout << "Data stored.\n";
+    cout << "Data stored in file" << Form("backSubFeedDown_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)) << endl;
 }
 
 void FeedDownSubtraction(){
     // Execution time calculation
     time_t start, end;
     time(&start); // initial instant of program execution
+
+    // Luminosity (for now arbitrary)
+    double luminosity = 10000;
 
     // D0 mass in GeV/c^2
     double m_0_parameter = 1.86484;
@@ -472,18 +495,9 @@ void FeedDownSubtraction(){
     double minPt = 0.;
     double maxPt = 30.;
     double ptBinEdges[] = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
-    
-    std::vector<const char*> names = {"histPt1", "histPt2", "histPt3", 
-                                      "histPt4", "histPt5", "histPt6",
-                                      "histPt7", "histPt8", "histPt9"};                                                     // Names of histograms
-    std::vector<const char*> titles = {"3 < p_{T,D} < 4 GeV/c", "4 < p_{T,D} < 5 GeV/c", "5 < p_{T,D} < 6 GeV/c",
-                                       "6 < p_{T,D} < 7 GeV/c", "7 < p_{T,D} < 8 GeV/c", "8 < p_{T,D} < 10 GeV/c",
-                                       "10 < p_{T,D} < 12 GeV/c", "12 < p_{T,D} < 15 GeV/c", "15 < p_{T,D} < 30 GeV/c"};    // Titles of histograms
-    FeedDownData dataContainer = createHistograms(sizeof(deltaRBinEdges)/sizeof(deltaRBinEdges[0]), deltaRBinEdges,         // Delta R
-                                                  sizeof(ptBinEdges)/sizeof(ptBinEdges[0]), ptBinEdges);                    // pT,D
 
     // opening files
-    TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
+    TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
     TFile* fEfficiency = new TFile(Form()"../2-Efficiency/backSubEfficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fBackSub = new TFile(Form("../1-SignalTreatment/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fSigExt = new TFile(Form("../1-SignalTreatment/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
@@ -497,21 +511,30 @@ void FeedDownSubtraction(){
         std::cerr << "Error: Unable to open signal extracted ROOT file." << std::endl;
     }
     
-    
+    std::vector<const char*> names = {"histPt1", "histPt2", "histPt3", 
+                                      "histPt4", "histPt5", "histPt6",
+                                      "histPt7", "histPt8", "histPt9"};                                                     // Names of histograms
+    std::vector<const char*> titles = {"3 < p_{T,D} < 4 GeV/c", "4 < p_{T,D} < 5 GeV/c", "5 < p_{T,D} < 6 GeV/c",
+                                       "6 < p_{T,D} < 7 GeV/c", "7 < p_{T,D} < 8 GeV/c", "8 < p_{T,D} < 10 GeV/c",
+                                       "10 < p_{T,D} < 12 GeV/c", "12 < p_{T,D} < 15 GeV/c", "15 < p_{T,D} < 30 GeV/c"};    // Titles of histograms
+    FeedDownData dataContainer = createHistograms(sizeof(deltaRBinEdges)/sizeof(deltaRBinEdges[0]), deltaRBinEdges,         // Delta R
+                                                  sizeof(ptBinEdges)/sizeof(ptBinEdges[0]), ptBinEdges);                    // pT,D
 
     // Fill histograms
     fillHistograms(fSimulated, dataContainer, jetptMin, jetptMax);
 
     // Create response matrices for all pT,D bins considered
-    createResponseMatrix();
+    createResponseMatrix(dataContainer, 
+                         sizeof(deltaRBinEdges)/sizeof(deltaRBinEdges[0]), deltaRBinEdges, 
+                         sizeof(ptBinEdges)/sizeof(ptBinEdges[0]), ptBinEdges);
 
     // Fill response matrix
-    fillResponseMatrix();
+    fillResponseMatrix(fSimulated, dataContainer, jetptMin, jetptMax);
 
-    smearGeneratorData();
+    smearGeneratorData(dataContainer, luminosity, fEfficiency, titles);
 
     // Subtract non-prompt distribution from prompt efficiency corrected ones
-    feedDown();
+    feedDown(dataContainer, jetptMin, jetptMax, titles);
 
     // Plot the efficiency histogram and further corrected histograms
     plotHistograms(dataContainer, jetptMin, jetptMax);
