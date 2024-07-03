@@ -49,8 +49,9 @@ double DeltaPhi(double phi1, double phi2) {
 struct EfficiencyData {
     std::vector<TH1D*> hMcpPt;
     std::vector<TH1D*> hMcdPt;
-    std::vector<TH1D*> hEfficiencies; // inclusive = 0, prompt only = 1, non-prompt only = 2
+    std::vector<TH1D*> hEfficiencies;       // inclusive = 0, prompt only = 1, non-prompt only = 2
     std::vector<TH1D*> hBackSubCorrected;
+    TH1D* hBackSubCorrected_allpt;          // all pT.D bins histograms summed into one
     std::vector<TH1D*> hSigExtCorrected;
 };
 
@@ -224,7 +225,10 @@ void PerformCorrections(EfficiencyData& histStruct, TFile* fBackSub) {
     int effOption = 1; // choice of efficiency for correction: 0 = inclusive, 1 = prompt, 2 = non-prompt
     double efficiency = 0;
     int bin;
-    TH1D* hBackSub_temp;
+    TH1D* hBackSub_temp = (TH1D*)fBackSub->Get("h_back_subtracted_0");
+
+    // Initialize all pT,D histogram before adding them
+    histStruct.hBackSubCorrected_allpt = (TH1D*)hBackSub_temp->Clone("hBackSubCorrected_allpt");
     
     // Loop through distributions from all intervals
     int numHistos = HistogramCounter(fBackSub);
@@ -246,6 +250,9 @@ void PerformCorrections(EfficiencyData& histStruct, TFile* fBackSub) {
 
         // store corrected distribution to struct
         histStruct.hBackSubCorrected.push_back(hBackSub_temp);
+
+        // add to final distribution of all pT,D's
+        histStruct.hBackSubCorrected_allpt->Add(histStruct.hBackSubCorrected[iHisto]);
     }
     
     cout << "Histograms corrected.\n";
@@ -263,40 +270,51 @@ void PlotHistograms(const EfficiencyData& histStruct, double jetptMin, double je
     legendPt->AddEntry(histStruct.hMcpPt[0],"Truth", "lpe"); // inclusive efficiency only is used for efficiency correction
     legendPt->AddEntry(histStruct.hMcdPt[0],"Reconstructed", "lpe");
 
-    TCanvas* cEff = new TCanvas("cEff","Efficiency plots");
-    cEff->Divide(2,2);
     
-    
-    cEff->cd(1);
+    //
+    // 1 - plot pT,D of generator and reconstruction level
+    //
+    TCanvas* cEff_1 = new TCanvas("cEff_1","Efficiency plots");
+    cEff_1->SetCanvasSize(1800,1000);
+    cEff_1->cd();
     histStruct.hMcpPt[0]->Draw();
     histStruct.hMcdPt[0]->Draw("same");
     legendPt->Draw();
     double statBoxPos = gPad->GetUxmax();
     latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
     
+    //
+    // 2 - plot three kinds of efficiencies: [0] = inclusive, [1] = prompt D0, [2] = non-prompt D0
+    //
     // Loop through efficiency cases
-    cEff->cd(2);
-    TLegend* legendEff = new TLegend(0.65,0.49,0.8,0.62);
+    TCanvas* cEff_2 = new TCanvas("cEff_2","Prompt/non-prompt fficiency plots");
+    cEff_2->SetCanvasSize(1800,1000);
+    cEff_2->cd();
+    TLegend* legendEff = new TLegend(0.65,0.45,0.8,0.58);
     legendEff->AddEntry(histStruct.hEfficiencies[0],"Inclusive", "lpe");
     legendEff->AddEntry(histStruct.hEfficiencies[1],"Prompt D^{0}", "lpe");
     legendEff->AddEntry(histStruct.hEfficiencies[2],"Non-prompt D^{0}", "lpe");
     for (size_t iEff = 0; iEff < histStruct.hEfficiencies.size(); iEff++) {
-        //
+        // if the current is the first plot in the canvas
         if (iEff == 0) {
+            histStruct.hEfficiencies[iEff]->SetMinimum(0);
+            histStruct.hEfficiencies[iEff]->SetMaximum(0.57);
             histStruct.hEfficiencies[iEff]->Draw();
         } else {
             histStruct.hEfficiencies[iEff]->Draw("same");
         }
         
         statBoxPos = gPad->GetUxmax();
-        latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
+        latex->DrawLatex(statBoxPos-0.35, 0.61, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
     }
     legendEff->Draw();
+    cEff_2->Update();
 
-    cEff->SetCanvasSize(1800,1000);
-    cEff->Print(Form("pT_efficiency_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    
 
-    // Plot efficiency corrected histograms
+    //
+    // 3 - plot efficiency corrected histograms
+    //
     TCanvas* cCorrectedBackSub = new TCanvas("cCorrectedBackSub","Efficiency corrected histograms");
     cCorrectedBackSub->Divide(3,static_cast<int>(histStruct.hBackSubCorrected.size() / 3));
     
@@ -309,7 +327,41 @@ void PlotHistograms(const EfficiencyData& histStruct, double jetptMin, double je
         latex->DrawLatex(statBoxPos-0.35, 0.75, "Efficiency corrected");
     }
     cCorrectedBackSub->SetCanvasSize(1800,1000);
-    cCorrectedBackSub->Print(Form("pT_efficiency_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+
+    //
+    // 4 - plot final corrected 
+    //
+    TCanvas* cCorrectedBackSub_allpt = new TCanvas("cCorrectedBackSub_allpt","Final efficiency corrected ");
+    cCorrectedBackSub_allpt->cd();
+    histStruct.hBackSubCorrected_allpt->SetTitle(";#DeltaR_{D^{0}};#frac{dN}{d(#DeltaR_{D^{0}})}");
+    histStruct.hBackSubCorrected_allpt->SetStats(0);
+    histStruct.hBackSubCorrected_allpt->Draw();
+    statBoxPos = gPad->GetUxmax();
+    latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
+    latex->DrawLatex(statBoxPos-0.35, 0.75, "Efficiency corrected");
+    cCorrectedBackSub_allpt->SetCanvasSize(1800,1000);
+
+    //
+    // Storing images
+    //
+    TString imagePath = "../Images/2-Efficiency/";
+    cEff_1->Update();
+    cEff_1->SaveAs(imagePath + "Efficiency_dNdpT.png");
+    cEff_2->Update();
+    cEff_2->SaveAs(imagePath + "Efficiency_acceptance.png");
+    cCorrectedBackSub->Update();
+    cCorrectedBackSub->SaveAs(imagePath + "Efficiency_corrected_pT_bins.png");
+    cCorrectedBackSub_allpt->Update();
+    cCorrectedBackSub_allpt->SaveAs(imagePath + "Efficiency_corrected.png");
+
+    //
+    // Storing in a single pdf file
+    //
+    cEff_1->Print(Form("pT_efficiency_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    cEff_2->Print(Form("pT_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cCorrectedBackSub->Print(Form("pT_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cCorrectedBackSub_allpt->Print(Form("pT_efficiency_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+
 }
 
 void SaveData(const EfficiencyData& histStruct, double jetptMin, double jetptMax){
@@ -325,6 +377,9 @@ void SaveData(const EfficiencyData& histStruct, double jetptMin, double jetptMax
         // store each histogram in file
         histStruct.hEfficiencies[iHisto]->Write();
     }
+    // Final all pT,D distribution
+    histStruct.hBackSubCorrected_allpt->Write();
+
     outFile->Close();
     delete outFile;
     
@@ -365,7 +420,7 @@ void EfficiencyEstimation(){
     EfficiencyData histStruct = createHistograms(binEdges,sizeof(binEdges)/sizeof(binEdges[0])); // pT histograms
 
     // opening files
-    TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
+    TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
     TFile* fBackSub = new TFile(Form("../1-SignalTreatment/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fSigExt = new TFile(Form("../1-SignalTreatment/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     if (!fSimulated || fSimulated->IsZombie()) {

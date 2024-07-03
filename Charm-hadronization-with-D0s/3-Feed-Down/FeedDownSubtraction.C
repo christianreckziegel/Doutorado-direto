@@ -47,9 +47,10 @@ double DeltaPhi(double phi1, double phi2) {
 }
 
 struct FeedDownData {
-    std::pair<TH2D*, TH1D*> hMeasured;                      // 2D and 1D representation of response measured data
-    std::pair<TH2D*, TH1D*> hTruth;                         // 2D and 1D representation of response truth data
-    std::pair<TH2D*, TH1D*> hFolded;                        // 2D and 1D representation of folded data from method 1
+    TH2D* hMeasured;                                        // 2D representation of response measured data
+    TH2D* hTruth;                                           // 2D representation of response truth data
+    TH2D* hFolded;                                          // 2D representation of folded data from method 1
+    TH2D* nimaFolded;                                       // 2D folded data with Nima's folding function
     RooUnfoldResponse response;                             // response matrix for non-prompt D0s only, for overall pT,D; using RooUnfoldResponse object, method 1
     THnSparseD* hResponse;                                  // response matrix for non-prompt D0s only, for overall pT,D; using manual folding operation (matrix multiplication), method 2
     std::vector<TH3D*> hPowheg;                             // deltaR vs pT,D vs pT,jet; [0] = generator level, [1] = treated but not yet detector level
@@ -79,28 +80,29 @@ std::vector<double> getBinEdges(const TAxis* axis) {
 }
 
 // Module to create TH2D histograms including interest variable
-FeedDownData createHistograms(const std::vector<double>& xBinEdges, 
-                              const std::vector<double>& yBinEdges, 
-                              const double& jetptMin, const double& jetptMax) {
+FeedDownData createHistograms(const std::vector<double>& xBinEdges_particle, const std::vector<double>& yBinEdges_particle, const std::vector<double>& zBinEdges_particle,
+                              const std::vector<double>& xBinEdges_detector, const std::vector<double>& yBinEdges_detector, const std::vector<double>& zBinEdges_detector) {
+                              //const double& jetptMin, const double& jetptMax) {
     // Create struct to store data
     FeedDownData dataContainer;
 
-    int xNumBinEdges = xBinEdges.size();
-    int yNumBinEdges = yBinEdges.size();
+    int xNumBinEdges = xBinEdges_particle.size();
+    int yNumBinEdges = yBinEdges_particle.size();
+    int zNumBinEdges = zBinEdges_particle.size();
     // Obtain fixed width zBinEdges
-    int zNumBinEdges = 26;
+    /*int zNumBinEdges =26;
     std::vector<double> zBinEdges(zNumBinEdges); // Define bin edges for the z-axis
     double binWidth = (jetptMax - jetptMin) / (zNumBinEdges-1);
     for (int iBin = 0; iBin <= zNumBinEdges; ++iBin) {
         zBinEdges[iBin] = jetptMin + iBin * binWidth;
-    }
+    }*/
 
     // Create 2D histogram
-    dataContainer.hPowheg.emplace_back(new TH3D("h_deltaR_vs_pt", "POWHEG + PYTHIA;#DeltaR;p_{T,D}^{gen};p_{T,jet}^{ch}", xNumBinEdges-1, xBinEdges.data(), 
-                                                                                                            yNumBinEdges-1, yBinEdges.data(), 
-                                                                                                            zNumBinEdges-1, zBinEdges.data()));
-    dataContainer.hPowheg[0]->SetMarkerColor(kGreen);
-    dataContainer.hPowheg[0]->SetLineColor(kGreen);
+    dataContainer.hPowheg.emplace_back(new TH3D("h_deltaR_vs_pt", "POWHEG + PYTHIA;#DeltaR;p_{T,D}^{gen};p_{T,jet}^{ch}", xNumBinEdges-1, xBinEdges_particle.data(), 
+                                                                                                            yNumBinEdges-1, yBinEdges_particle.data(), 
+                                                                                                            zNumBinEdges-1, zBinEdges_particle.data()));
+    dataContainer.hPowheg[0]->SetMarkerColor(30);
+    dataContainer.hPowheg[0]->SetLineColor(30); // 30 = pastel green
     dataContainer.hPowheg[0]->SetMarkerStyle(kCircle);
     dataContainer.hPowheg[0]->Sumw2();
     dataContainer.hPowheg[0]->SetStats(0);
@@ -111,49 +113,34 @@ FeedDownData createHistograms(const std::vector<double>& xBinEdges,
     // Matching histograms for folding process
     //
     // 2D original information
-    dataContainer.hMeasured.first = new TH2D("hMeasured2D", "Measured;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges.data(), zNumBinEdges-1, zBinEdges.data());
-    dataContainer.hTruth.first = new TH2D("hTruth2D", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges.data(), zNumBinEdges-1, zBinEdges.data());
-    dataContainer.hFolded.first = new TH2D("hFolded2D", "Folded;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges.data(), zNumBinEdges-1, zBinEdges.data());
+    dataContainer.hTruth = new TH2D("hTruth2D", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    xNumBinEdges = xBinEdges_detector.size();
+    yNumBinEdges = yBinEdges_detector.size();
+    zNumBinEdges = zBinEdges_detector.size();
+    dataContainer.hMeasured = new TH2D("hMeasured2D", "Measured;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
+    dataContainer.hFolded = new TH2D("hFolded2D", "Folded;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
 
-    // 1D flattened (binLow and High need correction)
-    int totalBins = (xBinEdges.size() - 1) * (zBinEdges.size() - 1);
-    dataContainer.hMeasured.second = new TH1D("hMeasured1D", "Measured flattened;#DeltaR,p_{T,jet}", totalBins, 0, totalBins);
-    dataContainer.hTruth.second = new TH1D("hTruth1D", "Truth flattened;#DeltaR,p_{T,jet}", totalBins, 0, totalBins);
-    dataContainer.hFolded.second = new TH1D("hFolded1D", "Folded flattened;#DeltaR,p_{T,jet}", totalBins, 0, totalBins);
-
-    // Set bin labels for 1D histograms
-    for (int i = 0; i < xNumBinEdges - 1; ++i) {
-        for (int j = 0; j < zNumBinEdges - 1; ++j) {
-            int flatBin = i * (zNumBinEdges - 1) + j;
-            std::string label = Form("#DeltaR[%.2f,%.2f],p_{T,jet}[%.1f,%.1f]", 
-                                     xBinEdges[i], xBinEdges[i+1], 
-                                     zBinEdges[j], zBinEdges[j+1]);
-            dataContainer.hMeasured.second->GetXaxis()->SetBinLabel(flatBin + 1, label.c_str());
-            dataContainer.hTruth.second->GetXaxis()->SetBinLabel(flatBin + 1, label.c_str());
-            dataContainer.hFolded.second->GetXaxis()->SetBinLabel(flatBin + 1, label.c_str());
-        }
-    }
     cout << "Matching histograms created.\n";
 
     //
     // Response matrix as a 4D histogram object (method 2)
     //
-    std::vector<double> xBinsVec = getBinEdges(dataContainer.hMeasured.first->GetXaxis());
-    std::vector<double> yBinsVec = getBinEdges(dataContainer.hMeasured.first->GetYaxis());
+    //std::vector<double> xBinsVec = getBinEdges(dataContainer.hMeasured->GetXaxis());
+    //std::vector<double> yBinsVec = getBinEdges(dataContainer.hMeasured->GetYaxis());
     int nBins[4] = {
-        static_cast<int>(xBinsVec.size() - 1),
-        static_cast<int>(yBinsVec.size() - 1),
-        static_cast<int>(xBinsVec.size() - 1),
-        static_cast<int>(yBinsVec.size() - 1)
+        static_cast<int>(xBinEdges_detector.size() - 1),
+        static_cast<int>(zBinEdges_detector.size() - 1),
+        static_cast<int>(xBinEdges_particle.size() - 1),
+        static_cast<int>(zBinEdges_particle.size() - 1)
     };
 
     // Set the bin edges for each dimension
     int numDim = 4; // number of dimensions of histogram
     dataContainer.hResponse = new THnSparseD("hResponse", "4D response matrix", numDim, nBins, nullptr, nullptr);
-    dataContainer.hResponse->GetAxis(0)->Set(nBins[0], xBinsVec.data());
-    dataContainer.hResponse->GetAxis(1)->Set(nBins[1], yBinsVec.data());
-    dataContainer.hResponse->GetAxis(2)->Set(nBins[2], xBinsVec.data());
-    dataContainer.hResponse->GetAxis(3)->Set(nBins[3], yBinsVec.data());
+    dataContainer.hResponse->GetAxis(0)->Set(nBins[0], xBinEdges_detector.data());
+    dataContainer.hResponse->GetAxis(1)->Set(nBins[1], zBinEdges_detector.data());
+    dataContainer.hResponse->GetAxis(2)->Set(nBins[2], xBinEdges_particle.data());
+    dataContainer.hResponse->GetAxis(3)->Set(nBins[3], zBinEdges_particle.data());
 
     // Set axis titles
     dataContainer.hResponse->GetAxis(0)->SetTitle("#DeltaR_{measured}");
@@ -169,6 +156,23 @@ FeedDownData createHistograms(const std::vector<double>& xBinEdges,
 // POWHEG+PYTHIA TFile data (all data in file is non-prompt and on particle level)
 // and
 // O2 matching task simulation
+/**
+ * @brief Fill histograms.
+ * 
+ * This helper function fill two kinds of histograms:
+ * - POWHEG+PYTHIA simulated data on particle level with non-prompt D0 
+ * - O2 simulated matched data between particle and detector level
+ *
+ * @param fPowheg The ROOT file with POWHEG+PYTHIA non-prompt D0 simulated data.
+ * @param fSimulatedO2 The ROOT file with matched O2 simulated data.
+ * @param dataContainer Container with already instanciated histograms.
+ * @param jetptMin Min jet pT cut.
+ * @param jetptMax Max jet pT cut.
+ *
+ * @note uses 0-based indexing for calculation but 1-based indexing for ROOT histograms.
+ *
+ * @see createHistograms() [Instanciate histograms.]
+ */
 void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataContainer, double jetptMin, double jetptMax) {
     // Defining cuts
     const double jetRadius = 0.4;
@@ -266,16 +270,13 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
         double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
         double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
 
-        // Fill histograms considering jet pT and detector acceptance
-        if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax)) {
+        // Fill histograms considering jet pT and detector acceptance for NON-PROMPT particles
+        if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt && !MCDhfprompt) {
             // Filling measured 2D histogram
-            dataContainer.hMeasured.first->Fill(MCDDeltaR, MCDjetPt);
+            dataContainer.hMeasured->Fill(MCDDeltaR, MCDjetPt);
 
             // Filling truth 2D histogram
-            dataContainer.hTruth.first->Fill(MCPDeltaR, MCPjetPt);
-
-            // Fill 4D response matrix
-            dataContainer.hResponse->Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
+            dataContainer.hTruth->Fill(MCPDeltaR, MCPjetPt);
         
         }
         
@@ -285,141 +286,91 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
 
 }
 
-/**
- * @brief Flattens 2D histogram into a 1D histogram.
- *
- * This helper function converts 2D bin indice, content and error into a single 1D index, content and error respectivelly.
- * It uses row-major flattening, which means the 2D histogram is flattened row by row (line by line).
- * This is useful when working with response matrices that can only handle 1D entries.
- *
- * @param hist2D The 2D histogram object to be flattened.
- * @param hist1D The resulting flattened 1D histogram object.
- *
- * @return The bin index of the new flattened 1D distribution.
- *
- * @note uses 0-based indexing for calculation but 1-based indexing for ROOT histograms.
- *
- * @see unflattenHistogram() [Corresponding function to convert back to 2D] and buildResponseMatrix() [Uses flattened histograms]
- */
-void flattenHistogram(TH2D* hist2D, TH1D* hist1D) {
-    
-    std::cout << "Flattening 2D histogram.\n";
-    
-    // Get number of bins
-    int nBinsX = hist2D->GetNbinsX();
-    int nBinsY = hist2D->GetNbinsY();
-    int totalBins = nBinsX * nBinsY;
-
-    std::cout << "Original 2D histogram had " << nBinsX << " bins in x axis and " << nBinsY << " bins in y axis.\n";
-    std::cout << "New 1D histogram has " << totalBins << " bins in one single axis." << std::endl << std::endl;
-
-    // Loop through 2D histogram bins
-    for (int binX = 1; binX <= nBinsX; binX++) {
-        for (int binY = 1; binY <= nBinsY; binY++) {
-            
-            // maps a 2D coordinate to a 1D index in a row-major order
-            int flatBin = (binX - 1) * nBinsY + (binY - 1);
-
-            // Get content of bin from 2D histogram
-            double content = hist2D->GetBinContent(binX, binY);
-            double error = hist2D->GetBinError(binX, binY);
-
-            // Set content of bin from 1D histogram
-            hist1D->SetBinContent(flatBin + 1,content);
-            hist1D->SetBinError(flatBin + 1, error);
-
-            // Already done in histogram creation: set bin label of 1D flattened histogram based on 2D histogram
-            /*double xLow = hist2D->GetXaxis()->GetBinLowEdge(binX);
-            double xUp = hist2D->GetXaxis()->GetBinUpEdge(binX);
-            double yLow = hist2D->GetYaxis()->GetBinLowEdge(binY);
-            double yUp = hist2D->GetYaxis()->GetBinUpEdge(binY);
-            std::string label = Form("x[%.2f,%.2f],y[%.2f,%.2f]",xLow,xUp,yLow,yUp);
-            hist1D->GetXaxis()->SetBinLabel(flatBin + 1, label.c_str());*/
-        }
-        
-    }
-    
-}
-
-void unflattenHistogram(TH1D* hist1D, TH2D* hist2D) {
-    std::cout << "Unflattening histogram.\n";
-    
-    // Get number of bins
-    int nBinsX = hist2D->GetNbinsX();
-    int nBinsY = hist2D->GetNbinsY();
-
-    if (hist1D->GetNbinsX() != nBinsX*nBinsY) {
-        std::cerr << "Error: 1D histogram bin count does not match 2D histogram total bins.\n";
-        std::cout << "Original 1D histogram had " << hist1D->GetNbinsX() << " bins in one single axis.\n";
-        std::cout << "New 2D histogram has " << nBinsX << " bins in x axis and " << nBinsY << " bins in y axis." << std::endl << std::endl;
-    }
-    
-    
-
-    for (int binX = 1; binX <= nBinsX; binX++) {
-        for (int binY = 1; binY <= nBinsY; binY++) {
-            
-            // maps a 2D coordinate to a 1D index in a row-major order
-            int flatBin = (binX - 1) * nBinsY + (binY - 1);
-
-            // Get content of bin from 1D histogram
-            double content = hist1D->GetBinContent(flatBin + 1);
-            double error = hist1D->GetBinError(flatBin + 1);
-
-            // Set content of bin from 2D histogram
-            hist2D->SetBinContent(binX, binY, content);
-            hist2D->SetBinError(binX, binY, error);
-
-            
-        }
-        
-    }
-    
-}
-
 // Module to build 2D response matrix out of flattened 1D input data
-void buildResponseMatrix(FeedDownData& dataContainer) {
+void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, double jetptMin, double jetptMax) {
     
-    // Flattening 2D histograms (RooUnfold only supports 1D distributions)
-    flattenHistogram(dataContainer.hMeasured.first, dataContainer.hMeasured.second); // input = 2D, output = 1D
-    flattenHistogram(dataContainer.hTruth.first, dataContainer.hTruth.second);
-
-    std::cout << "Measured and truth histograms flattened.\n";
+    // Defining cuts
+    const double jetRadius = 0.4;
+    const double etaCut = 0.9 - jetRadius; // on jet
+    const double yCut = 0.8; // on D0
 
     // method 1: create 2D response matrix of non-prompt flattened Delta R and pT,jet, for overall pT,D
     //(DeltaR_detector, pTjet_detector, DeltaR_particle, pTjet_particle) -> flattened to (detector, particle)
-    dataContainer.response = RooUnfoldResponse(dataContainer.hMeasured.second, dataContainer.hTruth.second);
+    dataContainer.response = RooUnfoldResponse(dataContainer.hMeasured, dataContainer.hTruth);
 
     std::cout << "Response matrix created.\n";
 
-    // Fill response matrix correlating measured and truth flattened distributions
-    int totalBins = dataContainer.hTruth.second->GetNbinsX();
-    if (dataContainer.hTruth.second->GetNbinsX() != dataContainer.hMeasured.second->GetNbinsX()) {
-        std::cout << "WARNING: measured and truth flattened histograms have different number of bins.\n";
+    //__________________________________________-
+    //
+    // O2 matching task measured and truth histograms
+    //
+    // Accessing TTree
+    TTree* tree = (TTree*)fSimulatedO2->Get("O2matchtable");
+    // Check for correct access
+    if (!tree) {
+        cout << "Error opening O2 matching tree.\n";
     }
-    
-    // Get direct access to bin contents for efficiency
-    const double* measuredArray = dataContainer.hMeasured.second->GetArray();
-    const double* truthArray = dataContainer.hTruth.second->GetArray();
 
-    // Fill correlated values for method 1
-    for (int iBin = 1; iBin <= totalBins; iBin++) {
-        // Get flattened values
-        double measured = measuredArray[iBin];
-        double truth = truthArray[iBin]; // dataContainer.hTruth.second->GetBinContent(iBin);
+    // defining variables for accessing particle level data on TTree
+    float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
+    float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
+    bool MCPhfprompt;
+    // defining variables for accessing detector level data on TTree
+    float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
+    float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
+    bool MCDhfprompt;
 
-        dataContainer.response.Fill(measured, truth);
-        //std::cout << "Filling response matrix: measured = " << measured << ", truth = " << truth << std::endl;
-    }    
+    // particle level branches
+    tree->SetBranchAddress("fMCJetHfDist",&MCPaxisDistance);
+    tree->SetBranchAddress("fMCJetPt",&MCPjetPt);
+    tree->SetBranchAddress("fMCJetEta",&MCPjetEta);
+    tree->SetBranchAddress("fMCJetPhi",&MCPjetPhi);
+    tree->SetBranchAddress("fMCHfPt",&MCPhfPt);
+    tree->SetBranchAddress("fMCHfEta",&MCPhfEta);
+    tree->SetBranchAddress("fMCHfPhi",&MCPhfPhi);
+    MCPhfMass = 1.86483; // D0 rest mass in GeV/c^2
+    tree->SetBranchAddress("fMCHfY",&MCPhfY);
+    tree->SetBranchAddress("fMCHfPrompt",&MCPhfprompt);
+    // detector level branches
+    tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance);
+    tree->SetBranchAddress("fJetPt",&MCDjetPt);
+    tree->SetBranchAddress("fJetEta",&MCDjetEta);
+    tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
+    tree->SetBranchAddress("fHfPt",&MCDhfPt);
+    tree->SetBranchAddress("fHfEta",&MCDhfEta);
+    tree->SetBranchAddress("fHfPhi",&MCDhfPhi);
+    tree->SetBranchAddress("fHfMass",&MCDhfMass);
+    tree->SetBranchAddress("fHfY",&MCDhfY);
+    tree->SetBranchAddress("fHfPrompt",&MCDhfprompt);
+
+    int nEntries = tree->GetEntries();
+    for (int entry = 0; entry < nEntries; ++entry) {
+        tree->GetEntry(entry);
+        
+        // calculating delta R
+        double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
+        double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
+
+        // Fill histograms considering jet pT and detector acceptance
+        if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt && !MCDhfprompt) {
+
+            // Fill 4D response matrix
+            dataContainer.hResponse->Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
+
+            // Fill 4D RooUnfoldResponse object
+            dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
+        }
+        
+    }
     
     std::cout << "Response matrix filled.\n";
 }
 
 // Perform manual matrix multiplication of the 4D response matrix by the 2D truth level distribution used by smearGeneratorData()
-TH2D* manualFolding(THnSparseD* hResponse, TH2D* hTruth) {
+TH2D* manualFolding(THnSparseD* hResponse, TH2D* hTruth, TH2D* hMeasured) {
 
     // Create empty histogram for the folded data
-    TH2D* hFolded = (TH2D*)hTruth->Clone("hFolded");
+    TH2D* hFolded = (TH2D*)hMeasured->Clone("hFolded");
     hFolded->Reset();
 
     // Get the number of bins in measured and truth histograms
@@ -474,6 +425,83 @@ TH2D* manualFolding(THnSparseD* hResponse, TH2D* hTruth) {
         
     }
 
+    // normalizing (is it necessary?)
+    //hFolded->Scale(1.0 / hFolded->Integral());
+    return hFolded;
+}
+
+/**
+ * @brief Manual folding of TH2D data using a RooUnfoldResponse object.
+ *
+ * This helper function perfom the manual matrix multiplication of the 2D true distribution by the response matrix
+ * It uses row-major bin index flattening, since RooUnfoldResponse is a 2D structure.
+ * Bins should be accessed through: binx + nx*(biny + ny*binz).
+ *
+ * @param response The response matrix.
+ * @param hTruth The 2D truth level distribution to be folded.
+ *
+ * @return The folded TH2D distribution.
+ *
+ * @note uses 0-based indexing for calculation but 1-based indexing for ROOT histograms.
+ *
+ * @see smearGeneratorData() [Makes use of Nima's folding method.]
+ */
+TH2D* nimaFolding(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
+    std::cout << "Nima folding:\n";
+    // Create empty histogram for the folded data
+    TH2D* hFolded = (TH2D*)hMeasured->Clone("hFolded");
+    hFolded->Reset();
+
+    // Get the number of bins in measured and truth histograms
+    int nBinsXMeasured = hFolded->GetNbinsX();
+    int nBinsYMeasured = hFolded->GetNbinsY();
+    std::cout << "Measured histogram: " << nBinsXMeasured << " x " << nBinsYMeasured << std::endl;
+    int nBinsXTruth = hTruth->GetNbinsX();
+    int nBinsYTruth = hTruth->GetNbinsY();
+    std::cout << "Measured histogram: " << nBinsXTruth << " x " << nBinsYTruth << std::endl;
+    // Debug: print a few values from the response matrix
+    bool debug = true;
+    if (debug) {
+        std::cout << "Response matrix dimensions: " 
+                << response.GetNbinsMeasured() << " x " << response.GetNbinsTruth() << std::endl;
+    }
+    
+
+    // loop through detector level bins
+    for (int iMeasured = 0; iMeasured < nBinsXMeasured; iMeasured++) {
+        for (int jMeasured = 0; jMeasured < nBinsYMeasured; jMeasured++) {
+            double foldedValue = 0;
+            double foldedError2 = 0;
+
+            // obtaining flattened 1D index through row-major ordering
+            int index_x_measured = iMeasured + nBinsXMeasured*jMeasured; // Nima version
+            //int index_x_measured = iMeasured*nBinsYMeasured + jMeasured; // Christian version
+
+            // calculating element iMeasured,jMeasured of folded 2D matrix
+            for (int iTruth = 0; iTruth < nBinsXTruth; iTruth++) {
+                for (int jTruth = 0; jTruth < nBinsYTruth; jTruth++) {
+                    // obtaining flattened 1D index through row-major ordering
+                    int index_x_truth = iTruth + nBinsXTruth*jTruth; // Nima version
+                    //int index_x_truth = iTruth*nBinsYTruth + jTruth; // Christian version
+                    //std::cout << "Accessing true value\n";
+                    // calculating matrix element product
+                    double truthValue = hTruth->GetBinContent(iTruth + 1,jTruth + 1);
+                    //std::cout << "Accessing response value\n";
+                    double responseValue = response(index_x_measured, index_x_truth);
+                    //double responseValue = response(index_x_truth, index_x_measured); // in case it is transposed
+                    foldedValue = truthValue*responseValue;
+                    //std::cout << "Flag 2: calculated folded error to the power of 2\n";
+                    //foldedValue = hTruth->GetBinContent(iTruth + 1,jTruth + 1) * response(index_x_measured, index_x_truth);
+                    foldedError2 = std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow(response(index_x_measured, index_x_truth),2);
+                }
+            }
+            hFolded->SetBinContent(iMeasured + 1, jMeasured + 1, foldedValue);
+            std::cout << "bin: (" << iMeasured + 1 << "," << jMeasured +1 << ") = " << foldedValue << std::endl;
+            //hFolded->SetBinContent(nBinsXMeasured - (iMeasured + 1), nBinsYMeasured - (jMeasured + 1), foldedValue); // axis inversion
+            hFolded->SetBinError(iMeasured + 1, jMeasured + 1, std::sqrt(foldedError2));
+        }
+    }
+    
     return hFolded;
 }
 
@@ -486,7 +514,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, TFile* 
     hTreatedPowheg->SetTitle("POWHEG + PYTHIA efficiency scaled;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}};#frac{#epsilon_{non-prompt}}{prompt}#frac{1}{L_{int}}p_{T,D}^{b #rightarrow D^{0}};p_{T,jet}^{ch}");
 
     //
-    // 1st step: obtain the Delta R vs pT,jet projection for all pT,D bins before folding
+    // 1st step: obtain the 2D Delta R vs pT,jet projection for all pT,D bins before folding
     //
     // using a smart pointer provided by the C++ Standard Library
     int nBinsY = hTreatedPowheg->GetNbinsY();
@@ -504,6 +532,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, TFile* 
     // 2nd step: scale by integrated luminosity
     // (skip this step for now)
     //hTreatedPowheg->Scale(1/luminosity);
+    dataContainer.hAllptDPowheg[0]->Scale(1/luminosity);
 
     //
     // 3rd step: scale by efficiency ratio
@@ -556,22 +585,23 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, TFile* 
     // 4th step: fold Delta R vs pT,jet distribution using detector response matrix of non-prompt D0 jets
     //
     
-    // a) method 1: AppluTruth()
-    TH1D* hAllptDPowheg_flat = dynamic_cast<TH1D*>(dataContainer.hTruth.second->Clone("hAllptDPowheg_flat"));
-    hAllptDPowheg_flat->Reset();
-    flattenHistogram(dataContainer.hAllptDPowheg[0], hAllptDPowheg_flat); // input 2D, output 1D
-    dataContainer.hFolded.second = (TH1D*)dataContainer.response.ApplyToTruth(hAllptDPowheg_flat);
-    unflattenHistogram(dataContainer.hFolded.second, dataContainer.hFolded.first); // input 1D, output 2D
-    dataContainer.hFolded.first->SetName("hFoldedNonPrompt_1");
-    dataContainer.hFolded.first->SetTitle("Folded with ApplyToTruth() method;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}}_{reco};p_{T,jet}^{ch}");
-    dataContainer.hAllptDPowheg.emplace_back(dataContainer.hFolded.first); // [1] = folded method 1
+    // a) method 1: ApplyToTruth()
+    dataContainer.hFolded = (TH2D*)dataContainer.response.ApplyToTruth(dataContainer.hAllptDPowheg[0]); // normalized
+    //dataContainer.hFolded->Scale(dataContainer.hAllptDPowheg[0]->Integral());
+    dataContainer.hFolded->SetName("hFoldedNonPrompt_1");
+    dataContainer.hFolded->SetTitle("Folded with ApplyToTruth() method;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}}_{reco};p_{T,jet}^{ch}");
+    dataContainer.hAllptDPowheg.emplace_back(dataContainer.hFolded); // [1] = folded method 1
     
     // b) method 2: manual matrix multiplication
     // since TH2D objects can't be used for 4D object, each bin needs to be treated directly
-    TH2D* hFoldedNonPrompt_2 = manualFolding(dataContainer.hResponse, dataContainer.hAllptDPowheg[0]);
+    // i. manual 4D matrix multiplication
+    TH2D* hFoldedNonPrompt_2 = manualFolding(dataContainer.hResponse, dataContainer.hAllptDPowheg[0], dataContainer.hMeasured);
     hFoldedNonPrompt_2->SetName("hFoldedNonPrompt_2");
     hFoldedNonPrompt_2->SetTitle("Folded with manual matrix multiplication method;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}}_{reco};p_{T,jet}^{ch}");
     dataContainer.hAllptDPowheg.emplace_back(hFoldedNonPrompt_2); // [2] = folded method 2
+    // ii. manual matrix multiplication with Nima's function (1D index calculation?)
+    dataContainer.nimaFolded = nimaFolding(dataContainer.response, dataContainer.hAllptDPowheg[0], dataContainer.hMeasured);
+    dataContainer.nimaFolded->SetTitle("Folded with Nima's 1D index function;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}}_{reco};p_{T,jet}^{ch}");
 
     
     std::cout << "Generator data smeared.\n";
@@ -631,7 +661,7 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     const TH2* hResponse2D = dataContainer.response.Hresponse();
     TH2D* hResponse2DClone = static_cast<TH2D*>(hResponse2D->Clone("hResponse2DClone"));
     std::cout << "hResponse2DClone has " << hResponse2DClone->GetEntries() << " bins." << std::endl;
-    hResponse2DClone->SetTitle("2D response matrix from method 1;#DeltaR_{reco}^{b #rightarrow D^{0}};#DeltaR_{truth}^{b #rightarrow D^{0}}");
+    hResponse2DClone->SetTitle("2D response matrix from method 1;2D Reconstructed;2D Truth");
     hResponse2DClone->Draw("colz");
     
     //
@@ -641,13 +671,25 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     cMatching->SetCanvasSize(1800,1000);
     cMatching->Divide(2,2);
     cMatching->cd(1);
-    dataContainer.hMeasured.first->Draw("colz");
+    dataContainer.hMeasured->Draw("colz");
     cMatching->cd(2);
-    dataContainer.hMeasured.second->Draw();
+    dataContainer.hTruth->Draw("colz");
     cMatching->cd(3);
-    dataContainer.hTruth.first->Draw("colz");
+    TH1D* hMatchProjX1 = dataContainer.hMeasured->ProjectionX();
+    hMatchProjX1->SetMarkerStyle(kCircle);
+    hMatchProjX1->SetMarkerColor(38); // 38 = pastel blue
+    hMatchProjX1->SetLineColor(38);
+    hMatchProjX1->SetStats(0);
+    hMatchProjX1->Sumw2();
+    hMatchProjX1->Draw();
     cMatching->cd(4);
-    dataContainer.hTruth.second->Draw();
+    TH1D* hMatchProjX2 = dataContainer.hTruth->ProjectionX();
+    hMatchProjX2->SetMarkerStyle(kCircle);
+    hMatchProjX2->SetMarkerColor(38); // 38 = pastel blue
+    hMatchProjX2->SetLineColor(38);
+    hMatchProjX2->SetStats(0);
+    hMatchProjX2->Sumw2();
+    hMatchProjX2->Draw();
 
     //
     // 2D True prompt and non-prompt Delta R distribution for all pT,D: not folded, folded method 1, folded method 2
@@ -657,26 +699,69 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     //legendNonPrompt->AddEntry(dataContainer.hAllptDPowheg[1],"Reconstructed - method 1", "lpe");
     //legendNonPrompt->AddEntry(dataContainer.hAllptDPowheg[2],"Reconstructed - method 2", "lpe");
     TCanvas* cNonPrompt = new TCanvas("cNonPrompt","Non-prompt Delta R plots");
-    cNonPrompt->Divide(2,3);
+    cNonPrompt->Divide(2,4);
     cNonPrompt->SetCanvasSize(1800,1000);
-    cNonPrompt->cd(1);
+    cNonPrompt->cd(2);
     dataContainer.hAllptDPowheg[0]->SetStats(0);
     dataContainer.hAllptDPowheg[0]->Draw("colz");
     cNonPrompt->cd(3);
-    dataContainer.hAllptDPowheg[1]->SetStats(0);
-    dataContainer.hAllptDPowheg[1]->Draw("colz");
+    TH1D* hProjectionX1 = dataContainer.hAllptDPowheg[1]->ProjectionX();
+    hProjectionX1->SetMarkerStyle(kCircle);
+    hProjectionX1->SetMarkerColor(30); // 30 = pastel green
+    hProjectionX1->SetLineColor(30);
+    hProjectionX1->SetStats(0);
+    hProjectionX1->Sumw2();
+    hProjectionX1->Draw();
     cNonPrompt->cd(4);
+    dataContainer.hAllptDPowheg[1]->SetStats(0);
+    //dataContainer.hAllptDPowheg[1]->Draw("colz");
+    dataContainer.hFolded->Draw("colz");
+    cNonPrompt->cd(5);
+    TH1D* hProjectionX2 = dataContainer.hAllptDPowheg[2]->ProjectionX();
+    hProjectionX2->SetMarkerStyle(kCircle);
+    hProjectionX2->SetMarkerColor(31); // 30 = pastel green
+    hProjectionX2->SetLineColor(31);
+    hProjectionX2->SetStats(0);
+    hProjectionX2->Draw();
+    cNonPrompt->cd(6);
     dataContainer.hAllptDPowheg[2]->SetStats(0);
     dataContainer.hAllptDPowheg[2]->Draw("colz");
-    cNonPrompt->cd(5);
-    dataContainer.hFolded.first->Draw();
-    cNonPrompt->cd(6);
-    dataContainer.hFolded.second->Draw();
+    cNonPrompt->cd(7);
+    TH1D* hProjectionX3 = dataContainer.nimaFolded->ProjectionX();
+    hProjectionX3->SetMarkerStyle(kCircle);
+    hProjectionX3->SetMarkerColor(32); // 30 = pastel green
+    hProjectionX3->SetLineColor(32);
+    hProjectionX3->SetStats(0);
+    hProjectionX3->Draw();
+    cNonPrompt->cd(8);
+    dataContainer.nimaFolded->Draw("colz");
     //legendNonPrompt->Draw();
     double statBoxPos = gPad->GetUxmax();
     latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
     latex->DrawLatex(statBoxPos-0.35, 0.75, "Folded non-prompt D0 jets");
+    // For image printing
+    TCanvas* cFoldedData = new TCanvas("cFoldedData","Before and after unfolding data");
+    cFoldedData->SetCanvasSize(1800,1000);
+    cFoldedData->Divide(2,2);
+    cFoldedData->cd(1);
+    dataContainer.hAllptDPowheg[0]->SetStats(0);
+    dataContainer.hAllptDPowheg[0]->Draw("colz");
+    cFoldedData->cd(2);
+    dataContainer.hAllptDPowheg[1]->SetStats(0);
+    dataContainer.hFolded->Draw("colz");
+    cFoldedData->cd(3);
+    TH1D* hProjectionX4 = dataContainer.hAllptDPowheg[0]->ProjectionX();
+    hProjectionX4->SetMarkerStyle(kCircle);
+    hProjectionX4->SetMarkerColor(30); // 30 = pastel green
+    hProjectionX4->SetLineColor(30);
+    hProjectionX4->SetStats(0);
+    hProjectionX4->Sumw2();
+    hProjectionX4->Draw();
+    cFoldedData->cd(4);
+    hProjectionX1->Draw();
+
     
+
 
     //
     // Feed-down subtracted Delta R distributions
@@ -688,8 +773,23 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     statBoxPos = gPad->GetUxmax();
     latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
     latex->DrawLatex(statBoxPos-0.35, 0.75, "Feed-down subtracted");
+    
+    //
+    // Storing images
+    //
+    TString imagePath = "../Images/3-Feed-Down/";
+    cResponse->Update();
+    cResponse->SaveAs(imagePath + "FD_response_matrix.png");
+    cMatching->Update();
+    cMatching->SaveAs(imagePath + "FD_response_match_histograms.png");
+    cSBFeedDown->Update();
+    cSBFeedDown->SaveAs(imagePath + "FD_subtracted.png");
+    cFoldedData->Update();
+    cFoldedData->SaveAs(imagePath + "FD_folded_data.png");
 
-
+    //
+    // Storing in a single pdf file
+    //
     cPowheg->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
     cMatching->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cNonPrompt->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
@@ -717,7 +817,7 @@ void FeedDownSubtraction(){
     time(&start); // initial instant of program execution
 
     // Luminosity (for now arbitrary)
-    double luminosity = 10000;
+    double luminosity = 1000000;
 
     // D0 mass in GeV/c^2
     double m_0_parameter = 1.86484;
@@ -725,12 +825,14 @@ void FeedDownSubtraction(){
     // jet pT cuts
     double jetptMin = 5; // GeV
     double jetptMax = 30; // GeV
-    std::vector<double> ptjetBinEdges = {5., 10., 15., 20., 25., 30.};
+    std::vector<double> ptjetBinEdges_particle = {5., 7., 15., 30.};
+    std::vector<double> ptjetBinEdges_detector = {5., 7., 15., 30.};
     // deltaR histogram
     int deltaRbins = 10000; // deltaRbins = numberOfPoints, default=10 bins for [0. 0.4]
     double minDeltaR = 0.;
     double maxDeltaR = 0.4;
-    std::vector<double> deltaRBinEdges = {0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4}; // TODO: investigate structure before 0.005
+    std::vector<double> deltaRBinEdges_particle = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5}; // TODO: investigate structure before 0.005: 0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4
+    std::vector<double> deltaRBinEdges_detector = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5};
     // mass histogram
     int massBins = 100; 
     double minMass = 1.67;
@@ -739,7 +841,8 @@ void FeedDownSubtraction(){
     int ptBins = 100;
     double minPt = 0.;
     double maxPt = 30.;
-    std::vector<double> ptDBinEdges = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
+    std::vector<double> ptDBinEdges_particle = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
+    std::vector<double> ptDBinEdges_detector = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
 
     // opening files
     TFile* fPowheg = new TFile("../SimulatedData/POWHEG/trees_powheg_fd_central.root","read");
@@ -763,13 +866,15 @@ void FeedDownSubtraction(){
     std::vector<const char*> titles = {"3 < p_{T,D} < 4 GeV/c", "4 < p_{T,D} < 5 GeV/c", "5 < p_{T,D} < 6 GeV/c",
                                        "6 < p_{T,D} < 7 GeV/c", "7 < p_{T,D} < 8 GeV/c", "8 < p_{T,D} < 10 GeV/c",
                                        "10 < p_{T,D} < 12 GeV/c", "12 < p_{T,D} < 15 GeV/c", "15 < p_{T,D} < 30 GeV/c"};    // Titles of histograms
-    FeedDownData dataContainer = createHistograms(deltaRBinEdges, ptDBinEdges, jetptMin, jetptMax);
+    //FeedDownData dataContainer = createHistograms(deltaRBinEdges, ptDBinEdges, jetptMin, jetptMax);
+    FeedDownData dataContainer = createHistograms(deltaRBinEdges_particle, ptDBinEdges_particle, ptjetBinEdges_particle,
+                                                  deltaRBinEdges_detector, ptDBinEdges_detector, ptjetBinEdges_detector);
 
     // Fill histograms with POWHEG simulation data
     fillHistograms(fPowheg, fSimulatedO2, dataContainer, jetptMin, jetptMax);
 
     // Create response matrices for all pT,D bins considered
-    buildResponseMatrix(dataContainer);
+    buildResponseMatrix(dataContainer, fSimulatedO2, jetptMin, jetptMax);
 
     // Fold data using two methods
     smearGeneratorData(dataContainer, luminosity, fEfficiency);

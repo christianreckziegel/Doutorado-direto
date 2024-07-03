@@ -341,10 +341,11 @@ std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::v
 }
 
 struct SubtractionResult {
-    std::vector<TH1D*> histograms; // 1D mass projection histograms vector
-    std::vector<TH1D*> sidebandHist; // 1D sideband background histograms vector
-    std::vector<TH1D*> signalHist; // 1D signal histograms vector
-    std::vector<TH1D*> subtractedHist; // 1D sideband subtracted histograms vector
+    std::vector<TH1D*> histograms;      // 1D mass projection histograms vector
+    std::vector<TH1D*> sidebandHist;    // 1D sideband background histograms vector
+    std::vector<TH1D*> signalHist;      // 1D signal histograms vector
+    std::vector<TH1D*> subtractedHist;  // 1D sideband subtracted histograms vector
+    TH1D* hSubtracted_allPtSummed;      // final deltaR distribution for all pT,D summed
 };
 
 SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::vector<TF1*>& fittings, int signalSigmas, int startingBackSigma, int backgroundSigmas){
@@ -414,6 +415,13 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
         h_back_subtracted->Add(h_sideBand,-1.0);
         h_back_subtracted->Scale(1/0.9545);
         vectorOutputs.subtractedHist.push_back(h_back_subtracted);
+
+        // Add to final all pT,D summed histogram
+        if (iHisto == 0) {
+            vectorOutputs.hSubtracted_allPtSummed = (TH1D*)h_back_subtracted->Clone("hSubtracted_allPtSummed");
+        } else {
+            vectorOutputs.hSubtracted_allPtSummed->Add(h_back_subtracted);
+        }
         
         bool printIntegrals = false;
         if (printIntegrals) {
@@ -453,8 +461,10 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
 
     // Create a canvas for plotting
     TCanvas* c1d_fit = new TCanvas("c1d_fit", "1D histograms with Fit", 800, 600);
+    c1d_fit->SetCanvasSize(1800,1000);
     c1d_fit->Divide(3,static_cast<int>(histograms.size() / 3)); // columns, lines
     TCanvas* c_2d = new TCanvas("c_2d", "2D histograms", 800, 600);
+    c_2d->SetCanvasSize(1800,1000);
     c_2d->Divide(3,static_cast<int>(histograms.size() / 3)); // columns, lines
 
     // Loop through all histograms and fitting functions
@@ -495,6 +505,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     TCanvas* cSubtracted = new TCanvas("cSubtracted", "delta R for side-band subtracted signal", 800, 600);
     cSubtracted->Divide(3,static_cast<int>(outputStruct.histograms.size() / 3)); // columns, lines
     TCanvas* cSigPlusBack = new TCanvas("cSigPlusBack", "delta R for side-band and signal in the same plot", 800, 600);
+    cSigPlusBack->SetCanvasSize(1800,1000);
     cSigPlusBack->Divide(3,static_cast<int>(outputStruct.histograms.size() / 3)); // columns, lines
 
     TLegend* legend = new TLegend(0.6,0.57,0.9,0.77);
@@ -535,6 +546,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
 
         cSigPlusBack->cd(iHisto+1);
+        outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.signalHist[iHisto]->Draw();
         outputStruct.sidebandHist[iHisto]->Draw("same");
         outputStruct.subtractedHist[iHisto]->Draw("same");
@@ -542,16 +554,33 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         latex->DrawLatex(statBoxPos-0.35, 0.5, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
     }
     
+    TCanvas* cAllPt = new TCanvas("cAllPt","All pT,D final deltaR distribution");
+    cAllPt->SetCanvasSize(1800,1000);
+    vectorOutputs.hSubtracted_allPtSummed->Draw();
 
     cout << "Plotting...\n";
 
-    // Save the canvas as an image or display it
-    //c1d_fit->SetCanvasSize(1800,1800);
+    //
+    // Storing images
+    //
+    TString imagePath = "../Images/1-SignalTreatment/";
+    c1d_fit->Update();
+    c1d_fit->SaveAs(imagePath + "SB_BackSub_invariant_mass.png");
+    c_2d->Update();
+    c_2d->SaveAs(imagePath + "SB_BackSub_2d_deltaR_vs_invmass.png");
+    cSigPlusBack->Update();
+    cSigPlusBack->SaveAs(imagePath + "SB_BackSub_subtracted_pT_bins.png");
+    cAllPt->Update();
+    cAllPt->SaveAs(imagePath + "SB_BackSub_all_pT_summed");
+
+    //
+    // Storing in a single pdf file
+    //
+    
     c1d_fit->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
-    //c_2d->SetCanvasSize(1800,1800);
     c_2d->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    //cSigPlusBack->SetCanvasSize(1800,1800);
-    cSigPlusBack->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cSigPlusBack->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cAllPt->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 }
 
 void SaveData(SubtractionResult outputStruct, double jetptMin, double jetptMax){
