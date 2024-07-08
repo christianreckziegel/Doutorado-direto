@@ -271,7 +271,8 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
         double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
 
         // Fill histograms considering jet pT and detector acceptance for NON-PROMPT particles
-        if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt && !MCDhfprompt) {
+        if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt &&
+            (abs(MCDhfEta) < etaCut) && (abs(MCDhfY) < yCut) && (MCDjetPt > jetptMin) && (MCDjetPt < jetptMax) && !MCDhfprompt) {
             // Filling measured 2D histogram
             dataContainer.hMeasured->Fill(MCDDeltaR, MCDjetPt);
 
@@ -352,7 +353,8 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, doubl
         double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
 
         // Fill histograms considering jet pT and detector acceptance
-        if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt && !MCDhfprompt) {
+        if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt &&
+            (abs(MCDhfEta) < etaCut) && (abs(MCDhfY) < yCut) && (MCDjetPt > jetptMin) && (MCDjetPt < jetptMax) && !MCDhfprompt) {
 
             // Fill 4D response matrix
             dataContainer.hResponse->Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
@@ -489,7 +491,7 @@ TH2D* nimaFolding(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
                     //std::cout << "Accessing response value\n";
                     double responseValue = response(index_x_measured, index_x_truth);
                     //double responseValue = response(index_x_truth, index_x_measured); // in case it is transposed
-                    foldedValue = truthValue*responseValue;
+                    foldedValue += truthValue*responseValue;
                     //std::cout << "Flag 2: calculated folded error to the power of 2\n";
                     //foldedValue = hTruth->GetBinContent(iTruth + 1,jTruth + 1) * response(index_x_measured, index_x_truth);
                     foldedError2 = std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow(response(index_x_measured, index_x_truth),2);
@@ -701,6 +703,14 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     TCanvas* cNonPrompt = new TCanvas("cNonPrompt","Non-prompt Delta R plots");
     cNonPrompt->Divide(2,4);
     cNonPrompt->SetCanvasSize(1800,1000);
+    cNonPrompt->cd(1);
+    TH1D* hProjectionX0 = dataContainer.hAllptDPowheg[0]->ProjectionX();
+    hProjectionX0->SetMarkerStyle(kCircle);
+    hProjectionX0->SetMarkerColor(29); // 30 = pastel green
+    hProjectionX0->SetLineColor(30);
+    hProjectionX0->SetStats(0);
+    hProjectionX0->Sumw2();
+    hProjectionX0->Draw();
     cNonPrompt->cd(2);
     dataContainer.hAllptDPowheg[0]->SetStats(0);
     dataContainer.hAllptDPowheg[0]->Draw("colz");
