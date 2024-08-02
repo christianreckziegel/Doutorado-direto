@@ -48,9 +48,15 @@ double DeltaPhi(double phi1, double phi2) {
 
 struct FeedDownData {
     TH2D* hMeasured;                                        // 2D representation of response measured data
+    TH2D* hMeasuredTotalRange;                              // 2D total measured range data
+    TH2D* hDivMeasuredRange;                                // 2D division of (total range) / (inside range) for measured data
     TH2D* hTruth;                                           // 2D representation of response truth data
+    TH2D* hTruthTotalRange;                                 // 2D total truth range data
+    TH2D* hDivTruthRange;                                   // 2D division of (inside range) / (total range) for truth data
     TH2D* hFolded;                                          // 2D representation of folded data from method 1
     TH2D* nimaFolded;                                       // 2D folded data with Nima's folding function
+    std::pair<TH2D*, TH2D*> refInputRange; // first = total, second = inside range
+    std::pair<TH2D*, TH2D*> refOutputRange; // first = total, second = inside range
     RooUnfoldResponse response;                             // response matrix for non-prompt D0s only, for overall pT,D; using RooUnfoldResponse object, method 1
     THnSparseD* hResponse;                                  // response matrix for non-prompt D0s only, for overall pT,D; using manual folding operation (matrix multiplication), method 2
     std::vector<TH3D*> hPowheg;                             // deltaR vs pT,D vs pT,jet; [0] = generator level, [1] = treated but not yet detector level
@@ -114,10 +120,12 @@ FeedDownData createHistograms(const std::vector<double>& xBinEdges_particle, con
     //
     // 2D original information
     dataContainer.hTruth = new TH2D("hTruth2D", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    dataContainer.hTruthTotalRange = new TH2D("hTruth2D_totalRange", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
     xNumBinEdges = xBinEdges_detector.size();
     yNumBinEdges = yBinEdges_detector.size();
     zNumBinEdges = zBinEdges_detector.size();
     dataContainer.hMeasured = new TH2D("hMeasured2D", "Measured;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
+    dataContainer.hMeasuredTotalRange = new TH2D("hMeasured2D_totalRange", "Measured;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
     dataContainer.hFolded = new TH2D("hFolded2D", "Folded;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
 
     cout << "Matching histograms created.\n";
@@ -270,7 +278,7 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
         double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
         double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
 
-        // Fill histograms considering jet pT and detector acceptance for NON-PROMPT particles
+        // Fill histograms considering jet pT and detector acceptance for NON-PROMPT particles, inside response range (truth and measured levels)
         if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt &&
             (abs(MCDhfEta) < etaCut) && (abs(MCDhfY) < yCut) && (MCDjetPt > jetptMin) && (MCDjetPt < jetptMax) && !MCDhfprompt) {
             // Filling measured 2D histogram
@@ -280,6 +288,16 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
             dataContainer.hTruth->Fill(MCPDeltaR, MCPjetPt);
         
         }
+
+        // Fill reference input total truth range only histograms
+        if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt) {
+            dataContainer.hTruthTotalRange->Fill(MCPDeltaR, MCPjetPt);
+        }
+
+        // Fill reference output total measured range histograms
+        if ((abs(MCDhfEta) < etaCut) && (abs(MCDhfY) < yCut) && (MCDjetPt > jetptMin) && (MCDjetPt < jetptMax) && !MCDhfprompt) {
+            dataContainer.hMeasuredTotalRange->Fill(MCDDeltaR, MCDjetPt);
+        }
         
     }
 
@@ -288,7 +306,7 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
 }
 
 // Module to build 2D response matrix out of flattened 1D input data
-void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, double jetptMin, double jetptMax) {
+void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile* fEfficiency, double jetptMin, double jetptMax) {
     
     // Defining cuts
     const double jetRadius = 0.4;
@@ -300,6 +318,9 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, doubl
     dataContainer.response = RooUnfoldResponse(dataContainer.hMeasured, dataContainer.hTruth);
 
     std::cout << "Response matrix created.\n";
+
+    // Access non-prompt efficiency
+    TH1D* hEffPrompt = (TH1D*)fEfficiency->Get("efficiency_prompt");
 
     //__________________________________________-
     //
@@ -355,12 +376,18 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, doubl
         // Fill histograms considering jet pT and detector acceptance
         if ((abs(MCPhfEta) < etaCut) && (abs(MCPhfY) < yCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt &&
             (abs(MCDhfEta) < etaCut) && (abs(MCDhfY) < yCut) && (MCDjetPt > jetptMin) && (MCDjetPt < jetptMax) && !MCDhfprompt) {
+            
+            // Find the bin corresponding to the given pT value
+            int bin = hEffPrompt->FindBin(MCDhfPt);
+            // Get the efficiency value from the bin content
+            double efficiency_prompt = hEffPrompt->GetBinContent(bin);
 
             // Fill 4D response matrix
             dataContainer.hResponse->Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
 
             // Fill 4D RooUnfoldResponse object
-            dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
+            //dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
+            dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt, 1./efficiency_prompt); // jet pT shape is influenced by D0 pT efficiency
         }
         
     }
@@ -453,6 +480,7 @@ TH2D* nimaFolding(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
     // Create empty histogram for the folded data
     TH2D* hFolded = (TH2D*)hMeasured->Clone("hFolded");
     hFolded->Reset();
+    hFolded->Sumw2();
 
     // Get the number of bins in measured and truth histograms
     int nBinsXMeasured = hFolded->GetNbinsX();
@@ -507,8 +535,134 @@ TH2D* nimaFolding(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
     return hFolded;
 }
 
+/**
+ * @brief Remove entries in region not treated by response matrix from the folding input data.
+ *
+ * This helper function
+ *
+ * @param dataContainer Container with total and intersection range data and the POWHEG data to be corrected.
+ *
+ * @return Corrected POWHEG truth input 2D distribution
+ *
+ * @note 
+ *
+ * @see smearGeneratorData() [Correct truth POWHEG data before folding.]
+ */
+TH2D* removeOutsideData(FeedDownData& dataContainer) {
+
+    // Copy original POWHEG distribution structure
+    /*TH2D* hPowhegCorrected = (TH2D*)dataContainer.hAllptDPowheg[0]->Clone("hPowhegRangeCorrected");
+    hPowhegCorrected->Reset();
+    hPowhegCorrected->SetTitle("Outside range corrected before folding");
+
+    // Get the number of bins in measured and truth histograms
+    int xBins = hPowhegCorrected->GetNbinsX();
+    int yBins = hPowhegCorrected->GetNbinsY();
+
+    // Loop through all bins of POWHEG and scale by ratio of entries found in response range (as found in MC)
+    for (int xBin = 1; xBin <= xBins; xBin++) {
+        for (int yBin = 1; yBin <= yBins; yBin++) {
+
+            // Get respective bin contents
+            double total = dataContainer.hTruthTotalRange->GetBinContent(xBin, yBin);
+            double inRange = dataContainer.hTruth->GetBinContent(xBin, yBin);
+            double currentContent = dataContainer.hAllptDPowheg[0]->GetBinContent(xBin, yBin);
+            
+
+            // Correct bin content with estimated fraction = inRage/total
+            if (total > 0) {
+                hPowhegCorrected->SetBinContent(xBin, yBin, currentContent*inRange/total);
+            } else {
+                std::cout << "No entries in bin of total range distribution." << std::endl;
+                std::cout << "(xBin,yBin) = (" << xBin << "," << yBin << ")" << std::endl;
+                std::cout << "(Delta R;pT,jet) = (" << dataContainer.hAllptDPowheg[0]->GetXaxis()->GetBinCenter(xBin) << ";" << dataContainer.hAllptDPowheg[0]->GetYaxis()->GetBinCenter(yBin) << ")" << std::endl;
+            }
+            
+            
+        }
+        
+    }*/
+
+    TH2D* hPowhegCorrected = (TH2D*)dataContainer.hAllptDPowheg[0]->Clone("hPowhegRangeCorrected");
+    dataContainer.hDivTruthRange = dynamic_cast<TH2D*>(dataContainer.hTruth->Clone("hInsideOverTotalDivision"));
+    dataContainer.hDivTruthRange->Divide(dataContainer.hTruthTotalRange);
+    dataContainer.hDivTruthRange->SetTitle("Inside response range / Total truth range");
+    hPowhegCorrected->Multiply(dataContainer.hDivTruthRange);
+
+    hPowhegCorrected->Sumw2();
+    return hPowhegCorrected;
+
+}
+
+/**
+ * @brief Add entries of the folding output data from region not treated by response matrix .
+ *
+ * This helper function
+ *
+ * @param dataContainer Container with total and intersection range data and the folded data to be corrected.
+ *
+ * @return Corrected Folded detector level output 2D distribution
+ *
+ * @note 
+ *
+ * @see smearGeneratorData() [Correct detector level folded data.]
+ */
+TH2D* addOutsideData(FeedDownData& dataContainer) {
+
+    // Copy folded 2D distribution structure
+    /*TH2D* hFoldedCorrected = (TH2D*)dataContainer.nimaFolded->Clone("hFoldedRangeCorrected");
+    hFoldedCorrected->Reset();
+    hFoldedCorrected->SetTitle("Outside range corrected folded data");
+
+    // Get the number of bins in measured and truth histograms
+    int xBins = hFoldedCorrected->GetNbinsX();
+    int yBins = hFoldedCorrected->GetNbinsY();
+
+    // Loop through all bins of POWHEG and scale by ratio of entries found in response range (as found in MC)
+    for (int xBin = 1; xBin <= xBins; xBin++) {
+        for (int yBin = 1; yBin <= yBins; yBin++) {
+
+            // Get respective bin contents
+            double total = dataContainer.hMeasuredTotalRange->GetBinContent(xBin, yBin);
+            double inRange = dataContainer.hMeasured->GetBinContent(xBin, yBin);
+            double currentContent = dataContainer.hFolded->GetBinContent(xBin, yBin);
+            
+
+            // Correct bin content with estimated fraction = inRage/total
+            if (total > 0) {
+                hFoldedCorrected->SetBinContent(xBin, yBin, currentContent*total/inRange);
+            } else {
+                std::cout << "No entries in bin of total range distribution." << std::endl;
+            }
+            
+            
+        }
+        
+    }*/
+
+    TH2D* hFoldedCorrected = (TH2D*)dataContainer.hAllptDPowheg[0]->Clone("hPowhegRangeCorrected");
+    dataContainer.hDivMeasuredRange = dynamic_cast<TH2D*>(dataContainer.hMeasuredTotalRange->Clone("hInsideOverTotalDivision"));
+    dataContainer.hDivMeasuredRange->Divide(dataContainer.hMeasured);
+    dataContainer.hDivMeasuredRange->SetTitle("Total measured range / Inside response range");
+    hFoldedCorrected->Multiply(dataContainer.hDivMeasuredRange);
+
+    hFoldedCorrected->Sumw2();
+    return hFoldedCorrected;
+
+}
+
+// Get POWHEG and data luminosities
+void getLuminosities(TFile* fPowheg, double luminosity_powheg) {
+    //
+    TH1D* xSection_powheg = dynamic_cast<TH1D*>(fPowheg->Get("fHistXsection"));
+    // total luminosity stored in first bin (in mb)
+    luminosity_powheg = xSection_powheg->GetBinContent(1);
+    std::cout << "POWHEG luminosity = " << luminosity_powheg << " mb" << std::endl;
+
+}
+
 // Module for folding particle level data from POWHEG simulation
-void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, TFile* fEfficiency) {
+void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, double& luminosity_powheg, TFile* fEfficiency) {
     //
     // 0th step: clone 3D histogram in order to save the smeared at the end (while keeping the original)
     //
@@ -534,7 +688,8 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, TFile* 
     // 2nd step: scale by integrated luminosity
     // (skip this step for now)
     //hTreatedPowheg->Scale(1/luminosity);
-    dataContainer.hAllptDPowheg[0]->Scale(1/luminosity);
+    dataContainer.hAllptDPowheg[0]->Scale(luminosity); //luminosity/luminosity_powheg
+    dataContainer.hAllptDPowheg[0]->Sumw2();
 
     //
     // 3rd step: scale by efficiency ratio
@@ -581,31 +736,41 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, TFile* 
     dataContainer.hPowheg.emplace_back(hTreatedPowheg);
     
     
-    
+    //
+    // 4th step: remove outside of response range data in POWHEG
+    //
+    TH2D* hPowhegOutRange = removeOutsideData(dataContainer);
+    dataContainer.hAllptDPowheg.emplace_back(hPowhegOutRange); // [1] = data outside response range removed
 
     //
-    // 4th step: fold Delta R vs pT,jet distribution using detector response matrix of non-prompt D0 jets
+    // 5th step: fold Delta R vs pT,jet distribution using detector response matrix of non-prompt D0 jets
     //
     
     // a) method 1: ApplyToTruth()
-    dataContainer.hFolded = (TH2D*)dataContainer.response.ApplyToTruth(dataContainer.hAllptDPowheg[0]); // normalized
+    dataContainer.hFolded = (TH2D*)dataContainer.response.ApplyToTruth(dataContainer.hAllptDPowheg[1]); // normalized
     //dataContainer.hFolded->Scale(dataContainer.hAllptDPowheg[0]->Integral());
     dataContainer.hFolded->SetName("hFoldedNonPrompt_1");
     dataContainer.hFolded->SetTitle("Folded with ApplyToTruth() method;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}}_{reco};p_{T,jet}^{ch}");
-    dataContainer.hAllptDPowheg.emplace_back(dataContainer.hFolded); // [1] = folded method 1
+    dataContainer.hAllptDPowheg.emplace_back(dataContainer.hFolded); // [2] = folded method 1
     
     // b) method 2: manual matrix multiplication
     // since TH2D objects can't be used for 4D object, each bin needs to be treated directly
     // i. manual 4D matrix multiplication
-    TH2D* hFoldedNonPrompt_2 = manualFolding(dataContainer.hResponse, dataContainer.hAllptDPowheg[0], dataContainer.hMeasured);
+    TH2D* hFoldedNonPrompt_2 = manualFolding(dataContainer.hResponse, dataContainer.hAllptDPowheg[1], dataContainer.hMeasured);
     hFoldedNonPrompt_2->SetName("hFoldedNonPrompt_2");
     hFoldedNonPrompt_2->SetTitle("Folded with manual matrix multiplication method;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}}_{reco};p_{T,jet}^{ch}");
-    dataContainer.hAllptDPowheg.emplace_back(hFoldedNonPrompt_2); // [2] = folded method 2
+    dataContainer.hAllptDPowheg.emplace_back(hFoldedNonPrompt_2); // [3] = folded method 2
     // ii. manual matrix multiplication with Nima's function (1D index calculation?)
-    dataContainer.nimaFolded = nimaFolding(dataContainer.response, dataContainer.hAllptDPowheg[0], dataContainer.hMeasured);
+    dataContainer.nimaFolded = nimaFolding(dataContainer.response, dataContainer.hAllptDPowheg[1], dataContainer.hMeasured);
     dataContainer.nimaFolded->SetTitle("Folded with Nima's 1D index function;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}}_{reco};p_{T,jet}^{ch}");
 
-    
+    //
+    // 6th step: add outside of response range data in folded data
+    //
+    TH2D* hFoldedOutRange = addOutsideData(dataContainer);
+    dataContainer.hAllptDPowheg.emplace_back(hFoldedOutRange); // [4] = entries outside response range added to folded data
+    dataContainer.hAllptDPowheg[4]->SetTitle("Folded data with outside range correction");
+
     std::cout << "Generator data smeared.\n";
 }
 
@@ -663,7 +828,7 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     const TH2* hResponse2D = dataContainer.response.Hresponse();
     TH2D* hResponse2DClone = static_cast<TH2D*>(hResponse2D->Clone("hResponse2DClone"));
     std::cout << "hResponse2DClone has " << hResponse2DClone->GetEntries() << " bins." << std::endl;
-    hResponse2DClone->SetTitle("2D response matrix from method 1;2D Reconstructed;2D Truth");
+    hResponse2DClone->SetTitle("2D response matrix from 4D RooUnfoldResponse;2D Reconstructed;2D Truth");
     hResponse2DClone->Draw("colz");
     
     //
@@ -724,14 +889,15 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     hProjectionX1->Draw();
     cNonPrompt->cd(4);
     dataContainer.hAllptDPowheg[1]->SetStats(0);
-    //dataContainer.hAllptDPowheg[1]->Draw("colz");
-    dataContainer.hFolded->Draw("colz");
+    dataContainer.hAllptDPowheg[1]->Draw("colz");
+    //dataContainer.hFolded->Draw("colz");
     cNonPrompt->cd(5);
     TH1D* hProjectionX2 = dataContainer.hAllptDPowheg[2]->ProjectionX();
     hProjectionX2->SetMarkerStyle(kCircle);
     hProjectionX2->SetMarkerColor(31); // 30 = pastel green
     hProjectionX2->SetLineColor(31);
     hProjectionX2->SetStats(0);
+    hProjectionX2->Sumw2();
     hProjectionX2->Draw();
     cNonPrompt->cd(6);
     dataContainer.hAllptDPowheg[2]->SetStats(0);
@@ -742,6 +908,7 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     hProjectionX3->SetMarkerColor(32); // 30 = pastel green
     hProjectionX3->SetLineColor(32);
     hProjectionX3->SetStats(0);
+    hProjectionX3->Sumw2();
     hProjectionX3->Draw();
     cNonPrompt->cd(8);
     dataContainer.nimaFolded->Draw("colz");
@@ -749,15 +916,58 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     double statBoxPos = gPad->GetUxmax();
     latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
     latex->DrawLatex(statBoxPos-0.35, 0.75, "Folded non-prompt D0 jets");
+
+    // Truth data range plots
+    TCanvas* cInputRangeCorrection = new TCanvas("cInputRangeCorrection","Outside response range data removal");
+    cInputRangeCorrection->Divide(3,2);
+    cInputRangeCorrection->cd(1);
+    dataContainer.hTruth->SetTitle("Inside response range truth data");
+    dataContainer.hTruth->Draw("text");
+    cInputRangeCorrection->cd(2);
+    dataContainer.hTruthTotalRange->SetStats(0);
+    dataContainer.hTruthTotalRange->SetTitle("Total truth range data");
+    dataContainer.hTruthTotalRange->Draw("text");
+    cInputRangeCorrection->cd(4);
+    dataContainer.hAllptDPowheg[0]->SetStats(0);
+    dataContainer.hAllptDPowheg[0]->Draw("colz");
+    cInputRangeCorrection->cd(5);
+    dataContainer.hAllptDPowheg[1]->SetStats(0);
+    dataContainer.hAllptDPowheg[1]->Draw("colz");
+    cInputRangeCorrection->cd(3);
+    dataContainer.hDivTruthRange->SetStats(0);
+    dataContainer.hDivTruthRange->Draw("text");
+
+    // Detector level data range plots
+    TCanvas* cOutputRangeCorrection = new TCanvas("cOutputRangeCorrection","Outside response range data addition");
+    cOutputRangeCorrection->Divide(3,2);
+    cOutputRangeCorrection->cd(1);
+    dataContainer.hMeasured->SetTitle("Inside response range truth data");
+    dataContainer.hMeasured->Draw("text");
+    cOutputRangeCorrection->cd(2);
+    dataContainer.hMeasuredTotalRange->SetStats(0);
+    dataContainer.hMeasuredTotalRange->SetTitle("Total measured range data");
+    dataContainer.hMeasuredTotalRange->Draw("text");
+    cOutputRangeCorrection->cd(4);
+    dataContainer.nimaFolded->SetStats(0);
+    dataContainer.nimaFolded->Draw("colz");
+    cOutputRangeCorrection->cd(5);
+    dataContainer.hAllptDPowheg[4]->SetStats(0);
+    dataContainer.hAllptDPowheg[4]->Draw("colz");
+    cOutputRangeCorrection->cd(3);
+    dataContainer.hDivMeasuredRange->SetStats(0);
+    dataContainer.hDivMeasuredRange->Draw("text");
+
+    //
     // For image printing
-    TCanvas* cFoldedData = new TCanvas("cFoldedData","Before and after unfolding data");
+    //
+    TCanvas* cFoldedData = new TCanvas("cFoldedData","Before and after folding data");
     cFoldedData->SetCanvasSize(1800,1000);
     cFoldedData->Divide(2,2);
     cFoldedData->cd(1);
     dataContainer.hAllptDPowheg[0]->SetStats(0);
     dataContainer.hAllptDPowheg[0]->Draw("colz");
     cFoldedData->cd(2);
-    dataContainer.hAllptDPowheg[1]->SetStats(0);
+    dataContainer.hAllptDPowheg[2]->SetStats(0);
     dataContainer.hFolded->Draw("colz");
     cFoldedData->cd(3);
     TH1D* hProjectionX4 = dataContainer.hAllptDPowheg[0]->ProjectionX();
@@ -768,6 +978,7 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     hProjectionX4->Sumw2();
     hProjectionX4->Draw();
     cFoldedData->cd(4);
+    hProjectionX1->Sumw2();
     hProjectionX1->Draw();
 
     
@@ -828,6 +1039,7 @@ void FeedDownSubtraction(){
 
     // Luminosity (for now arbitrary)
     double luminosity = 1000000;
+    double luminosity_powheg = 0;
 
     // D0 mass in GeV/c^2
     double m_0_parameter = 1.86484;
@@ -884,10 +1096,13 @@ void FeedDownSubtraction(){
     fillHistograms(fPowheg, fSimulatedO2, dataContainer, jetptMin, jetptMax);
 
     // Create response matrices for all pT,D bins considered
-    buildResponseMatrix(dataContainer, fSimulatedO2, jetptMin, jetptMax);
+    buildResponseMatrix(dataContainer, fSimulatedO2, fEfficiency, jetptMin, jetptMax);
+
+    // Get POWHEG and data luminosities
+    getLuminosities(fPowheg, luminosity_powheg);
 
     // Fold data using two methods
-    smearGeneratorData(dataContainer, luminosity, fEfficiency);
+    smearGeneratorData(dataContainer, luminosity, luminosity_powheg, fEfficiency);
 
     // Subtract non-prompt distribution from prompt efficiency corrected ones
     feedDown(dataContainer, jetptMin, jetptMax, fEfficiency);
