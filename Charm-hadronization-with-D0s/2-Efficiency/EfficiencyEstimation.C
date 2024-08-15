@@ -56,20 +56,21 @@ struct EfficiencyData {
 };
 
 // Module to create histograms including interest variable
-EfficiencyData createHistograms(const double binEdges[], size_t numBinEdges) {
+EfficiencyData createHistograms(const std::vector<double>& binEdges) {
+
     // Create struct to store data
     EfficiencyData histStruct;
 
     // Create 3 histogram cases: inclusive = 0, prompt only = 1, non-prompt only = 2
     int histCaseNum = 3;
     for (size_t i = 0; i < histCaseNum; ++i) {
-        histStruct.hMcpPt.push_back(new TH1D(Form("mcp_pt_%zu",i), ";p_{T,D}^{truth};dN/dp_{T,D}^{truth}", numBinEdges-1, binEdges));
+        histStruct.hMcpPt.push_back(new TH1D(Form("mcp_pt_%zu",i), ";p_{T,D}^{truth};dN/dp_{T,D}^{truth}", binEdges.size() - 1, binEdges.data()));
         histStruct.hMcpPt[i]->SetMarkerColor(kBlack);
         histStruct.hMcpPt[i]->SetLineColor(kBlack);
         histStruct.hMcpPt[i]->SetMarkerStyle(kOpenCircle);
         histStruct.hMcpPt[i]->Sumw2();
         histStruct.hMcpPt[i]->SetStats(0);
-        histStruct.hMcdPt.push_back(new TH1D(Form("mcd_pt_%zu",i), ";p_{T,D}^{reco};dN/dp_{T,D}^{reco}", numBinEdges-1, binEdges));
+        histStruct.hMcdPt.push_back(new TH1D(Form("mcd_pt_%zu",i), ";p_{T,D}^{reco};dN/dp_{T,D}^{reco}", binEdges.size() - 1, binEdges.data()));
         histStruct.hMcdPt[i]->SetMarkerColor(kBlue);
         histStruct.hMcdPt[i]->SetLineColor(kBlue);
         histStruct.hMcdPt[i]->SetMarkerStyle(kFullCircle);
@@ -395,21 +396,23 @@ void EfficiencyEstimation(){
     double m_0_parameter = 1.86484;
     double sigmaInitial = 0.012;
     // jet pT cuts
-    double jetptMin = 5; // GeV
-    double jetptMax = 30; // GeV
+    const std::vector<double> ptjetBinEdges = {5., 7., 15., 30.};
+    double jetptMin = ptjetBinEdges[0]; // GeV
+    double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
     // deltaR histogram
     int deltaRbins = 10; // deltaRbins = numberOfPoints, default=100 bins for [0. 1.0]
-    double minDeltaR = 0.;
-    double maxDeltaR = 0.4;
+    const std::vector<double> deltaRBinEdges = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; // chosen by Nima
+    double minDeltaR = deltaRBinEdges[0];
+    double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
     // mass histogram
     int massBins = 100; 
     double minMass = 1.67;
     double maxMass = 2.1;
     // pT,D histograms
     int ptBins = 100;
-    double minPt = 0.;
-    double maxPt = 30.;
-    double binEdges[] = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
+    const std::vector<double> ptDBinEdges = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}; // pT,D
+    double minPt = 0.; //ptDBinEdges[0] - should start from 0 or from the lowest pT,D value?
+    double maxPt = ptDBinEdges[ptDBinEdges.size() - 1];
     
     std::vector<const char*> names = {"histPt1", "histPt2", "histPt3", 
                                       "histPt4", "histPt5", "histPt6",
@@ -417,7 +420,7 @@ void EfficiencyEstimation(){
     std::vector<const char*> titles = {"3 < p_{T,D} < 4 GeV/c", "4 < p_{T,D} < 5 GeV/c", "5 < p_{T,D} < 6 GeV/c",
                                        "6 < p_{T,D} < 7 GeV/c", "7 < p_{T,D} < 8 GeV/c", "8 < p_{T,D} < 10 GeV/c",
                                        "10 < p_{T,D} < 12 GeV/c", "12 < p_{T,D} < 15 GeV/c", "15 < p_{T,D} < 30 GeV/c"}; // Titles of histograms
-    EfficiencyData histStruct = createHistograms(binEdges,sizeof(binEdges)/sizeof(binEdges[0])); // pT histograms
+    EfficiencyData histStruct = createHistograms(ptDBinEdges); // pT histograms
 
     // opening files
     TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root

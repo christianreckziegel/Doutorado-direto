@@ -213,7 +213,7 @@ std::vector<double> bestFit(TH1D* histogram, double minMass, double maxMass, int
                     if ((fTestFit->GetChisquare() < bestChiSquare) // select best fit
                          && (fTestFit->GetParameter(2) > 0) // avoiding negative gaussians
                          && (fTestFit->GetParameter(4) > sigma_parameter/2) // avoiding point delta distributions
-                         && (abs(fTestFit->GetParameter(3)-m_0_parameter) < 4*sigma_parameter)) { // avoid mean values too far from literature value for HF invariant mass
+                         && (abs(fTestFit->GetParameter(3)-m_0_parameter) < 3*sigma_parameter)) { // avoid mean values too far from literature value for HF invariant mass
                         bestChiSquare = fTestFit->GetChisquare();
                         optimalParameters[0] = iA;
                         optimalParameters[1] = iB;
@@ -421,6 +421,7 @@ std::vector<TF1*> performFit(const std::vector<const char*>& names,
 struct ExtractionResult {
     std::vector<TH1D*> histograms; // 1D mass projection histograms vector
     std::vector<TH1D*> signalHist; // 1D signal histograms vector
+    TH1D* hSubtracted_allPtSummed; // final deltaR distribution for all pT,D summed
 };
 
 // Obtain the bin edges of a histogram (useful for asymmetrical bin sizes)
@@ -460,8 +461,6 @@ ExtractionResult PointsExtraction(const std::vector<TH2D*>& histograms2d,
 
     // Creating output struct object with histogram vectors
     ExtractionResult vectorOutputs;
-
-    double deltaRinterval = (maxDeltaR-minDeltaR)/deltaRbins;
 
     // obtaining 1D invariant mass histograms from the projection
     for (size_t iHist = 0; iHist <  histograms2d.size(); iHist++) {
@@ -585,7 +584,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     // Create a TLatex object to display text on the canvas
     TLatex* latex = new TLatex();
     latex->SetNDC(); // Set the coordinates to be normalized device coordinates
-    latex->SetTextSize(0.03);
+    latex->SetTextSize(0.05);
 
     // obtaining 1D invariant mass histograms from the projection
     for (size_t iHist = 0; iHist < histograms2d.size(); iHist++) {
@@ -608,6 +607,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         maxMass = histograms2d[iHist]->GetXaxis()->GetXmax();
         // storing canvas
         cPointMass.push_back(new TCanvas(Form("histoMass_%zu",iHist),Form("Points histograms for interval number %zu",iHist)));
+        cPointMass[iHist]->SetCanvasSize(1800,1000);
 
         // divide differently if the number of canvases is even or odd
         if(deltaRbins%2 == 1){
@@ -617,6 +617,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         }
         for (size_t iPoint = 0; iPoint < deltaRbins; iPoint++) {
             cPointMass[iHist]->cd(iPoint+1);
+            gPad->SetMargin(0.1, 0.1, 0.1, 0.1);
             double statBoxPos = gPad->GetUxmax(); // Height of the stat box
             gStyle->SetOptStat(0); // Turn off the default stats box
             outputStruct.histograms[iHist*deltaRbins + iPoint]->SetMarkerStyle(kFullDotMedium);
@@ -631,9 +632,9 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
             double chi2 = fittings[iHist*deltaRbins + iPoint]->GetChisquare();
             double degOfFreedom = fittings[iHist*deltaRbins + iPoint]->GetNDF();
             
-            latex->DrawLatex(statBoxPos-0.35, 0.70, Form("m_{0} = %.3f #pm %.3f GeV/c^{2}", m_0,sigma)); // Display parameter 'm_0' value
-            latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax)); // Display jet pT cut applied
-            latex->DrawLatex(statBoxPos-0.35, 0.58, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
+            latex->DrawLatex(statBoxPos-0.3, 0.70, Form("m_{0} = %.3f #pm %.3f GeV/c^{2}", m_0,sigma)); // Display parameter 'm_0' value
+            latex->DrawLatex(statBoxPos-0.3, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax)); // Display jet pT cut applied
+            latex->DrawLatex(statBoxPos-0.3, 0.58, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
         }
     }
     
@@ -643,10 +644,12 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     // Plotting output observable
     //
     TCanvas* cSignal = new TCanvas("cSignal", "delta R for extracted signal", 800, 600);
+    cSignal->SetCanvasSize(1800,1000);
     cSignal->Divide(3,static_cast<int>(outputStruct.signalHist.size() / 3)); // columns, lines
 
     for (size_t iHist = 0; iHist < outputStruct.signalHist.size(); iHist++) {
         cSignal->cd(iHist+1);
+        gPad->SetMargin(0.1, 0.1, 0.1, 0.1);
         outputStruct.signalHist[iHist]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.signalHist[iHist]->GetXaxis()->SetTitle("#DeltaR");
         outputStruct.signalHist[iHist]->GetYaxis()->SetTitle("yields");
@@ -658,25 +661,54 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         outputStruct.signalHist[iHist]->Sumw2();
         outputStruct.signalHist[iHist]->Draw();
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
+
+        // Add to final all pT,D summed histogram
+        if (iHist == 0) {
+            outputStruct.hSubtracted_allPtSummed = (TH1D*)outputStruct.signalHist[iHist]->Clone("hSubtracted_allPtSummed_SE");
+        } else {
+            outputStruct.hSubtracted_allPtSummed->Add(outputStruct.signalHist[iHist]);
+        }
     }
     
-    
+    TCanvas* cAllPt = new TCanvas("cAllPt","All pT,D final deltaR distribution");
+    cAllPt->SetCanvasSize(1800,1000);
+    outputStruct.hSubtracted_allPtSummed->GetXaxis()->SetRangeUser(0.0, 0.5);
+    outputStruct.hSubtracted_allPtSummed->SetTitle(";#DeltaR;yields");
+    outputStruct.hSubtracted_allPtSummed->Draw();
+    double statBoxPos = gPad->GetUxmax(); // Height of the stat box
+    latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax)); // Display jet pT cut applied
 
-    cout << "Plotting...\n";
+    cout << "Plotted.\n";
+
+    //
+    // Storing images
+    //
+    TString imagePath = "../Images/1-SignalTreatment/SignalExtraction/";
 
     // Save the canvas as an image or display it
     for (size_t iHist = 0; iHist < histograms2d.size(); iHist++) {
-        //cPointMass[iHist]->SetCanvasSize(1800,1800);
+        //cPointMass[iHist]->SetCanvasSize(1800,1000);
         if (iHist == 0) {
             cPointMass[iHist]->Print(Form("sig_extraction_deltaR_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+            cPointMass[iHist]->Update();
+            cPointMass[iHist]->SaveAs(imagePath + Form("SE_BackSub_invariant_mass_%zu.png",iHist));
         } else{
             cPointMass[iHist]->Print(Form("sig_extraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+            cPointMass[iHist]->Update();
+            cPointMass[iHist]->SaveAs(imagePath + Form("SE_BackSub_invariant_mass_%zu.png",iHist));
         }
         
         
     }
-    //cSignal->SetCanvasSize(1800,1800);
-    cSignal->Print(Form("sig_extraction_deltaR_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+
+    cSignal->Print(Form("sig_extraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cAllPt->Print(Form("sig_extraction_deltaR_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    
+
+    cSignal->Update();
+    cSignal->SaveAs(imagePath + "SE_BackSub_yield_pT_bins.png");
+    cAllPt->Update();
+    cAllPt->SaveAs(imagePath + "SE_BackSub_yield_pT_summed.png");
 }
 
 void SaveData(ExtractionResult outputStruct, double jetptMin, double jetptMax){
@@ -702,15 +734,17 @@ void SignalExtraction(){
     double m_0_parameter = 1.86484;
     double sigmaInitial = 0.012;
     // jet pT cuts
-    double jetptMin = 5; // GeV
-    double jetptMax = 30; // GeV
+    std::vector<double> ptjetBinEdges = {5., 7., 15., 30.};
+    double jetptMin = ptjetBinEdges[0]; // GeV
+    double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
     // deltaR histogram
     int deltaRbins = 50; // default = 50 bins
-    double minDeltaR = 0.;
-    double maxDeltaR = 0.4;
     // define asymmetrical bin widths manually chosen
-    std::vector<double> deltaRBinEdges = {0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4}; // TODO: investigate structure before 0.005
+    //std::vector<double> deltaRBinEdges = {0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4}; // TODO: investigate structure before 0.005
+    std::vector<double> deltaRBinEdges = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; // chosen by Nima
     int numberOfPoints = deltaRBinEdges.size() - 1; // default = 10
+    double minDeltaR = deltaRBinEdges[0];
+    double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
     // mass histogram
     int massBins = 50; 
     double minMass = 1.67;

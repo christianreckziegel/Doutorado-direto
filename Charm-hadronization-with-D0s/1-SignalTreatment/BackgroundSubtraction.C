@@ -418,7 +418,7 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
 
         // Add to final all pT,D summed histogram
         if (iHisto == 0) {
-            vectorOutputs.hSubtracted_allPtSummed = (TH1D*)h_back_subtracted->Clone("hSubtracted_allPtSummed");
+            vectorOutputs.hSubtracted_allPtSummed = (TH1D*)h_back_subtracted->Clone("hSubtracted_allPtSummed_SB");
         } else {
             vectorOutputs.hSubtracted_allPtSummed->Add(h_back_subtracted);
         }
@@ -457,7 +457,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     // Create a TLatex object to display text on the canvas
     TLatex* latex = new TLatex();
     latex->SetNDC(); // Set the coordinates to be normalized device coordinates
-    latex->SetTextSize(0.03);
+    latex->SetTextSize(0.05);
 
     // Create a canvas for plotting
     TCanvas* c1d_fit = new TCanvas("c1d_fit", "1D histograms with Fit", 800, 600);
@@ -485,10 +485,10 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         double sigma = fittings[iHisto]->GetParameter(4); // Get the value of parameter 'sigma'
         double chi2 = fittings[iHisto]->GetChisquare();
         double degOfFreedom = fittings[iHisto]->GetNDF();
-        
-        latex->DrawLatex(statBoxPos-0.35, 0.70, Form("m_{0} = %.3f #pm %.3f GeV/c^{2}", m_0,sigma)); // Display parameter 'm_0' value
-        latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax)); // Display jet pT cut applied
-        latex->DrawLatex(statBoxPos-0.35, 0.58, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
+        // original position at statBoxPos-0.35, 0.70 with 0.03 of size
+        latex->DrawLatex(statBoxPos-0.3, 0.70, Form("m_{0} = %.3f #pm %.3f GeV/c^{2}", m_0,sigma)); // Display parameter 'm_0' value
+        latex->DrawLatex(statBoxPos-0.3, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax)); // Display jet pT cut applied
+        latex->DrawLatex(statBoxPos-0.3, 0.58, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
 
         // Drawing 2D histograms
         c_2d->cd(iHisto+1);
@@ -499,10 +499,13 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
 
     // Plotting output observable
     TCanvas* cSideBand = new TCanvas("cSideBand", "delta R for side-band", 800, 600);
+    cSideBand->SetCanvasSize(1800,1000);
     cSideBand->Divide(3,static_cast<int>(outputStruct.histograms.size() / 3)); // columns, lines
     TCanvas* cSignal = new TCanvas("cSignal", "delta R for signal", 800, 600);
+    cSignal->SetCanvasSize(1800,1000);
     cSignal->Divide(3,static_cast<int>(outputStruct.histograms.size() / 3)); // columns, lines
     TCanvas* cSubtracted = new TCanvas("cSubtracted", "delta R for side-band subtracted signal", 800, 600);
+    cSubtracted->SetCanvasSize(1800,1000);
     cSubtracted->Divide(3,static_cast<int>(outputStruct.histograms.size() / 3)); // columns, lines
     TCanvas* cSigPlusBack = new TCanvas("cSigPlusBack", "delta R for side-band and signal in the same plot", 800, 600);
     cSigPlusBack->SetCanvasSize(1800,1000);
@@ -556,27 +559,33 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     
     TCanvas* cAllPt = new TCanvas("cAllPt","All pT,D final deltaR distribution");
     cAllPt->SetCanvasSize(1800,1000);
-    vectorOutputs.hSubtracted_allPtSummed->Draw();
+    outputStruct.hSubtracted_allPtSummed->GetXaxis()->SetRangeUser(0.0, 0.5);
+    outputStruct.hSubtracted_allPtSummed->SetTitle(";#DeltaR;yields");
+    outputStruct.hSubtracted_allPtSummed->SetMarkerStyle(kFullCircle);
+    outputStruct.hSubtracted_allPtSummed->SetMarkerColor(kRed);
+    outputStruct.hSubtracted_allPtSummed->SetLineColor(kRed);
+    outputStruct.hSubtracted_allPtSummed->Draw();
+    double statBoxPos = gPad->GetUxmax();
+    latex->DrawLatex(statBoxPos-0.35, 0.5, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
 
     cout << "Plotting...\n";
 
     //
     // Storing images
     //
-    TString imagePath = "../Images/1-SignalTreatment/";
+    TString imagePath = "../Images/1-SignalTreatment/SideBand/";
     c1d_fit->Update();
     c1d_fit->SaveAs(imagePath + "SB_BackSub_invariant_mass.png");
     c_2d->Update();
     c_2d->SaveAs(imagePath + "SB_BackSub_2d_deltaR_vs_invmass.png");
     cSigPlusBack->Update();
-    cSigPlusBack->SaveAs(imagePath + "SB_BackSub_subtracted_pT_bins.png");
+    cSigPlusBack->SaveAs(imagePath + "SB_BackSub_yield_pT_bins.png");
     cAllPt->Update();
-    cAllPt->SaveAs(imagePath + "SB_BackSub_all_pT_summed");
+    cAllPt->SaveAs(imagePath + "SB_BackSub_yield_pT_summed.png");
 
     //
     // Storing in a single pdf file
     //
-    
     c1d_fit->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
     c_2d->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cSigPlusBack->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
@@ -606,13 +615,15 @@ void BackgroundSubtraction(){
     double m_0_parameter = 1.86484;
     double sigmaInitial = 0.012;
     // jet pT cuts
-    double jetptMin = 5; // GeV
-    double jetptMax = 30; // GeV
+    std::vector<double> ptjetBinEdges = {5., 7., 15., 30.};
+    double jetptMin = ptjetBinEdges[0]; // GeV
+    double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
     // deltaR histogram
     int deltaRbins = 10000; // deltaRbins = numberOfPoints, default=10 bins for [0. 0.4]
-    double minDeltaR = 0.;
-    double maxDeltaR = 0.4;
-    std::vector<double> deltaRBinEdges = {0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4}; // TODO: investigate structure before 0.005
+    //std::vector<double> deltaRBinEdges = {0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4}; // TODO: investigate structure before 0.005
+    std::vector<double> deltaRBinEdges = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; // chosen by Nima
+    double minDeltaR = deltaRBinEdges[0];
+    double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
     // mass histogram
     int massBins = 50; // default=100 
     double minMass = 1.67;

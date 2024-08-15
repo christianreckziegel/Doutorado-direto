@@ -47,12 +47,20 @@ double DeltaPhi(double phi1, double phi2) {
 }
 
 struct FeedDownData {
+    // non-prompt D0s
     TH2D* hMeasured;                                        // 2D representation of response measured data
     TH2D* hMeasuredTotalRange;                              // 2D total measured range data
     TH2D* hDivMeasuredRange;                                // 2D division of (total range) / (inside range) for measured data
     TH2D* hTruth;                                           // 2D representation of response truth data
     TH2D* hTruthTotalRange;                                 // 2D total truth range data
     TH2D* hDivTruthRange;                                   // 2D division of (inside range) / (total range) for truth data
+
+    // prompt D0s
+    TH2D* hTruthPrompt;                                           // 2D representation of response truth data for prompt D0s
+    TH2D* hTruthTotalRangePrompt;                                 // 2D total truth range data for prompt D0s
+    TH2D* hDivTruthRangePrompt;                                   // 2D division of (inside range) / (total range) for truth data for prompt D0s
+
+
     TH2D* hFolded;                                          // 2D representation of folded data from method 1
     TH2D* nimaFolded;                                       // 2D folded data with Nima's folding function
     std::pair<TH2D*, TH2D*> refInputRange; // first = total, second = inside range
@@ -64,6 +72,46 @@ struct FeedDownData {
     std::vector<TH1D*> hEfficiencies;                       // inclusive = 0, prompt only = 1, non-prompt only = 2
     TH1D* hBackSubCorrected;                                // prompt efficiency corrected Delta R distributions
     TH1D* hSBFeedDownSubtracted;                            // non-prompt subtracted Delta R distribution, all pT,D
+
+    // Testing histograms
+    TH2D* MCPoutRespInput;                                  // outside response matrix before folding on particle level data
+    TH2D* MCPoutRespSub;                                    // outside response matrix before folding on particle level data by subtraction
+    TH2D* MCDoutRespInput;                                  // outside response matrix before folding on detector level data
+    TH2D* JetPtOutRespInput;                                // outside response matrix before folding detector vs. particle level jet pT
+    TH2D* DeltaROutRespInput;                               // outside response matrix before folding detector vs. particle level delta R
+    TH2D* JetPtInRespInput;                                 // inside response matrix before folding detector vs. particle level jet pT
+    TH2D* DeltaRInRespInput;                                // inside response matrix before folding detector vs. particle level delta R
+    TH2D* JetPtTotalInput;
+    TH2D* DeltaRTotalInput;
+    
+    // Low pT,jet,det < 5 GeV/c jet plots
+    TH2D* hLowJetPtOut;                                     // pT,jet,det vs pT,jet,part for pT,jet,det < 5 GeV/c
+    TH2D* hLowPtJet_deltaRPart_vs_jetPtPart;                //
+    TH2D* hLowPtJet_deltaRDet_vs_deltaRPart;                //
+    std::vector<TH2D*> hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1;
+    std::vector<TH2D*> hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2;
+    std::vector<TH2D*> hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3;
+    std::vector<TH2D*> hbinLowEff_MCDpTjet_vs_MCPpTjet_line1; // pT matching
+    std::vector<TH2D*> hbinLowEff_MCDpTjet_vs_MCPpTjet_line2;
+    std::vector<TH2D*> hbinLowEff_MCDpTjet_vs_MCPpTjet_line3;
+    std::vector<TH2D*> hbinLowEff_MCDpThf_vs_MCDpTjet_line1; // D0 pT
+    std::vector<TH2D*> hbinLowEff_MCDpThf_vs_MCDpTjet_line2;
+    std::vector<TH2D*> hbinLowEff_MCDpThf_vs_MCDpTjet_line3;
+
+    // inside response range
+    std::vector<TH2D*> hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1;
+    std::vector<TH2D*> hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2;
+    std::vector<TH2D*> hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3;
+
+    // total range
+    std::vector<TH2D*> hbin_MCDdeltaR_vs_zLoss_line1;
+    std::vector<TH2D*> hbin_MCDdeltaR_vs_zLoss_line2;
+    std::vector<TH2D*> hbin_MCDdeltaR_vs_zLoss_line3;
+    std::vector<TH2D*> hbin_MCDdeltaR_vs_zLoss_less5_line1; // pT,jet^{det} < 5 GeV/c
+    std::vector<TH2D*> hbin_MCDdeltaR_vs_zLoss_less5_line2;
+    std::vector<TH2D*> hbin_MCDdeltaR_vs_zLoss_less5_line3;
+    TH2D* hLossRatio;
+
 };
 
 // Obtain the bin edges of a histogram (useful for asymmetrical bin sizes)
@@ -118,15 +166,77 @@ FeedDownData createHistograms(const std::vector<double>& xBinEdges_particle, con
     //
     // Matching histograms for folding process
     //
-    // 2D original information
-    dataContainer.hTruth = new TH2D("hTruth2D", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
-    dataContainer.hTruthTotalRange = new TH2D("hTruth2D_totalRange", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    // 2D truth and particle level data
+    dataContainer.hTruth = new TH2D("hTruth2D", "Truth;#DeltaR^{part};p_{T,jet}^{part}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    dataContainer.hTruthTotalRange = new TH2D("hTruth2D_totalRange", "Truth;#DeltaR^{part};p_{T,jet}^{part}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    dataContainer.MCPoutRespSub = new TH2D("MCPoutRespSub", "Truth outside response range by subtraction;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+
+    dataContainer.hTruthPrompt = new TH2D("hTruth2DPrompt", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    dataContainer.hTruthTotalRangePrompt = new TH2D("hTruth2D_totalRangePrompt", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+
+    dataContainer.hLossRatio = new TH2D("hLossRatio", "Frequency of loss of less than 5 GeV/c jets;#DeltaR^{part};p_{T,jet}^{part}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+
+    std::vector<double> xAxis = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; //{0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 1., 2., 3., 4., 5.}
+    std::vector<double> zAxis = {5., 7., 15., 30., 50, 75., 100., 150., 200., 250., 300.}; //{5., 7., 15., 30., 50, 75., 100., 150., 200., 250., 300.}
+    //dataContainer.MCPoutRespInput = new TH2D("MCPoutRespInput", "Truth outside response, before folding;#DeltaR;p_{T,jet}", 100, 0., 5., 350, 0., 350.);
+    dataContainer.MCPoutRespInput = new TH2D("MCPoutRespInput", "Truth outside response, before folding;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    //dataContainer.MCPoutRespInput = new TH2D("MCPoutRespInput", "Truth outside response, before folding;#DeltaR;p_{T,jet}", xAxis.size()-1, xAxis.data(), zAxis.size()-1, zAxis.data());
+    dataContainer.hLowJetPtOut = new TH2D("hLowJetPtOut", "Truth outside response (p_{T,jet}^{det} < 5), before folding;p_{T,jet}^{det};p_{T,jet}^{gen}", 100, 0., 6., 600, 0., 150.);
+    dataContainer.hLowPtJet_deltaRPart_vs_jetPtPart = new TH2D("hLowPtJet_deltaRPart_vs_jetPtPart","Truth outside response p_{T,jet}^{det} < 5 GeV/c jet;#DeltaR^{part};p_{T,jet}^{part}",xNumBinEdges-1, xBinEdges_particle.data(),zNumBinEdges-1, zBinEdges_particle.data());
+    dataContainer.hLowPtJet_deltaRDet_vs_deltaRPart = new TH2D("hLowPtJet_deltaRDet_vs_deltaRPart","Truth outside response p_{T,jet}^{det} < 5 GeV/c jet;#DeltaR^{det};#DeltaR^{part}",xNumBinEdges-1, xBinEdges_particle.data(),xNumBinEdges-1, xBinEdges_particle.data());
+
+    
+    for (int iColumn = 0; iColumn < 6; iColumn++) {
+        
+        // Low kinematic efficiency histograms
+        dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1.emplace_back(new TH2D(Form("binLowEff_MCDdeltaR_vs_MCDpTjet_line1_column%d",iColumn),Form("Truth outside response for bin line 1, column %d;#DeltaR^{det};p_{T,jet}^{det}",iColumn),100, 0., 0.4, 100, 0., 30.));
+        dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2.emplace_back(new TH2D(Form("binLowEff_MCDdeltaR_vs_MCDpTjet_line2_column%d",iColumn),Form("Truth outside response for bin line 2, column %d;#DeltaR^{det};p_{T,jet}^{det}",iColumn),100, 0., 0.4, 100, 0., 30.));
+        dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3.emplace_back(new TH2D(Form("binLowEff_MCDdeltaR_vs_MCDpTjet_line3_column%d",iColumn),Form("Truth outside response for bin line 3, column %d;#DeltaR^{det};p_{T,jet}^{det}",iColumn),100, 0., 0.4, 100, 0., 30.));
+
+        // Low kinematic efficiency histograms: pT matching
+        dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1.emplace_back(new TH2D(Form("hbinLowEff_MCDpTjet_vs_MCPpTjet_line1_column%d",iColumn),Form("Truth outside response for bin line 1, column %d;p_{T,jet}^{det};p_{T,jet}^{part}",iColumn),100, 0., 30., 100, 0., 30.));
+        dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2.emplace_back(new TH2D(Form("hbinLowEff_MCDpTjet_vs_MCPpTjet_line2_column%d",iColumn),Form("Truth outside response for bin line 2, column %d;p_{T,jet}^{det};p_{T,jet}^{part}",iColumn),100, 0., 30., 100, 0., 30.));
+        dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3.emplace_back(new TH2D(Form("hbinLowEff_MCDpTjet_vs_MCPpTjet_line3_column%d",iColumn),Form("Truth outside response for bin line 3, column %d;p_{T,jet}^{det};p_{T,jet}^{part}",iColumn),100, 0., 30., 100, 0., 30.));
+
+        // Inside response range bin histograms
+        dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1.emplace_back(new TH2D(Form("hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1_column%d",iColumn),Form("Truth inside response for bin line 1, column %d;#DeltaR^{det};p_{T,jet}^{det}",iColumn),100, 0., 0.4, 100, 0., 30.));
+        dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2.emplace_back(new TH2D(Form("hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2_column%d",iColumn),Form("Truth inside response for bin line 2, column %d;#DeltaR^{det};p_{T,jet}^{det}",iColumn),100, 0., 0.4, 100, 0., 30.));
+        dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3.emplace_back(new TH2D(Form("hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3_column%d",iColumn),Form("Truth inside response for bin line 3, column %d;#DeltaR^{det};p_{T,jet}^{det}",iColumn),100, 0., 0.4, 100, 0., 30.));
+
+        // investigating D0 pT outside response range for each bin
+        dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1.emplace_back(new TH2D(Form("hbinLowEff_MCDpThf_vs_MCDpTjet_line1_column%d",iColumn),Form("Truth outside response for bin line 1, column %d;#DeltaR^{part};z = p_{T,D}^{part}/p_{T,jet}^{part}",iColumn),100, 0., 0.4, 100, 0., 1.));
+        dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2.emplace_back(new TH2D(Form("hbinLowEff_MCDpThf_vs_MCDpTjet_line2_column%d",iColumn),Form("Truth outside response for bin line 2, column %d;#DeltaR^{part};z = p_{T,D}^{part}/p_{T,jet}^{part}",iColumn),100, 0., 0.4, 100, 0., 1.));
+        dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3.emplace_back(new TH2D(Form("hbinLowEff_MCDpThf_vs_MCDpTjet_line3_column%d",iColumn),Form("Truth outside response for bin line 3, column %d;#DeltaR^{part};z = p_{T,D}^{part}/p_{T,jet}^{part}",iColumn),100, 0., 0.4, 100, 0., 1.));
+
+        // pT loss
+        dataContainer.hbin_MCDdeltaR_vs_zLoss_line1.emplace_back(new TH2D(Form("hbin_MCDdeltaR_vs_zLoss_line1_column%d",iColumn),Form("Total range for bin line 1, column %d;#DeltaR^{part};z_{loss} = (p_{T,D}^{part}-p_{T,D}^{det})/p_{T,jet}^{part}",iColumn),100, 0., 0.4, 100, 0., 1.));
+        dataContainer.hbin_MCDdeltaR_vs_zLoss_line2.emplace_back(new TH2D(Form("hbin_MCDdeltaR_vs_zLoss_line2_column%d",iColumn),Form("Total range for bin line 2, column %d;#DeltaR^{part};z_{loss} = (p_{T,D}^{part}-p_{T,D}^{det})/p_{T,jet}^{part}",iColumn),100, 0., 0.4, 100, 0., 1.));
+        dataContainer.hbin_MCDdeltaR_vs_zLoss_line3.emplace_back(new TH2D(Form("hbin_MCDdeltaR_vs_zLoss_line3_column%d",iColumn),Form("Total range for bin line 3, column %d;#DeltaR^{part};z_{loss} = (p_{T,D}^{part}-p_{T,D}^{det})/p_{T,jet}^{part}",iColumn),100, 0., 0.4, 100, 0., 1.));
+        // Reconstructed with less the 5 GeV/c on detector level pT,jet
+        dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1.emplace_back(new TH2D(Form("hbin_MCDdeltaR_vs_zLoss_less5_line1%d",iColumn),Form("Total range with p_{T,jet}^{det} < 5 GeV/c for bin line 1, column %d;#DeltaR^{part};z_{loss} = (p_{T,D}^{part}-p_{T,D}^{det})/p_{T,jet}^{part}",iColumn),100, 0., 0.4, 100, 0., 1.));
+        dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2.emplace_back(new TH2D(Form("hbin_MCDdeltaR_vs_zLoss_less5_line2%d",iColumn),Form("Total range with p_{T,jet}^{det} < 5 GeV/c for bin line 2, column %d;#DeltaR^{part};z_{loss} = (p_{T,D}^{part}-p_{T,D}^{det})/p_{T,jet}^{part}",iColumn),100, 0., 0.4, 100, 0., 1.));
+        dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3.emplace_back(new TH2D(Form("hbin_MCDdeltaR_vs_zLoss_less5_line3%d",iColumn),Form("Total range with p_{T,jet}^{det} < 5 GeV/c for bin line 3, column %d;#DeltaR^{part};z_{loss} = (p_{T,D}^{part}-p_{T,D}^{det})/p_{T,jet}^{part}",iColumn),100, 0., 0.4, 100, 0., 1.));
+    }
+
+
+    // 2D measured and detector level data
     xNumBinEdges = xBinEdges_detector.size();
     yNumBinEdges = yBinEdges_detector.size();
     zNumBinEdges = zBinEdges_detector.size();
     dataContainer.hMeasured = new TH2D("hMeasured2D", "Measured;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
     dataContainer.hMeasuredTotalRange = new TH2D("hMeasured2D_totalRange", "Measured;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
     dataContainer.hFolded = new TH2D("hFolded2D", "Folded;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
+
+    // zAxis.size()-1, zAxis.data(), zAxis.size()-1, zAxis.data()
+    // xAxis.size()-1, xAxis.data(), xAxis.size()-1, xAxis.data()
+    dataContainer.JetPtOutRespInput = new TH2D("JetPtOutRespInput", "Truth outside response, before folding;p_{T,jet}^{det};p_{T,jet}^{part}", 100, 0., 100., 100, 0., 100.);
+    dataContainer.DeltaROutRespInput = new TH2D("DeltaROutRespInput", "Truth outside response, before folding;#DeltaR^{det};#DeltaR^{part}", 100, -0.1, 3.0, 100, -0.1, 3.0);
+
+    dataContainer.JetPtInRespInput = new TH2D("JetPtInRespInput", "Truth inside response, before folding;p_{T,jet}^{det};p_{T,jet}^{part}", 100, 0., 100., 100, 0., 100.);
+    dataContainer.DeltaRInRespInput = new TH2D("DeltaRInRespInput", "Truth inside response, before folding;#DeltaR^{det};#DeltaR^{part}", 100, -0.1, 3.0, 100, -0.1, 3.0);
+
+    dataContainer.JetPtTotalInput = new TH2D("JetPtTotalInput", "Total truth, before folding;p_{T,jet}^{det};p_{T,jet}^{part}", 100, 0., 100., 100, 0., 100.);
+    dataContainer.DeltaRTotalInput = new TH2D("DeltaRTotalInput", "Total truth, before folding;#DeltaR^{det};#DeltaR^{part}", 100, -0.1, 3.0, 100, -0.1, 3.0);
 
     cout << "Matching histograms created.\n";
 
@@ -182,6 +292,7 @@ FeedDownData createHistograms(const std::vector<double>& xBinEdges_particle, con
  * @see createHistograms() [Instanciate histograms.]
  */
 void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataContainer, double jetptMin, double jetptMax) {
+    
     // Defining cuts
     const double jetRadius = 0.4;
     const double MCPetaCut = 0.9 - jetRadius; // on particle level jet
@@ -190,6 +301,10 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
     const double MCDyCut = 0.8; // on detector level D0
     const double MCPDeltaRcut = 0.4; // on particle level delta R
     const double MCDDeltaRcut = 0.4; // on detector level delta R
+    const double MCPHfPtMincut = 3.; // on particle level
+    const double MCDHfPtMincut = 3.; // on detector level
+    const double MCPHfPtMaxcut = 30.; // on particle level
+    const double MCDHfPtMaxcut = 30.; // on detector level
 
     //
     // MC generator level tree and histograms
@@ -221,9 +336,8 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
 
         // calculating delta R
         double deltaR = sqrt(pow(eta_jet-eta_cand,2) + pow(DeltaPhi(phi_jet,phi_cand),2));
-
         // Fill 2D histogram considering jet pT and detector acceptance
-        if ((abs(eta_cand) < MCPetaCut) && (abs(y_cand) < MCPyCut) && (pt_jet > jetptMin) && (pt_jet < jetptMax)  && (deltaR < MCPDeltaRcut)) {
+        if ((abs(eta_jet) < MCPetaCut) && (abs(y_cand) < MCPyCut) && ((pt_jet >= jetptMin) && (pt_jet < jetptMax)) && ((deltaR >= 0.) && (deltaR < MCPDeltaRcut)) && ((pt_cand >= MCPHfPtMincut) && (pt_cand < MCPHfPtMaxcut))) {
             
             dataContainer.hPowheg[0]->Fill(delta_r_jet, pt_cand, pt_jet);
             
@@ -283,27 +397,446 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
         double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
         double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
 
+        // Fill total truth
+        /*if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && !MCPhfprompt
+            //&&(abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && !MCDhfprompt) {
+            ) {
+            dataContainer.JetPtTotalInput->Fill(MCDjetPt, MCPjetPt);
+            dataContainer.DeltaRTotalInput->Fill(MCDDeltaR, MCPDeltaR);
+        }*/
+        
+        
+        // Fill each bin inside response range for each line
+        // line 1
+        if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[0]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[0]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+            
+        }
+        if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[1]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[1]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[2]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[2]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[3]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[3]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[4]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[4]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[5]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[5]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+
+        // line 2
+        if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[0]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[0]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[1]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[1]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[2]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[2]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[3]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[3]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[4]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[4]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[5]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[5]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+
+        // line 3
+        if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[0]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[0]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[1]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[1]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[2]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[2]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[3]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[3]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[4]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[4]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+        if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+            dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[5]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            if (MCDjetPt < 5.) {
+                dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[5]->Fill(MCDDeltaR,(MCPjetPt-MCDjetPt)/MCPjetPt);
+            }
+        }
+
         // Fill histograms considering jet pT and detector acceptance for NON-PROMPT particles, inside response range (truth and measured levels)
-        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt && MCPDeltaR < MCPDeltaRcut &&
-            (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && (MCDjetPt > jetptMin) && (MCDjetPt < jetptMax) && !MCDhfprompt && MCDDeltaR < MCDDeltaRcut) {
+        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)) && !MCPhfprompt
+            && (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut)) && !MCDhfprompt) {
+            //&& (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && (MCDjetPt < jetptMax) && ((MCDDeltaR > 0.) && (MCDDeltaR < MCDDeltaRcut)) && !MCDhfprompt) { // all expect the problem
+            //&& (abs(MCDjetEta) < MCDetaCut)) { // not ok level 2
+            //&& (abs(MCDhfY) < MCDyCut)) { // ok 100%
+            //&& ((MCDjetPt > jetptMin) && (MCDjetPt < jetptMax))) { // not ok level 1
+            //&& (MCDjetPt > jetptMin)) { // not ok level 1 (this is the source of the problem)
+            //&& (MCDjetPt < jetptMax)) { // ok almost 100%
+            //&& !MCDhfprompt) { // ok 100%
+            //&& (MCDDeltaR < MCDDeltaRcut)) { // ok almost 100%
+
             // Filling measured 2D histogram
             dataContainer.hMeasured->Fill(MCDDeltaR, MCDjetPt);
 
             // Filling truth 2D histogram
             dataContainer.hTruth->Fill(MCPDeltaR, MCPjetPt);
+
+            // Fill detector-particle level match histograms
+            dataContainer.JetPtInRespInput->Fill(MCDjetPt, MCPjetPt);
+            dataContainer.DeltaRInRespInput->Fill(MCDDeltaR, MCPDeltaR);
+
+            // Fill each bin inside response range for each line
+            // line 1
+            if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[0]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[1]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[2]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[3]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[4]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[5]->Fill(MCDDeltaR, MCDjetPt);
+            }
+
+            // line 2
+            if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[0]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[1]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[2]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[3]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[4]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[5]->Fill(MCDDeltaR, MCDjetPt);
+            }
+
+            // line 3
+            if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[0]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[1]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[2]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[3]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[4]->Fill(MCDDeltaR, MCDjetPt);
+            }
+            if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[5]->Fill(MCDDeltaR, MCDjetPt);
+            }
         
-        }
+        } else {
+            // all entries outside response ranges, but inside particle level range (non-prompt particles)
+            if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)) && !MCPhfprompt
+                //&& (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && !MCDhfprompt) {
+                ) {
+                dataContainer.MCPoutRespInput->Fill(MCPDeltaR, MCPjetPt);
+                dataContainer.JetPtOutRespInput->Fill(MCDjetPt, MCPjetPt);
+                dataContainer.DeltaROutRespInput->Fill(MCDDeltaR, MCPDeltaR);
 
-        // Fill reference input total truth range only histograms
-        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt && MCPDeltaR < MCPDeltaRcut) {
+                // Fill each bin for each line
+                // line 1
+                if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[0]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[0]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[1]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[1]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[2]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[2]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[3]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[3]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[4]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[4]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[5]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[5]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+
+                // line 2
+                if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[0]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[0]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[1]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[1]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[2]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[2]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[3]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[3]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[4]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[4]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[5]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[5]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+
+                // line 3
+                if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[0]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[0]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[1]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[1]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[2]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[2]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[3]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[3]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[4]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[4]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[5]->Fill(MCDDeltaR, MCDjetPt);
+
+
+                    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[5]->Fill(MCPDeltaR, MCPhfPt/MCPjetPt);
+                }
+
+                // Fill each bin for each line: pT matching
+                // line 1
+                if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[0]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[1]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[2]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[3]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[4]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 5.) && (MCPjetPt < 7.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[5]->Fill(MCDjetPt, MCPjetPt);
+                }
+
+                // line 2
+                if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[0]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[1]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[2]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[3]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[4]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 7.) && (MCPjetPt < 15.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[5]->Fill(MCDjetPt, MCPjetPt);
+                }
+
+                // line 3
+                if (((MCPDeltaR >= 0.) && (MCPDeltaR < 0.05)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[0]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.05) && (MCPDeltaR < 0.1)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[1]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.1) && (MCPDeltaR < 0.15)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[2]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.15) && (MCPDeltaR < 0.2)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[3]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.2) && (MCPDeltaR < 0.3)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[4]->Fill(MCDjetPt, MCPjetPt);
+                }
+                if (((MCPDeltaR >= 0.3) && (MCPDeltaR < 0.4)) && ((MCPjetPt >= 15.) && (MCPjetPt < 30.))) {
+                    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[5]->Fill(MCDjetPt, MCPjetPt);
+                }
+
+            }
+        }
+        // all entries outside response ranges, but inside particle level range (non-prompt particles)
+        /*if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)) && !MCPhfprompt
+            && (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && (((MCDjetPt < jetptMin) || (MCDjetPt > jetptMax)) || ((MCPDeltaR < 0.) || (MCDDeltaR > MCDDeltaRcut))) && !MCDhfprompt) {
+            //) {
+            dataContainer.MCPoutRespInput->Fill(MCPDeltaR, MCPjetPt); // this one
+            dataContainer.JetPtOutRespInput->Fill(MCDjetPt, MCPjetPt);
+            dataContainer.DeltaROutRespInput->Fill(MCDDeltaR, MCPDeltaR);
+        }*/
+
+        // Fill reference input total truth range only histograms for non-prompt particles
+        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)) && !MCPhfprompt) {
             dataContainer.hTruthTotalRange->Fill(MCPDeltaR, MCPjetPt);
+            //dataContainer.MCPoutRespInput->Fill(MCPDeltaR, MCPjetPt);
+            dataContainer.JetPtTotalInput->Fill(MCDjetPt, MCPjetPt);
+            dataContainer.DeltaRTotalInput->Fill(MCDDeltaR, MCPDeltaR);
         }
 
-        // Fill reference output total measured range histograms
-        if ((abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && (MCDjetPt > jetptMin) && (MCDjetPt < jetptMax) && !MCDhfprompt && MCDDeltaR < MCDDeltaRcut) {
+        // investigating the low pT detector level jets
+        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt > jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR > 0.) && (MCPDeltaR < MCPDeltaRcut)) && !MCPhfprompt
+            && (MCDjetPt < jetptMin)) {
+            
+            dataContainer.hLowJetPtOut->Fill(MCDjetPt, MCPjetPt);
+            dataContainer.hLowPtJet_deltaRPart_vs_jetPtPart->Fill(MCPDeltaR, MCPjetPt);
+            dataContainer.hLowPtJet_deltaRDet_vs_deltaRPart->Fill(MCDDeltaR, MCPDeltaR);
+        }
+        
+
+        // Fill reference output total measured range histograms for non-prompt particles
+        if ((abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut)) && !MCDhfprompt) {
             dataContainer.hMeasuredTotalRange->Fill(MCDDeltaR, MCDjetPt);
         }
         
+        // Fill histograms considering jet pT and detector acceptance for PROMPT particles, inside response range (truth and measured levels)
+        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && MCPhfprompt && (MCPDeltaR < MCPDeltaRcut) &&
+            (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && (MCDjetPt > jetptMin) && (MCDjetPt < jetptMax) && MCDhfprompt && (MCDDeltaR < MCDDeltaRcut)) {
+
+            // Filling truth 2D histogram
+            dataContainer.hTruthPrompt->Fill(MCPDeltaR, MCPjetPt);
+        
+        }
+        // Fill reference input total truth range only histograms for prompt particles
+        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && MCPhfprompt && (MCPDeltaR < MCPDeltaRcut)) {
+            dataContainer.hTruthTotalRangePrompt->Fill(MCPDeltaR, MCPjetPt);
+        }
+
     }
 
     cout << "Response matched histograms filled.\n";
@@ -321,6 +854,10 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile
     const double MCDyCut = 0.8; // on detector level D0
     const double MCPDeltaRcut = 0.4; // on particle level delta R
     const double MCDDeltaRcut = 0.4; // on detector level delta R
+    const double MCPHfPtMincut = 3.; // on particle level
+    const double MCDHfPtMincut = 3.; // on detector level
+    const double MCPHfPtMaxcut = 30.; // on particle level
+    const double MCDHfPtMaxcut = 30.; // on detector level
 
     // method 1: create 2D response matrix of non-prompt flattened Delta R and pT,jet, for overall pT,D
     //(DeltaR_detector, pTjet_detector, DeltaR_particle, pTjet_particle) -> flattened to (detector, particle)
@@ -328,7 +865,7 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile
 
     std::cout << "Response matrix created.\n";
 
-    // Access non-prompt efficiency
+    // Access prompt efficiency
     TH1D* hEffPrompt = (TH1D*)fEfficiency->Get("efficiency_prompt");
 
     //__________________________________________-
@@ -383,9 +920,9 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile
         double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
 
         // Fill histograms considering jet pT and detector acceptance
-        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && (MCPjetPt > jetptMin) && (MCPjetPt < jetptMax) && !MCPhfprompt && MCPDeltaR < MCPDeltaRcut &&
-            (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && (MCDjetPt > jetptMin) && (MCDjetPt < jetptMax) && !MCDhfprompt && MCDDeltaR < MCDDeltaRcut) {
-            
+        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)) && !MCPhfprompt
+            && (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut)) && !MCDhfprompt) {
+        
             // Find the bin corresponding to the given pT value
             int bin = hEffPrompt->FindBin(MCDhfPt);
             // Get the efficiency value from the bin content
@@ -565,6 +1102,23 @@ TH2D* removeOutsideData(FeedDownData& dataContainer) {
     // Correct POWHEG data multiplying each bin by corresponding kinematic efficiency
     hPowhegCorrected->Multiply(dataContainer.hDivTruthRange);
 
+    //
+    // Testing with prompt D0s
+    //
+
+    // Start with histogram of intersection area only (inside response ranges)
+    dataContainer.hDivTruthRangePrompt = dynamic_cast<TH2D*>(dataContainer.hTruthPrompt->Clone("hInsideOverTotalDivision_Prompt"));
+
+    // Get kinematic efficiency 2D histogram diving intersection over total range
+    dataContainer.hDivTruthRangePrompt->Divide(dataContainer.hTruthTotalRange);
+    dataContainer.hDivTruthRangePrompt->SetTitle("Inside response range / Total truth range (Kinematic efficiency?), prompt D0s");
+
+    // Outside range by subtraction
+    dataContainer.MCPoutRespSub = (TH2D*)dataContainer.hTruthTotalRange->Clone("MCPoutRespSub");
+    dataContainer.MCPoutRespSub->SetTitle("Outside response matrix by subtraction;#DeltaR^{gen};p_{T,jet}^{gen}");
+    dataContainer.MCPoutRespSub->Add(dataContainer.hTruth,-1);
+
+
     return hPowhegCorrected;
 
 }
@@ -588,31 +1142,43 @@ TH2D* addOutsideData(FeedDownData& dataContainer) {
     TH2D* hFoldedCorrected = (TH2D*)dataContainer.hAllptDPowheg[0]->Clone("hPowhegRangeCorrected");
 
     // Start with histogram of total range area
-    dataContainer.hDivMeasuredRange = dynamic_cast<TH2D*>(dataContainer.hMeasuredTotalRange->Clone("hInsideOverTotalDivision"));
+    dataContainer.hDivMeasuredRange = dynamic_cast<TH2D*>(dataContainer.hMeasured->Clone("hInsideOverTotalDivision"));
 
     // Get kinematic efficiency 2D histogram diving total range over intersection
-    dataContainer.hDivMeasuredRange->Divide(dataContainer.hMeasured);
-    dataContainer.hDivMeasuredRange->SetTitle("Total measured range / Inside response range");
+    dataContainer.hDivMeasuredRange->Divide(dataContainer.hMeasuredTotalRange);
+    dataContainer.hDivMeasuredRange->SetTitle("Inside response range / Total measured range (kinematic efficiency?)");
 
     // Correct POWHEG data multiplying each bin by corresponding kinematic efficiency
-    hFoldedCorrected->Multiply(dataContainer.hDivMeasuredRange);
+    hFoldedCorrected->Divide(dataContainer.hDivMeasuredRange);
 
     return hFoldedCorrected;
 
 }
 
 // Get POWHEG and data luminosities
-void getLuminosities(TFile* fPowheg, double luminosity_powheg) {
-    //
+void getLuminosities(TFile* fPowheg, double luminosity_powheg, double luminosity) {
+    // Accessing total cross section value stored in first bin (in mb)
     TH1D* xSection_powheg = dynamic_cast<TH1D*>(fPowheg->Get("fHistXsection"));
-    // total luminosity stored in first bin (in mb)
-    luminosity_powheg = xSection_powheg->GetBinContent(1);
-    std::cout << "POWHEG luminosity = " << luminosity_powheg << " mb" << std::endl;
+    double crossSecPowheg = xSection_powheg->GetBinContent(1);
+
+    // Accessing number of events
+    TTree* tree_D0 = dynamic_cast<TTree*>(fPowheg->Get("tree_D0"));
+    double numOfEventsPowheg = tree_D0->GetEntries();
+
+    // integrated POWHEG luminosity 
+    luminosity_powheg = numOfEventsPowheg/crossSecPowheg;
+    std::cout << "POWHEG luminosity = " << luminosity_powheg << " mb^-1" << std::endl;
+
+    // Calculating measured luminosity
+    double numOfEventsMeasured = 3000000;
+    double crossSecMeasured = 57.8; // in mb units
+    luminosity = numOfEventsMeasured/crossSecMeasured;
+    std::cout << "Measured luminosity = " << luminosity << " mb^-1" << std::endl;
 
 }
 
 // Module for folding particle level data from POWHEG simulation
-void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, double& luminosity_powheg, TFile* fEfficiency) {
+void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, TFile* fEfficiency, double& luminosity, double& BR) {
     //
     // 0th step: clone 3D histogram in order to save the smeared at the end (while keeping the original)
     //
@@ -635,10 +1201,10 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, double&
     dataContainer.hAllptDPowheg.emplace_back(hAllptDPow); // [0] = not folded
 
     //
-    // 2nd step: scale by integrated luminosity
+    // 2nd step: scale by 1 over POWHEG integrated luminosity
     // (skip this step for now)
     //hTreatedPowheg->Scale(1/luminosity);
-    dataContainer.hAllptDPowheg[0]->Scale(luminosity); //luminosity/luminosity_powheg
+    dataContainer.hAllptDPowheg[0]->Scale(1/luminosity_powheg); //luminosity/luminosity_powheg
 
     //
     // 3rd step: scale by efficiency ratio
@@ -689,6 +1255,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, double&
     // 4th step: remove outside of response range data in POWHEG
     //
     TH2D* hPowhegOutRange = removeOutsideData(dataContainer);
+    hPowhegOutRange->SetTitle("Before folding, with outside range correction (kinematic efficiency?)");
     dataContainer.hAllptDPowheg.emplace_back(hPowhegOutRange); // [1] = data outside response range removed
 
     //
@@ -719,6 +1286,11 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity, double&
     TH2D* hFoldedOutRange = addOutsideData(dataContainer);
     dataContainer.hAllptDPowheg.emplace_back(hFoldedOutRange); // [4] = entries outside response range added to folded data
     dataContainer.hAllptDPowheg[4]->SetTitle("Folded data with outside range correction");
+
+    //
+    // 7th step::scale by measured integrated luminosity and BR of D0 decay channel
+    //
+    dataContainer.hAllptDPowheg[4]->Scale(BR*luminosity);
 
     std::cout << "Generator data smeared.\n";
 }
@@ -751,6 +1323,9 @@ void feedDown(FeedDownData& dataContainer, const double jetptMin, const double j
 
 void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, const double& jetptMax) {
     cout << "Plotting histograms...\n";
+
+    // Changing color palette to a bigger one
+    gStyle->SetPalette(kRainBow);
 
     // Create a TLatex object to display text on the canvas
     TLatex* latex = new TLatex();
@@ -861,10 +1436,13 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
     latex->DrawLatex(statBoxPos-0.35, 0.75, "Folded non-prompt D0 jets");
 
+    //
     // Truth data range plots
+    //
     TCanvas* cInputRangeCorrection = new TCanvas("cInputRangeCorrection","Outside response range data removal");
     cInputRangeCorrection->Divide(3,2);
     cInputRangeCorrection->cd(1);
+    dataContainer.hTruth->SetStats(0);
     dataContainer.hTruth->SetTitle("Inside response range truth data");
     dataContainer.hTruth->Draw("text");
     cInputRangeCorrection->cd(2);
@@ -881,11 +1459,14 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     dataContainer.hDivTruthRange->SetStats(0);
     dataContainer.hDivTruthRange->Draw("text");
 
+    //
     // Detector level data range plots
+    //
     TCanvas* cOutputRangeCorrection = new TCanvas("cOutputRangeCorrection","Outside response range data addition");
     cOutputRangeCorrection->Divide(3,2);
     cOutputRangeCorrection->cd(1);
-    dataContainer.hMeasured->SetTitle("Inside response range truth data");
+    dataContainer.hMeasured->SetStats(0);
+    dataContainer.hMeasured->SetTitle("Inside response range measured data");
     dataContainer.hMeasured->Draw("text");
     cOutputRangeCorrection->cd(2);
     dataContainer.hMeasuredTotalRange->SetStats(0);
@@ -900,6 +1481,408 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     cOutputRangeCorrection->cd(3);
     dataContainer.hDivMeasuredRange->SetStats(0);
     dataContainer.hDivMeasuredRange->Draw("text");
+
+    //
+    // Outside response range data removal for prompts
+    //
+    TCanvas* cMCPoutRespPrompt = new TCanvas("cMCPoutRespPrompt","Outside response range data removal for prompts");
+    cMCPoutRespPrompt->Divide(2,2);
+    cMCPoutRespPrompt->cd(1);
+    dataContainer.hTruthPrompt->SetStats(0);
+    dataContainer.hTruthPrompt->SetTitle("Inside response range truth data, prompt");
+    dataContainer.hTruthPrompt->Draw("text");
+    cMCPoutRespPrompt->cd(2);
+    dataContainer.hTruthTotalRangePrompt->SetStats(0);
+    dataContainer.hTruthTotalRangePrompt->SetTitle("Total truth range data, prompt");
+    dataContainer.hTruthTotalRangePrompt->Draw("text");
+    cMCPoutRespPrompt->cd(3);
+    dataContainer.MCPoutRespInput->Draw("colz");
+    cMCPoutRespPrompt->cd(4);
+    dataContainer.hDivTruthRangePrompt->SetStats(0);
+    dataContainer.hDivTruthRangePrompt->Draw("text");
+
+    //
+    // Detector vs. particle match
+    //
+    TCanvas* cDetPartMatch = new TCanvas("cDetPartMatch","Detector vs. particle level match");
+    cDetPartMatch->Divide(2,3);
+    cDetPartMatch->cd(1);
+    dataContainer.JetPtInRespInput->SetStats(0);
+    dataContainer.JetPtInRespInput->Draw("colz");
+    cDetPartMatch->cd(2);
+    dataContainer.DeltaRInRespInput->SetStats(0);
+    dataContainer.DeltaRInRespInput->Draw("colz");
+    cDetPartMatch->cd(3);
+    dataContainer.JetPtTotalInput->SetStats(0);
+    dataContainer.JetPtTotalInput->Draw("colz");
+    cDetPartMatch->cd(4);
+    dataContainer.DeltaRTotalInput->SetStats(0);
+    dataContainer.DeltaRTotalInput->Draw("colz");
+    cDetPartMatch->cd(5);
+    dataContainer.JetPtOutRespInput->SetStats(0);
+    dataContainer.JetPtOutRespInput->Draw("colz");
+    cDetPartMatch->cd(6);
+    dataContainer.DeltaROutRespInput->SetStats(0);
+    dataContainer.DeltaROutRespInput->Draw("colz");
+
+    TCanvas* cOutResp = new TCanvas("cOutResp","Outside response range, non-prompt, by subtraction");
+    cOutResp->Divide(2,2);
+    cOutResp->cd(1);
+    dataContainer.MCPoutRespSub->SetStats(0);
+    dataContainer.MCPoutRespSub->Draw("text");
+    cOutResp->cd(2);
+    dataContainer.MCPoutRespInput->SetStats(0);
+    dataContainer.MCPoutRespInput->Draw("text");
+    cOutResp->cd(3);
+    dataContainer.hLowJetPtOut->Draw("colz");
+    //dataContainer.MCPoutRespSub->ProjectionX()->Draw();
+    cOutResp->cd(4);
+    dataContainer.MCPoutRespSub->ProjectionY()->Draw();
+
+    TCanvas* cLowJetPt = new TCanvas("cLowJetPt","Low pT jets (< 5 GeV/c)");
+    cLowJetPt->Divide(2,3);
+    cLowJetPt->cd(1);
+    dataContainer.hLowPtJet_deltaRPart_vs_jetPtPart->Draw("colz");
+    cLowJetPt->cd(2);
+    dataContainer.hLowPtJet_deltaRDet_vs_deltaRPart->Draw("colz");
+    cLowJetPt->cd(3);
+    dataContainer.hLowPtJet_deltaRPart_vs_jetPtPart->ProjectionX()->Draw();
+    cLowJetPt->cd(4);
+    dataContainer.hLowPtJet_deltaRDet_vs_deltaRPart->ProjectionX()->Draw();
+    cLowJetPt->cd(5);
+    dataContainer.hLowPtJet_deltaRPart_vs_jetPtPart->ProjectionY()->Draw();
+    cLowJetPt->cd(6);
+    TH1D* hLowPtJet_deltaRDet_vs_deltaRPart_px = (TH1D*)dataContainer.hLowPtJet_deltaRDet_vs_deltaRPart->ProjectionX()->Clone("hLowPtJet_deltaRDet_vs_deltaRPart_px");
+    //hLowPtJet_deltaRDet_vs_deltaRPart_px->Sumw2();
+    hLowPtJet_deltaRDet_vs_deltaRPart_px->GetXaxis()->SetTitle("#DeltaR");
+    hLowPtJet_deltaRDet_vs_deltaRPart_px->SetLineColor(kBlue);
+    hLowPtJet_deltaRDet_vs_deltaRPart_px->Draw();
+    TH1D* hLowPtJet_deltaRDet_vs_deltaRPart_py = dataContainer.hLowPtJet_deltaRDet_vs_deltaRPart->ProjectionY();
+    //hLowPtJet_deltaRDet_vs_deltaRPart_py->Sumw2();
+    hLowPtJet_deltaRDet_vs_deltaRPart_py->SetLineColor(kRed);
+    hLowPtJet_deltaRDet_vs_deltaRPart_py->Draw("same");
+    TLegend * lLowPtJet_deltaR = new TLegend(0.65,0.49,0.8,0.62);
+    lLowPtJet_deltaR->AddEntry(hLowPtJet_deltaRDet_vs_deltaRPart_py,"particle", "lpe"); // particle level deltaR
+    lLowPtJet_deltaR->AddEntry(hLowPtJet_deltaRDet_vs_deltaRPart_px,"detector", "lpe"); // detector level deltaR
+    lLowPtJet_deltaR->Draw();
+
+    TCanvas* cLowEffTotal = new TCanvas("cLowEffTotal","Low efficiency total plot");
+    cLowEffTotal->Divide(6,3);
+    // line 1
+    cLowEffTotal->cd(13);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[0]->Draw("colz");
+    cLowEffTotal->cd(14);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[1]->Draw("colz");
+    cLowEffTotal->cd(15);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[2]->Draw("colz");
+    cLowEffTotal->cd(16);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[3]->Draw("colz");
+    cLowEffTotal->cd(17);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[4]->Draw("colz");
+    cLowEffTotal->cd(18);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line1[5]->Draw("colz");
+    // line 2
+    cLowEffTotal->cd(7);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[0]->Draw("colz");
+    cLowEffTotal->cd(8);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[1]->Draw("colz");
+    cLowEffTotal->cd(9);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[2]->Draw("colz");
+    cLowEffTotal->cd(10);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[3]->Draw("colz");
+    cLowEffTotal->cd(11);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[4]->Draw("colz");
+    cLowEffTotal->cd(12);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line2[5]->Draw("colz");
+    // line 3
+    cLowEffTotal->cd(1);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[0]->Draw("colz");
+    cLowEffTotal->cd(2);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[1]->Draw("colz");
+    cLowEffTotal->cd(3);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[2]->Draw("colz");
+    cLowEffTotal->cd(4);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[3]->Draw("colz");
+    cLowEffTotal->cd(5);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[4]->Draw("colz");
+    cLowEffTotal->cd(6);
+    dataContainer.hbinLowEff_MCDdeltaR_vs_MCDpTjet_line3[5]->Draw("colz");
+
+    TCanvas* cLowEffJetPtMatch = new TCanvas("cLowEffJetPtMatch","Low efficiency total plot: pT matching");
+    cLowEffJetPtMatch->Divide(6,3);
+    // line 1
+    cLowEffJetPtMatch->cd(13);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[0]->Draw("colz");
+    cLowEffJetPtMatch->cd(14);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[1]->Draw("colz");
+    cLowEffJetPtMatch->cd(15);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[2]->Draw("colz");
+    cLowEffJetPtMatch->cd(16);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[3]->Draw("colz");
+    cLowEffJetPtMatch->cd(17);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[4]->Draw("colz");
+    cLowEffJetPtMatch->cd(18);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line1[5]->Draw("colz");
+    // line 2
+    cLowEffJetPtMatch->cd(7);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[0]->Draw("colz");
+    cLowEffJetPtMatch->cd(8);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[1]->Draw("colz");
+    cLowEffJetPtMatch->cd(9);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[2]->Draw("colz");
+    cLowEffJetPtMatch->cd(10);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[3]->Draw("colz");
+    cLowEffJetPtMatch->cd(11);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[4]->Draw("colz");
+    cLowEffJetPtMatch->cd(12);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line2[5]->Draw("colz");
+    // line 3
+    cLowEffJetPtMatch->cd(1);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[0]->Draw("colz");
+    cLowEffJetPtMatch->cd(2);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[1]->Draw("colz");
+    cLowEffJetPtMatch->cd(3);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[2]->Draw("colz");
+    cLowEffJetPtMatch->cd(4);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[3]->Draw("colz");
+    cLowEffJetPtMatch->cd(5);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[4]->Draw("colz");
+    cLowEffJetPtMatch->cd(6);
+    dataContainer.hbinLowEff_MCDpTjet_vs_MCPpTjet_line3[5]->Draw("colz");
+
+    TCanvas* cInsRespBinTotal = new TCanvas("cInsRespBinTotal","Inside response range bin total plot");
+    cInsRespBinTotal->Divide(6,3);
+    // line 1
+    cInsRespBinTotal->cd(13);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[0]->Draw("colz");
+    cInsRespBinTotal->cd(14);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[1]->Draw("colz");
+    cInsRespBinTotal->cd(15);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[2]->Draw("colz");
+    cInsRespBinTotal->cd(16);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[3]->Draw("colz");
+    cInsRespBinTotal->cd(17);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[4]->Draw("colz");
+    cInsRespBinTotal->cd(18);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line1[5]->Draw("colz");
+    // line 2
+    cInsRespBinTotal->cd(7);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[0]->Draw("colz");
+    cInsRespBinTotal->cd(8);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[1]->Draw("colz");
+    cInsRespBinTotal->cd(9);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[2]->Draw("colz");
+    cInsRespBinTotal->cd(10);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[3]->Draw("colz");
+    cInsRespBinTotal->cd(11);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[4]->Draw("colz");
+    cInsRespBinTotal->cd(12);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line2[5]->Draw("colz");
+    // line 3
+    cInsRespBinTotal->cd(1);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[0]->Draw("colz");
+    cInsRespBinTotal->cd(2);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[1]->Draw("colz");
+    cInsRespBinTotal->cd(3);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[2]->Draw("colz");
+    cInsRespBinTotal->cd(4);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[3]->Draw("colz");
+    cInsRespBinTotal->cd(5);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[4]->Draw("colz");
+    cInsRespBinTotal->cd(6);
+    dataContainer.hbinInsResp_MCDdeltaR_vs_MCDpTjet_line3[5]->Draw("colz");
+
+    TCanvas* cOutRespHfPt = new TCanvas("cOutRespHfPt","Outside response range bin D0 pT plots");
+    cOutRespHfPt->Divide(6,3);
+    // line 1
+    cOutRespHfPt->cd(13);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[0]->Draw("colz");
+    cOutRespHfPt->cd(14);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[1]->Draw("colz");
+    cOutRespHfPt->cd(15);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[2]->Draw("colz");
+    cOutRespHfPt->cd(16);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[3]->Draw("colz");
+    cOutRespHfPt->cd(17);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[4]->Draw("colz");
+    cOutRespHfPt->cd(18);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line1[5]->Draw("colz");
+    // line 2
+    cOutRespHfPt->cd(7);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[0]->Draw("colz");
+    cOutRespHfPt->cd(8);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[1]->Draw("colz");
+    cOutRespHfPt->cd(9);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[2]->Draw("colz");
+    cOutRespHfPt->cd(10);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[3]->Draw("colz");
+    cOutRespHfPt->cd(11);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[4]->Draw("colz");
+    cOutRespHfPt->cd(12);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line2[5]->Draw("colz");
+    // line 3
+    cOutRespHfPt->cd(1);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[0]->Draw("colz");
+    cOutRespHfPt->cd(2);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[1]->Draw("colz");
+    cOutRespHfPt->cd(3);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[2]->Draw("colz");
+    cOutRespHfPt->cd(4);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[3]->Draw("colz");
+    cOutRespHfPt->cd(5);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[4]->Draw("colz");
+    cOutRespHfPt->cd(6);
+    dataContainer.hbinLowEff_MCDpThf_vs_MCDpTjet_line3[5]->Draw("colz");
+    
+    
+    TCanvas* cTotalJetPtLoss = new TCanvas("cTotalJetPtLoss","Total range bin jet pT loss plots");
+    cTotalJetPtLoss->Divide(6,3);
+    // line 1
+    cTotalJetPtLoss->cd(13);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[0]->Draw("colz");
+    cTotalJetPtLoss->cd(14);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[1]->Draw("colz");
+    cTotalJetPtLoss->cd(15);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[2]->Draw("colz");
+    cTotalJetPtLoss->cd(16);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[3]->Draw("colz");
+    cTotalJetPtLoss->cd(17);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[4]->Draw("colz");
+    cTotalJetPtLoss->cd(18);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[5]->Draw("colz");
+    // line 2
+    cTotalJetPtLoss->cd(7);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[0]->Draw("colz");
+    cTotalJetPtLoss->cd(8);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[1]->Draw("colz");
+    cTotalJetPtLoss->cd(9);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[2]->Draw("colz");
+    cTotalJetPtLoss->cd(10);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[3]->Draw("colz");
+    cTotalJetPtLoss->cd(11);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[4]->Draw("colz");
+    cTotalJetPtLoss->cd(12);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[5]->Draw("colz");
+    // line 3
+    cTotalJetPtLoss->cd(1);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[0]->Draw("colz");
+    cTotalJetPtLoss->cd(2);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[1]->Draw("colz");
+    cTotalJetPtLoss->cd(3);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[2]->Draw("colz");
+    cTotalJetPtLoss->cd(4);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[3]->Draw("colz");
+    cTotalJetPtLoss->cd(5);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[4]->Draw("colz");
+    cTotalJetPtLoss->cd(6);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[5]->Draw("colz");
+
+    TCanvas* cTotalJetPtLossLess5 = new TCanvas("cTotalJetPtLossLess5","Total range bin jet pT loss (< 5 GeV/c) plots");
+    cTotalJetPtLossLess5->Divide(6,3);
+    // line 1
+    cTotalJetPtLossLess5->cd(13);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[0]->Draw("colz");
+    cTotalJetPtLossLess5->cd(14);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[1]->Draw("colz");
+    cTotalJetPtLossLess5->cd(15);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[2]->Draw("colz");
+    cTotalJetPtLossLess5->cd(16);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[3]->Draw("colz");
+    cTotalJetPtLossLess5->cd(17);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[4]->Draw("colz");
+    cTotalJetPtLossLess5->cd(18);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[5]->Draw("colz");
+    // line 2
+    cTotalJetPtLossLess5->cd(7);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[0]->Draw("colz");
+    cTotalJetPtLossLess5->cd(8);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[1]->Draw("colz");
+    cTotalJetPtLossLess5->cd(9);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[2]->Draw("colz");
+    cTotalJetPtLossLess5->cd(10);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[3]->Draw("colz");
+    cTotalJetPtLossLess5->cd(11);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[4]->Draw("colz");
+    cTotalJetPtLossLess5->cd(12);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[5]->Draw("colz");
+    // line 3
+    cTotalJetPtLossLess5->cd(1);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[0]->Draw("colz");
+    cTotalJetPtLossLess5->cd(2);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[1]->Draw("colz");
+    cTotalJetPtLossLess5->cd(3);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[2]->Draw("colz");
+    cTotalJetPtLossLess5->cd(4);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[3]->Draw("colz");
+    cTotalJetPtLossLess5->cd(5);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[4]->Draw("colz");
+    cTotalJetPtLossLess5->cd(6);
+    dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[5]->Draw("colz");
+
+    // Loss of jets with less than 5 GeV/c
+    double LessThanFiveEntries;
+    double TotalEntries;
+    // line 1
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[0]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[0]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(1,1,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[1]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[1]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(2,1,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[2]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[2]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(3,1,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[3]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[3]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(4,1,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[4]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[4]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(5,1,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line1[5]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line1[5]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(6,1,LessThanFiveEntries/TotalEntries);
+    // line 2
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[0]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[0]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(1,2,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[1]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[1]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(2,2,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[2]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[2]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(3,2,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[3]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[3]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(4,2,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[4]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[4]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(5,2,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line2[5]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line2[5]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(6,2,LessThanFiveEntries/TotalEntries);
+    // line 3
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[0]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[0]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(1,3,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[1]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[1]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(2,3,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[2]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[2]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(3,3,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[3]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[3]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(4,3,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[4]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[4]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(5,3,LessThanFiveEntries/TotalEntries);
+    LessThanFiveEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_less5_line3[5]->GetEntries();
+    TotalEntries = dataContainer.hbin_MCDdeltaR_vs_zLoss_line3[5]->GetEntries();
+    dataContainer.hLossRatio->SetBinContent(6,3,LessThanFiveEntries/TotalEntries);
+    // Drawing
+    TCanvas* cLossFrequency = new TCanvas("cLossFrequency","Frequency of loss of jets with less than 5 GeV/c");
+    cLossFrequency->cd();
+    dataContainer.hLossRatio->Draw("text");
 
     //
     // For image printing
@@ -980,8 +1963,9 @@ void FeedDownSubtraction(){
     time(&start); // initial instant of program execution
 
     // Luminosity (for now arbitrary)
-    double luminosity = 1000000;
+    double luminosity = 0;
     double luminosity_powheg = 0;
+    double BR = 0.0393; // D0 -> KPi decay channel branching ratio = (3.93 +- 0.04) %
 
     // D0 mass in GeV/c^2
     double m_0_parameter = 1.86484;
@@ -993,22 +1977,22 @@ void FeedDownSubtraction(){
     double jetptMax = ptjetBinEdges_particle[ptjetBinEdges_particle.size() - 1]; // GeV
     // deltaR histogram
     int deltaRbins = 10000; // deltaRbins = numberOfPoints, default=10 bins for [0. 0.4]
-    double minDeltaR = 0.;
-    double maxDeltaR = 0.4;
-    std::vector<double> deltaRBinEdges_particle = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5}; // TODO: investigate structure before 0.005: 0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4
-    std::vector<double> deltaRBinEdges_detector = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5};
+    std::vector<double> deltaRBinEdges_particle = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; // TODO: investigate structure before 0.005: 0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4
+    std::vector<double> deltaRBinEdges_detector = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4};
+    double minDeltaR = deltaRBinEdges_particle[0];
+    double maxDeltaR = deltaRBinEdges_particle[deltaRBinEdges_particle.size() - 1];
     // mass histogram
     int massBins = 100; 
     double minMass = 1.67;
     double maxMass = 2.1;
     // pT,D histograms
     int ptBins = 100;
-    double minPt = 0.;
-    double maxPt = 30.;
     std::vector<double> ptDBinEdges_particle = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
     std::vector<double> ptDBinEdges_detector = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
+    double minPtD = ptDBinEdges_particle[0];
+    double maxPtD = ptDBinEdges_particle[ptDBinEdges_particle.size() - 1];
 
-    // opening files
+    // Opening files
     TFile* fPowheg = new TFile("../SimulatedData/POWHEG/trees_powheg_fd_central.root","read");
     TFile* fSimulatedO2 = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/AO2D_merged_All.root","read");
     TFile* fEfficiency = new TFile(Form("../2-Efficiency/backSubEfficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
@@ -1041,10 +2025,10 @@ void FeedDownSubtraction(){
     buildResponseMatrix(dataContainer, fSimulatedO2, fEfficiency, jetptMin, jetptMax);
 
     // Get POWHEG and data luminosities
-    getLuminosities(fPowheg, luminosity_powheg);
+    getLuminosities(fPowheg, luminosity_powheg, luminosity);
 
     // Fold data using two methods
-    smearGeneratorData(dataContainer, luminosity, luminosity_powheg, fEfficiency);
+    smearGeneratorData(dataContainer, luminosity_powheg, fEfficiency, luminosity, BR);
 
     // Subtract non-prompt distribution from prompt efficiency corrected ones
     feedDown(dataContainer, jetptMin, jetptMax, fEfficiency);
