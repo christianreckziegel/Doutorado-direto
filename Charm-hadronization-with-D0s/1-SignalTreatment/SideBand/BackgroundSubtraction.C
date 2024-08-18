@@ -17,11 +17,9 @@ double DeltaPhi(double phi1, double phi2) {
     return dphi;
 }
 
-//
-//
+//__________________________________________________________________________________________________________________________
 // Fit functions
-//
-//
+
 // Custom background fit function
 Double_t backgroundFunction(Double_t* x, Double_t* par) {
     Double_t m = x[0];
@@ -48,27 +46,23 @@ Double_t customFitFunction(Double_t* x, Double_t* par) {
     return backgroundFunction(x,par) + signalFunction(x,&par[2]);
 }
 
-
-
 //__________________________________________________________________________________________________________________________
-// Module to create TH2D histograms including interest variable: uniform bin sizes
-std::vector<TH2D*> createHistograms(const std::vector<const char*>& names, const std::vector<const char*>& titles,
-                                    int xbins, double xmin, double xmax, int ybins, double ymin, double ymax) {
+// Module to create TH2D histograms including interest variable: UNIFORM bin sizes
+std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int xbins, double xmin, double xmax, int ybins, double ymin, double ymax) {
     std::vector<TH2D*> histograms;
-    for (size_t i = 0; i < names.size(); ++i) {
-        histograms.push_back(new TH2D(names[i], titles[i], xbins, xmin, xmax, ybins, ymin, ymax));
+    for (size_t i = 0; i < ptDBinEdges.size() - 1; ++i) {
+        histograms.push_back(new TH2D(Form("histMass%zu",i+1), Form("%.0f < p_{T,D} < %.0f GeV/c;m(K#pi) GeV/c^{2};#DeltaR",ptDBinEdges[i],ptDBinEdges[i+1]), xbins, xmin, xmax, ybins, ymin, ymax));
         histograms[i]->Sumw2();
         
     }
     return histograms;
 }
 // Overloading function
-// Module to create TH2D histograms including interest variable: variable bin sizes
-std::vector<TH2D*> createHistograms(const std::vector<const char*>& names, const std::vector<const char*>& titles,
-                                    int xbins, double xmin, double xmax, const std::vector<double>& yBinEdges) {
+// Module to create TH2D histograms including interest variable: VARIABLE bin sizes
+std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int xbins, double xmin, double xmax, const std::vector<double>& yBinEdges) {
     std::vector<TH2D*> histograms;
-    for (size_t i = 0; i < names.size(); ++i) {
-        histograms.push_back(new TH2D(names[i], titles[i], xbins, xmin, xmax, yBinEdges.size() - 1, yBinEdges.data()));
+    for (size_t i = 0; i < ptDBinEdges.size() - 1; ++i) {
+        histograms.push_back(new TH2D(Form("histMass%zu",i+1), Form("%.0f < p_{T,D} < %.0f GeV/c;m(K#pi) GeV/c^{2};#DeltaR",ptDBinEdges[i],ptDBinEdges[i+1]), xbins, xmin, xmax, yBinEdges.size() - 1, yBinEdges.data()));
         histograms[i]->Sumw2();
         
     }
@@ -77,11 +71,17 @@ std::vector<TH2D*> createHistograms(const std::vector<const char*>& names, const
 //__________________________________________________________________________________________________________________________
 
 // Module to fill 2D histograms from TTree data
-void fillHistograms(TTree* tree, const std::vector<TH2D*>& histograms, double jetptMin, double jetptMax) {
+void fillHistograms(TFile* fDist, const std::vector<TH2D*>& histograms, double jetptMin, double jetptMax, std::vector<double>& ptDBinEdges) {
+    
     // Defining cuts
-    double jetRadius = 0.4;
-    double etaCut = 0.9 - jetRadius; // on jet
-    double yCut = 0.8; // on D0
+    // Defining cuts
+    const double jetRadius = 0.4;
+    const double etaCut = 0.9 - jetRadius; // on particle level jet
+    const double yCut = 0.8; // on detector level D0
+    const double DeltaRcut = 0.4; // on particle level delta R
+
+    // Accessing TTree
+    TTree* tree = (TTree*)fDist->Get("DF_2261906078621696/O2jetdisttable");
 
     // Assuming histograms and tree data correspond in some way
     if (!tree) {
@@ -107,30 +107,23 @@ void fillHistograms(TTree* tree, const std::vector<TH2D*>& histograms, double je
 
         // calculating delta R
         double deltaR = sqrt(pow(jetEta-hfEta,2) + pow(DeltaPhi(jetPhi,hfPhi),2));
-        //double deltaR = sqrt(pow(jetEta-hfEta,2) + pow(jetPhi-hfPhi,2));
-
+        
         // Fill each histogram with their respective pT intervals
-        if ((abs(hfEta) < etaCut) && (abs(hfY) < yCut) && (jetPt > jetptMin && jetPt < jetptMax)) {
-            if ((hfPt > 3 && hfPt < 4) && (histograms.size() > 0)) {
-                histograms[0]->Fill(hfMass, deltaR);
-            } else if ((hfPt > 4 && hfPt < 5) && (histograms.size() > 1)) {
-                histograms[1]->Fill(hfMass, deltaR);
-            } else if ((hfPt > 5 && hfPt < 6) && (histograms.size() > 2)) {
-                histograms[2]->Fill(hfMass, deltaR);
-            } else if ((hfPt > 6 && hfPt < 7) && (histograms.size() > 3)) {
-                histograms[3]->Fill(hfMass, deltaR);
-            } else if ((hfPt > 7 && hfPt < 8) && (histograms.size() > 4)) {
-                histograms[4]->Fill(hfMass, deltaR);
-            } else if ((hfPt > 8 && hfPt < 10) && (histograms.size() > 5)) {
-                histograms[5]->Fill(hfMass, deltaR);
-            } else if ((hfPt > 10 && hfPt < 12) && (histograms.size() > 6)) {
-                histograms[6]->Fill(hfMass, deltaR);
-            } else if ((hfPt > 12 && hfPt < 15) && (histograms.size() > 7)) {
-                histograms[7]->Fill(hfMass, deltaR);
-            } else if ((hfPt > 15 && hfPt < 30) && (histograms.size() > 8)) {
-                histograms[8]->Fill(hfMass, deltaR);
+        if ((abs(hfEta) < etaCut) && (abs(hfY) < yCut) && ((jetPt >= jetptMin) && (jetPt < jetptMax)) && ((deltaR >= 0.) && (deltaR < DeltaRcut))) {
+            
+            bool filled = false;
+            // Loop through pT,D bin edges to find the appropriate histogram and fill it
+            for (size_t iEdge = 0; iEdge < ptDBinEdges.size() - 1 && !filled; iEdge++) {
+                if ((hfPt >= ptDBinEdges[iEdge]) && (hfPt < ptDBinEdges[iEdge + 1])) {
+                    histograms[iEdge]->Fill(hfMass, deltaR);
+                    filled = true; // Exit the loop once the correct histogram is found
+                }
+                
             }
+            
         }
+
+        
         
         
     }
@@ -235,13 +228,12 @@ std::vector<double> bestFit(TH1D* histogram, double minMass, double maxMass, int
  * This function takes the 2D histograms, perfom the fit of the signal+background model
  * and store the n TF1 signal+background model fit objects and n TF1 background model 
  * fit objects .
- *
- * @param[in] names Histogram names vector
+ * 
  * @param[in] histograms Histograms vector
  * @return Vector of fit objects TF1.
  */
 // Module to perform fits to histograms
-std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::vector<TH2D*>& histograms2d, InitialParam parametersVectors, double minMass, double maxMass) {
+std::vector<TF1*> performFit(const std::vector<TH2D*>& histograms2d, InitialParam parametersVectors, double minMass, double maxMass) {
     
     TH1D* tempHist;
     // creating 1D mass projection histograms
@@ -293,7 +285,7 @@ std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::v
         
 
         // Create the fit function, enforce constraints on some parameters, set initial parameter values and performing fit
-        fittings.push_back(new TF1(Form("totalFit_%s", names[iHisto]), customFitFunction, minMass, maxMass, 5)); // 5 parameters
+        fittings.push_back(new TF1(Form("totalFit_histMass%zu", iHisto + 1), customFitFunction, minMass, maxMass, 5)); // 5 parameters
 
         bool usePreSetParam = false; // use given pre-set initial parameter value
         if (usePreSetParam) {
@@ -327,7 +319,7 @@ std::vector<TF1*> performFit(const std::vector<const char*>& names, const std::v
         // Getting total parameter values
         double a_par = fittings[iHisto]->GetParameter(0); // Get the value of parameter 'a'
         double b_par = fittings[iHisto]->GetParameter(1); // Get the value of parameter 'b'
-        fittings.push_back(new TF1(Form("backFit_%s", names[iHisto]), backgroundFunction, minMass, maxMass, 2));
+        fittings.push_back(new TF1(Form("backFit_histMass%zu", iHisto), backgroundFunction, minMass, maxMass, 2));
         fittings[fittings.size()-1]->SetParameters(a_par,b_par); // fittings.size()-1 = the latest added to the vector
         fittings[fittings.size()-1]->SetLineStyle(kDashed);
         fittings[fittings.size()-1]->SetLineColor(kGreen);
@@ -573,7 +565,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     //
     // Storing images
     //
-    TString imagePath = "../Images/1-SignalTreatment/SideBand/";
+    TString imagePath = "../../Images/1-SignalTreatment/SideBand/";
     c1d_fit->Update();
     c1d_fit->SaveAs(imagePath + "SB_BackSub_invariant_mass.png");
     c_2d->Update();
@@ -595,7 +587,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
 void SaveData(SubtractionResult outputStruct, double jetptMin, double jetptMax){
     // Open output file
     TFile* outFile = new TFile(Form("backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
-    // Loop over signal extracted histograms
+    // Loop over background subtracted histograms
     for (size_t iHisto = 0; iHisto < outputStruct.signalHist.size(); iHisto++) {
         // store each histogram in file
         outputStruct.subtractedHist[iHisto]->Write();
@@ -618,6 +610,8 @@ void BackgroundSubtraction(){
     std::vector<double> ptjetBinEdges = {5., 7., 15., 30.};
     double jetptMin = ptjetBinEdges[0]; // GeV
     double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
+    // pT,D bins
+    std::vector<double> ptDBinEdges = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
     // deltaR histogram
     int deltaRbins = 10000; // deltaRbins = numberOfPoints, default=10 bins for [0. 0.4]
     //std::vector<double> deltaRBinEdges = {0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4}; // TODO: investigate structure before 0.005
@@ -626,7 +620,7 @@ void BackgroundSubtraction(){
     double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
     // mass histogram
     int massBins = 50; // default=100 
-    double minMass = 1.67;
+    double minMass = 1.67; // 1.72
     double maxMass = 2.1;
     // Initial parameter values
     InitialParam parametersVectors;
@@ -637,36 +631,28 @@ void BackgroundSubtraction(){
     parametersVectors.paramSigma = { sigmaInitial, 2*sigmaInitial, 1.4*sigmaInitial, 1.25*sigmaInitial, 1.5*sigmaInitial, 1.5*sigmaInitial, 2*sigmaInitial, 3*sigmaInitial, 2*sigmaInitial };
     
 
-    // opening file
-    TFile* fDist = new TFile("../ExperimentalData/Hyperloop_output/AO2D.root","read");
+    // Opening data file
+    TFile* fDist = new TFile("../../ExperimentalData/Hyperloop_output/AO2D.root","read");
     if (!fDist || fDist->IsZombie()) {
         std::cerr << "Error: Unable to open the ROOT file." << std::endl;
     }
 
     // Create multiple histograms
-    std::vector<const char*> names = {"histMass1", "histMass2", "histMass3", 
-                                      "histMass4", "histMass5", "histMass6",
-                                      "histMass7", "histMass8", "histMass9"}; // Names of histograms
-    std::vector<const char*> titles = {"3 < p_{T,D} < 4 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", "4 < p_{T,D} < 5 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", "5 < p_{T,D} < 6 GeV/c;m(K#pi) GeV/c^{2};#DeltaR",
-                                       "6 < p_{T,D} < 7 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", "7 < p_{T,D} < 8 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", "8 < p_{T,D} < 10 GeV/c;m(K#pi) GeV/c^{2};#DeltaR",
-                                       "10 < p_{T,D} < 12 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", "12 < p_{T,D} < 15 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", "15 < p_{T,D} < 30 GeV/c;m(K#pi) GeV/c^{2};#DeltaR"}; // Titles of histograms
-    std::vector<TH2D*> histograms = createHistograms(names, titles, 
-                                                       massBins, minMass, maxMass, // mass histograms
-                                                       deltaRBinEdges); // deltaR histograms with asymmetrical bin widths
-                                                       //deltaRbins, minDeltaR, maxDeltaR); // deltaR histograms
+    std::vector<TH2D*> histograms = createHistograms(ptDBinEdges,                                 // the pT,D edges will determine the number of mass histograms
+                                                     massBins, minMass, maxMass,                  // mass histograms binning
+                                                     deltaRBinEdges);                             // deltaR histograms with asymmetrical bin widths
+                                                     //deltaRbins, minDeltaR, maxDeltaR);         // deltaR histograms
     
     // bin sizes
     cout << "Mass bin width = " << (maxMass-minMass)/massBins << endl;
     cout << "DeltaR bin width = " << (maxDeltaR-minDeltaR)/deltaRbins << endl;
 
-    // Accessing TTree
-    TTree* tDist = (TTree*)fDist->Get("DF_2261906078621696/O2jetdisttable");
 
     // Fill histograms
-    fillHistograms(tDist, histograms, jetptMin, jetptMax);
+    fillHistograms(fDist, histograms, jetptMin, jetptMax, ptDBinEdges);
 
     // Perform fits
-    std::vector<TF1*> fittings = performFit(names,histograms, parametersVectors, minMass, maxMass);
+    std::vector<TF1*> fittings = performFit(histograms, parametersVectors, minMass, maxMass);
 
     // signal/side-band region parameters
     int signalSigmas = 2; // 2
@@ -684,6 +670,12 @@ void BackgroundSubtraction(){
 
     // Storing final histograms to output file
     SaveData(finalDeltaR,jetptMin,jetptMax);
+
+    // Cleanup
+    for (auto hist : histograms) {
+        delete hist;
+    }
+    histograms.clear();
 
     time(&end); // end instant of program execution
     // Calculating total time taken by the program. 
