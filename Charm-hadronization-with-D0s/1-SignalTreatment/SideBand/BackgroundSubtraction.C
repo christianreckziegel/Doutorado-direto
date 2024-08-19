@@ -620,7 +620,7 @@ void BackgroundSubtraction(){
     double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
     // mass histogram
     int massBins = 50; // default=100 
-    double minMass = 1.67; // 1.72
+    double minMass = 1.72; // 1.72
     double maxMass = 2.1;
     // Initial parameter values
     InitialParam parametersVectors;

@@ -430,9 +430,11 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
         }
         
         
-        
-        
     }
+
+    std::cout << "hSubtracted_allPtSummed entries = " << vectorOutputs.hSubtracted_allPtSummed->GetEntries() << std::endl;
+    
+    std::cout << "Background estimated and subtracted below signal region for current iteration.\n\n";
 
     // Return the output struct object containing filled histogram vectors
     return vectorOutputs;
@@ -566,7 +568,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     double statBoxPos = gPad->GetUxmax();
     latex->DrawLatex(statBoxPos-0.35, 0.5, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
 
-    cout << "Plotting...\n";
+    cout << "Plotting...\n\n";
 
     //
     // Storing images
@@ -592,7 +594,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     cAllPt->Print(Form("sb_subtraction_deltaR_%s.pdf)",jetPtRange.Data()));
 }
 
-void SaveData(TFile* fOut, SubtractionResult outputStruct, double& jetptMin, double& jetptMax){
+void SaveData(TFile* fOut, SubtractionResult& outputStruct, double& jetptMin, double& jetptMax){
     
     // Create a directory name for the current pT range
     const std::string dirName = Form("JetPtRange_%.0f_%.0f", jetptMin, jetptMax);
@@ -614,9 +616,13 @@ void SaveData(TFile* fOut, SubtractionResult outputStruct, double& jetptMin, dou
         outputStruct.subtractedHist[iHisto]->Write();
     }
     
+    // Saving all pT,D summed histogram
+    outputStruct.hSubtracted_allPtSummed->Write();
+
     // Return to the root directory
     fOut->cd();
     
+    std::cout << "Iteration data stored on ROOT output file.\n\n";
     
 }
 
@@ -627,9 +633,22 @@ void UpdateFinalDistribution(TH2D* hDeltaR_vs_ptJet, SubtractionResult& outputSt
     hSumDeltaR->SetTitle("All p_{T,D} bins summed");
     hSumDeltaR->Reset();
 
+    std::cout << "outputStruct.subtractedHist[0] DeltaR content = " << outputStruct.subtractedHist[0]->GetBinContent(1) << std::endl;
+
     // Sum all the signalHist histograms
     for (auto& hSignal : outputStruct.subtractedHist) {
-        hSumDeltaR->Add(hSignal);
+
+        if (hSignal->GetEntries() > 0 && !std::isnan(hSignal->GetEntries())) {
+            std::cout << "hSignal DeltaR content = " << hSignal->GetBinContent(1) << std::endl;
+            std::cout << "hSignal number of entries = " << hSignal->GetEntries() << std::endl;
+            hSumDeltaR->Add(hSignal);
+            std::cout << "hSumDeltaR DeltaR content = " << hSumDeltaR->GetBinContent(1) << std::endl;
+            std::cout << "hSumDeltaR number of entries = " << hSumDeltaR->GetEntries() << std::endl;
+        } else {
+            std::cerr << "Skipping empty histogram.\n";
+        }
+        
+        
     }
     
     // Get the bin index for the current jet pt range in the final 2D histogram
@@ -637,10 +656,19 @@ void UpdateFinalDistribution(TH2D* hDeltaR_vs_ptJet, SubtractionResult& outputSt
 
     // Loop over all deltaR bins and update the final 2D histogram
     for (int binX = 1; binX <= hSumDeltaR->GetNbinsX(); binX++) {
+        if (std::isnan(hSumDeltaR->GetBinContent(binX)))
+        {
+            /* code */
+        }
+        
         double deltaRContent = hSumDeltaR->GetBinContent(binX);
         double deltaRError = hSumDeltaR->GetBinError(binX);
 
         std::cout << "bin (" << binX << "," << binY << ") has content = " << deltaRContent << std::endl;
+
+        std::cout << "For summed and stored in struct:\n";
+        std::cout << "DeltaR content = " << outputStruct.hSubtracted_allPtSummed->GetBinContent(binX) << std::endl;
+        
         // Update the final 2D histogram with the content and error
         hDeltaR_vs_ptJet->SetBinContent(binX, binY, deltaRContent);
         hDeltaR_vs_ptJet->SetBinError(binX, binY, deltaRError);
@@ -649,6 +677,7 @@ void UpdateFinalDistribution(TH2D* hDeltaR_vs_ptJet, SubtractionResult& outputSt
     // Clean up the temporary histogram
     delete hSumDeltaR;
     
+    std::cout << "Final distribution updated for current iteration.\n\n";
 }
 
 void ClearData(SubtractionResult& outputStruct, std::vector<TH2D*>& massHistograms) {
@@ -684,10 +713,15 @@ void ClearData(SubtractionResult& outputStruct, std::vector<TH2D*>& massHistogra
     for (auto& hist : massHistograms) {
         delete hist;
     }
-    massHistograms.clear(); 
+    massHistograms.clear();
+
+    std::cout << "Data cleared for next iteration.\n\n";
 }
 
 void AnalyzeJetPtRange(TFile* fDist, TH2D* hDeltaR_vs_ptJet, std::vector<double>& ptDBinEdges, std::vector<double>& deltaRBinEdges, double& jetptMin, double& jetptMax, TFile* fOut) {
+    
+    std::cout << "________________________________________________________________________________________________________________________________________\n";
+    std::cout << "Starting iteration for range " << jetptMin << " < pT,jet < " << jetptMax << " GeV/c...\n";
     
     // D0 mass in GeV/c^2
     double m_0_parameter = 1.86484;
@@ -752,6 +786,9 @@ void AnalyzeJetPtRange(TFile* fDist, TH2D* hDeltaR_vs_ptJet, std::vector<double>
     
     // Clean current iteration data in order to avoid memory leaks
     ClearData(outputStruct, massHistograms);
+
+    std::cout << "Iteration for range " << jetptMin << " < pT,jet < " << jetptMax << " GeV/c completed.\n";
+    std::cout << "________________________________________________________________________________________________________________________________________\n";
 }
 
 void BackgroundSubtraction_2D() {
