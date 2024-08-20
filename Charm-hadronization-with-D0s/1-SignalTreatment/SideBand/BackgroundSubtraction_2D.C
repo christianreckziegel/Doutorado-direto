@@ -418,7 +418,11 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
         if (iHisto == 0) {
             vectorOutputs.hSubtracted_allPtSummed = (TH1D*)h_back_subtracted->Clone("hSubtracted_allPtSummed_SB");
         } else {
-            vectorOutputs.hSubtracted_allPtSummed->Add(h_back_subtracted);
+            if (h_back_subtracted->GetEntries() > 0 && !std::isnan(h_back_subtracted->GetEntries())) {
+                vectorOutputs.hSubtracted_allPtSummed->Add(h_back_subtracted);
+            }
+            
+            
         }
         
         bool printIntegrals = false;
@@ -638,12 +642,8 @@ void UpdateFinalDistribution(TH2D* hDeltaR_vs_ptJet, SubtractionResult& outputSt
     // Sum all the signalHist histograms
     for (auto& hSignal : outputStruct.subtractedHist) {
 
-        if (hSignal->GetEntries() > 0 && !std::isnan(hSignal->GetEntries())) {
-            std::cout << "hSignal DeltaR content = " << hSignal->GetBinContent(1) << std::endl;
-            std::cout << "hSignal number of entries = " << hSignal->GetEntries() << std::endl;
+        if (!std::isnan(hSignal->GetEntries())) { //hSignal->GetEntries() > 0 && !std::isnan(hSignal->GetEntries())
             hSumDeltaR->Add(hSignal);
-            std::cout << "hSumDeltaR DeltaR content = " << hSumDeltaR->GetBinContent(1) << std::endl;
-            std::cout << "hSumDeltaR number of entries = " << hSumDeltaR->GetEntries() << std::endl;
         } else {
             std::cerr << "Skipping empty histogram.\n";
         }
@@ -656,22 +656,21 @@ void UpdateFinalDistribution(TH2D* hDeltaR_vs_ptJet, SubtractionResult& outputSt
 
     // Loop over all deltaR bins and update the final 2D histogram
     for (int binX = 1; binX <= hSumDeltaR->GetNbinsX(); binX++) {
-        if (std::isnan(hSumDeltaR->GetBinContent(binX)))
-        {
-            /* code */
+        if (!std::isnan(hSumDeltaR->GetBinContent(binX))) {
+            double deltaRContent = hSumDeltaR->GetBinContent(binX);
+            double deltaRError = hSumDeltaR->GetBinError(binX);
+            if (deltaRContent < 0.) {
+                std::cout << "WARNING: negative entry value on 2D final histogram.\n";
+                std::cout << "bin (" << binX << "," << binY << ") content = " << deltaRContent << std::endl << std::endl;
+            }
+            
+            
+            // Update the final 2D histogram with the content and error
+            hDeltaR_vs_ptJet->SetBinContent(binX, binY, deltaRContent);
+            hDeltaR_vs_ptJet->SetBinError(binX, binY, deltaRError);
         }
         
-        double deltaRContent = hSumDeltaR->GetBinContent(binX);
-        double deltaRError = hSumDeltaR->GetBinError(binX);
-
-        std::cout << "bin (" << binX << "," << binY << ") has content = " << deltaRContent << std::endl;
-
-        std::cout << "For summed and stored in struct:\n";
-        std::cout << "DeltaR content = " << outputStruct.hSubtracted_allPtSummed->GetBinContent(binX) << std::endl;
         
-        // Update the final 2D histogram with the content and error
-        hDeltaR_vs_ptJet->SetBinContent(binX, binY, deltaRContent);
-        hDeltaR_vs_ptJet->SetBinError(binX, binY, deltaRError);
     }
 
     // Clean up the temporary histogram
@@ -729,7 +728,7 @@ void AnalyzeJetPtRange(TFile* fDist, TH2D* hDeltaR_vs_ptJet, std::vector<double>
     
     // mass histogram
     int massBins = 50; // default=100 
-    double minMass = 1.67; // use from 1.72
+    double minMass = 1.72; // use from 1.72, used to use 1.67
     double maxMass = 2.1;
     // Initial parameter values
     InitialParam parametersVectors;
