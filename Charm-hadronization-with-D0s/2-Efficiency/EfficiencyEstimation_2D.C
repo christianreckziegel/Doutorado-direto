@@ -84,8 +84,8 @@ EfficiencyData createHistograms(const std::vector<double>& binEdges) {
 }
 
 // Module to fill histograms from TFile data
-void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptMin, double jetptMax) {
-    
+void fillHistograms(TFile* fSimulated, const EfficiencyData& histStruct, double jetptMin, double jetptMax) {
+
     // Defining cuts
     const double jetRadius = 0.4;
     const double etaCut = 0.9 - jetRadius; // on jet
@@ -96,7 +96,7 @@ void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptM
     // MC generator level tree and histograms
     //
     // Accessing TTree
-    TTree* tree = (TTree*)file->Get("O2mcpjetdisttable");
+    TTree* tree = (TTree*)fSimulated->Get("O2mcpjetdisttable");
 
     // Check for correct access
     if (!tree) {
@@ -149,7 +149,7 @@ void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptM
     // MC detector level tree and histograms
     //
     // Accessing TTree
-    tree = (TTree*)file->Get("O2mcdjetdisttable");
+    tree = (TTree*)fSimulated->Get("O2mcdjetdisttable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening tree.\n";
@@ -180,7 +180,7 @@ void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptM
         double deltaR = sqrt(pow(jetEta-hfEta,2) + pow(DeltaPhi(jetPhi,hfPhi),2));
 
         // Fill histograms considering jet pT and detector acceptance
-        if ((abs(hfEta) < etaCut) && (abs(hfY) < yCut) && (jetPt >= jetptMin) && (jetPt < jetptMax) && (deltaR >= 0.) && (deltaR < deltaRcut)) {
+        if ((abs(hfEta) < etaCut) && (abs(hfY) < yCut) && (jetPt > jetptMin) && (jetPt < jetptMax)  && (deltaR >= 0.) && (deltaR < deltaRcut)) {
             // Fill inclusive histogram
             histStruct.hMcdPt[0]->Fill(hfPt);
             // fill prompt efficiency histogram
@@ -198,7 +198,7 @@ void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptM
     cout << "Detector level histograms filled.\n";
 }
 
-void CalculateEfficiency(EfficiencyData& histStruct){
+void CalculateEfficiency(EfficiencyData& histStruct, double& jetptMin, double& jetptMax){
     const char* efficiencyNames[] = {"inclusive", "prompt", "nonprompt"};
 
     // Loop through histogram cases: inclusive = 0, prompt only = 1, non-prompt only = 2
@@ -214,7 +214,7 @@ void CalculateEfficiency(EfficiencyData& histStruct){
         efficiencyHist->SetMarkerStyle(kFullCircle);
         efficiencyHist->SetMarkerColor(30+iEff*10); // 30 = not so bright green
         efficiencyHist->SetLineColor(30+iEff*10);
-        efficiencyHist->SetTitle(";p_{T,D}^{truth};Efficiency#times Acceptance");
+        efficiencyHist->SetTitle(Form("%0.f < p_{T,jet} < %0.f;p_{T,D}^{truth};Efficiency#times Acceptance",jetptMin,jetptMax));
         efficiencyHist->SetStats(0);
         
         // Store efficiency distribution in struct
@@ -225,21 +225,22 @@ void CalculateEfficiency(EfficiencyData& histStruct){
     cout << "Efficiency calculated.\n";
 }
 
-void PerformCorrections(EfficiencyData& histStruct, TFile* fBackSub) {
+void PerformCorrections(EfficiencyData& histStruct, TFile* fBackSub, double& jetptMin, double& jetptMax) {
     int effOption = 1; // choice of efficiency for correction: 0 = inclusive, 1 = prompt, 2 = non-prompt
     double efficiency = 0;
     int bin;
-    TH1D* hBackSub_temp = (TH1D*)fBackSub->Get("h_back_subtracted_0");
+    TH1D* hBackSub_temp = (TH1D*)fBackSub->Get(Form("JetPtRange_%.0f_%.0f/h_back_subtracted_0", jetptMin, jetptMax));
 
     // Initialize all pT,D histogram before adding them
     histStruct.hBackSubCorrected_allpt = (TH1D*)hBackSub_temp->Clone("hBackSubCorrected_allpt");
+    histStruct.hBackSubCorrected_allpt->SetTitle(Form("Corrected all p_{T,D} interval for %0.f < p_{T,jet} < %0.f", jetptMin, jetptMax));
     histStruct.hBackSubCorrected_allpt->Reset();
-    
+
     // Loop through distributions from all intervals
     int numHistos = HistogramCounter(fBackSub);
     for (size_t iHisto = 0; iHisto < numHistos; iHisto++) {
         // access each distribution
-        hBackSub_temp = (TH1D*)fBackSub->Get(Form("h_back_subtracted_%zu",iHisto));
+        hBackSub_temp = (TH1D*)fBackSub->Get(Form("JetPtRange_%.0f_%.0f/h_back_subtracted_%zu", jetptMin, jetptMax, iHisto));
 
         // obtain efficiency to the correspondent pT interval (bin)
         bin = histStruct.hEfficiencies[effOption]->GetBin(iHisto);
@@ -260,7 +261,7 @@ void PerformCorrections(EfficiencyData& histStruct, TFile* fBackSub) {
         histStruct.hBackSubCorrected_allpt->Add(histStruct.hBackSubCorrected[iHisto]);
     }
     
-    cout << "Histograms corrected.\n";
+    cout << "Efficiency corrections applied.\n";
 }
 
 void PlotHistograms(const EfficiencyData& histStruct, double jetptMin, double jetptMax) {
@@ -368,10 +369,52 @@ void PlotHistograms(const EfficiencyData& histStruct, double jetptMin, double je
     cCorrectedBackSub_allpt->Print(Form("pT_efficiency_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 
 }
+void UpdateFinalDistribution(std::vector<TH2D*>& hptD0_vs_ptJet, EfficiencyData& histStruct, double& jetptMin) {
+    
+    // Loop through all efficiency cases: 0 = inclusive, 1 = prompt, 2 = non-prompt
+    for (int iEff = 0; iEff < 3; iEff++) {
+        // Get the bin index for the current jet pt range in the final 2D histogram
+        int binY = hptD0_vs_ptJet[iEff]->GetYaxis()->FindBin(jetptMin);
+        
+        // Loop over all deltaR bins and update the final 2D histogram
+        for (int binX = 1; binX <= histStruct.hEfficiencies[iEff]->GetNbinsX(); binX++) {
+            if (!std::isnan(histStruct.hEfficiencies[iEff]->GetBinContent(binX))) {
+                double effContent = histStruct.hEfficiencies[iEff]->GetBinContent(binX);
+                double effError = histStruct.hEfficiencies[iEff]->GetBinError(binX);
+                if (effContent < 0.) {
+                    std::cout << "WARNING: negative entry value on 2D final histogram.\n";
+                    std::cout << "bin (" << binX << "," << binY << ") content = " << effContent << std::endl << std::endl;
+                }
+                
+                
+                // Update the final 2D histogram with the content and error
+                hptD0_vs_ptJet[iEff]->SetBinContent(binX, binY, effContent);
+                hptD0_vs_ptJet[iEff]->SetBinError(binX, binY, effError);
+            }
+            
+            
+        }
+    }
+    
+    
+}
 
-void SaveData(const EfficiencyData& histStruct, double jetptMin, double jetptMax){
-    // Open output file
-    TFile* outFile = new TFile(Form("backSubEfficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
+void SaveData(TFile* fOut, EfficiencyData& histStruct, double& jetptMin, double& jetptMax){
+    
+    // Create a directory name for the current pT range
+    const std::string dirName = Form("JetPtRange_%.0f_%.0f", jetptMin, jetptMax);
+
+    fOut->cd();
+    TDirectory* dir = fOut->GetDirectory(dirName.c_str());
+
+    // Create the directory in case it doesn't exist yet
+    if (!dir) {
+        dir = fOut->mkdir(dirName.c_str());
+    }
+
+    // Enter directory
+    dir->cd();
+
     // Loop over signal extracted histograms
     for (size_t iHisto = 0; iHisto < histStruct.hBackSubCorrected.size(); iHisto++) {
         // store each histogram in file
@@ -382,54 +425,91 @@ void SaveData(const EfficiencyData& histStruct, double jetptMin, double jetptMax
         // store each histogram in file
         histStruct.hEfficiencies[iHisto]->Write();
     }
-    // Final all pT,D distribution
+    // Final all pT,D summed distribution
     histStruct.hBackSubCorrected_allpt->Write();
 
-    outFile->Close();
-    delete outFile;
+    // Return to the root directory
+    fOut->cd();
     
-    cout << "Data stored.\n";
+    std::cout << "Iteration data stored on ROOT output file.\n\n";
+    
 }
 
-void EfficiencyEstimation(){
+void ClearData(EfficiencyData& histStruct) {
+
+    // Delete data from data container struct
+
+    for (auto& hist : histStruct.hMcpPt) {
+        delete hist;
+    }
+    histStruct.hMcpPt.clear();
+
+    for (auto& hist : histStruct.hMcdPt) {
+        delete hist;
+    }
+    histStruct.hMcdPt.clear();
+
+    for (auto& hist : histStruct.hEfficiencies) {
+        delete hist;
+    }
+    histStruct.hEfficiencies.clear();
+
+    for (auto& hist : histStruct.hBackSubCorrected) {
+        delete hist;
+    }
+    histStruct.hBackSubCorrected.clear();
+
+    if (histStruct.hBackSubCorrected_allpt != nullptr) {
+        delete histStruct.hBackSubCorrected_allpt;
+        histStruct.hBackSubCorrected_allpt = nullptr;
+    }
+
+    std::cout << "Data cleared for next iteration.\n\n";
+}
+
+void AnalyzeJetPtRange(TFile* fSimulated, TFile* fBackSub, std::vector<TH2D*>& hptD0_vs_ptJet, const std::vector<double>& ptDBinEdges, const std::vector<double>& deltaRBinEdges, double& jetptMin, double& jetptMax, TFile* fOut) {
+    
+    // Create data container
+    EfficiencyData histStruct = createHistograms(ptDBinEdges); // pT histograms
+
+    // Fill histograms
+    fillHistograms(fSimulated, histStruct, jetptMin, jetptMax);
+
+    // Calculate efficiency distribution
+    CalculateEfficiency(histStruct, jetptMin, jetptMax);
+
+    // Apply efficiency corrections to distributions
+    PerformCorrections(histStruct, fBackSub, jetptMin, jetptMax);
+
+    // Plot the efficiency histogram and further corrected histograms
+    PlotHistograms(histStruct, jetptMin, jetptMax);
+
+    // Save range analysis to 2D DeltaR vs pT,jet distribution
+    UpdateFinalDistribution(hptD0_vs_ptJet, histStruct, jetptMin);
+
+    // Save corrected distributions to file
+    SaveData(fOut, histStruct, jetptMin, jetptMax);
+
+    // Clean current iteration data in order to avoid memory leaks
+    ClearData(histStruct);
+}
+
+void EfficiencyEstimation_2D(){
     // Execution time calculation
     time_t start, end;
     time(&start); // initial instant of program execution
 
-    // D0 mass in GeV/c^2
-    double m_0_parameter = 1.86484;
-    double sigmaInitial = 0.012;
     // jet pT cuts
-    const std::vector<double> ptjetBinEdges = {5., 7., 15., 30.};
-    double jetptMin = ptjetBinEdges[0]; // GeV
-    double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
+    std::vector<double> ptjetBinEdges = {5., 7., 15., 30.}; // GeV/c
     // deltaR histogram
-    int deltaRbins = 10; // deltaRbins = numberOfPoints, default=100 bins for [0. 1.0]
-    const std::vector<double> deltaRBinEdges = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; // chosen by Nima
-    double minDeltaR = deltaRBinEdges[0];
-    double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
-    // mass histogram
-    int massBins = 100; 
-    double minMass = 1.67;
-    double maxMass = 2.1;
+    std::vector<double> deltaRBinEdges = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; // chosen by Nima
     // pT,D histograms
-    int ptBins = 100;
-    const std::vector<double> ptDBinEdges = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}; // pT,D
-    double minPt = 0.; //ptDBinEdges[0] - should start from 0 or from the lowest pT,D value?
-    double maxPt = ptDBinEdges[ptDBinEdges.size() - 1];
-    
-    std::vector<const char*> names = {"histPt1", "histPt2", "histPt3", 
-                                      "histPt4", "histPt5", "histPt6",
-                                      "histPt7", "histPt8", "histPt9"}; // Names of histograms
-    std::vector<const char*> titles = {"3 < p_{T,D} < 4 GeV/c", "4 < p_{T,D} < 5 GeV/c", "5 < p_{T,D} < 6 GeV/c",
-                                       "6 < p_{T,D} < 7 GeV/c", "7 < p_{T,D} < 8 GeV/c", "8 < p_{T,D} < 10 GeV/c",
-                                       "10 < p_{T,D} < 12 GeV/c", "12 < p_{T,D} < 15 GeV/c", "15 < p_{T,D} < 30 GeV/c"}; // Titles of histograms
-    EfficiencyData histStruct = createHistograms(ptDBinEdges); // pT histograms
+    std::vector<double> ptDBinEdges = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}; // pT,D in GeV/c
 
-    // opening files
+    // Opening files
     TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
-    TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
-    TFile* fSigExt = new TFile(Form("../1-SignalTreatment/SignalExtraction/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/backSub_%d_to_%d_jetpt_2D.root",static_cast<int>(ptjetBinEdges[0]),static_cast<int>(ptjetBinEdges[ptjetBinEdges.size() - 1])),"read");
+    TFile* fSigExt = new TFile(Form("../1-SignalTreatment/SignalExtraction/sigExt_%d_to_%d_jetpt.root",static_cast<int>(ptjetBinEdges[0]),static_cast<int>(ptjetBinEdges[ptjetBinEdges.size() - 1])),"read");
     if (!fSimulated || fSimulated->IsZombie()) {
         std::cerr << "Error: Unable to open simulated data ROOT file." << std::endl;
     }
@@ -439,21 +519,28 @@ void EfficiencyEstimation(){
     if (!fSigExt || fSigExt->IsZombie()) {
         std::cerr << "Error: Unable to open signal extracted ROOT file." << std::endl;
     }
-    
-    // Fill histograms
-    fillHistograms(fSimulated, histStruct, jetptMin, jetptMax);
+    TFile* fOut = new TFile(Form("backSubEfficiency_%d_to_%d_jetpt_2D.root",static_cast<int>(ptjetBinEdges[0]),static_cast<int>(ptjetBinEdges[ptjetBinEdges.size() - 1])),"recreate");
+    if (!fOut || fOut->IsZombie()) {
+        std::cerr << "Error: Unable to create the output ROOT file." << std::endl;
+    }
 
-    // Calculate efficiency distribution
-    CalculateEfficiency(histStruct);
+    // Create final histograms with multiple pT,jet ranges
+    std::vector<TH2D*> hptD0_vs_ptJet; // choice of efficiency for correction: 0 = inclusive, 1 = prompt, 2 = non-prompt
+    hptD0_vs_ptJet.emplace_back(new TH2D("hptD0_vs_ptJet_inclusive","Inclusive efficiency;p_{T,D}^{part};p_{T,jet}_{part}", ptDBinEdges.size() -1, ptDBinEdges.data(), ptjetBinEdges.size() - 1, ptjetBinEdges.data()));
+    hptD0_vs_ptJet.emplace_back(new TH2D("hptD0_vs_ptJet_prompt","Prompt efficiency;p_{T,D}^{part};p_{T,jet}_{part}", ptDBinEdges.size() -1, ptDBinEdges.data(), ptjetBinEdges.size() - 1, ptjetBinEdges.data()));
+    hptD0_vs_ptJet.emplace_back(new TH2D("hptD0_vs_ptJet_nonprompt","Non-prompt efficiency;p_{T,D}^{part};p_{T,jet}_{part}", ptDBinEdges.size() -1, ptDBinEdges.data(), ptjetBinEdges.size() - 1, ptjetBinEdges.data()));
 
-    // Apply efficiency corrections to distributions
-    PerformCorrections(histStruct, fBackSub);
+    // Loop over all the pT,jet ranges
+    for (size_t iPtRange = 0; iPtRange < ptjetBinEdges.size() - 1; iPtRange++) {
+        AnalyzeJetPtRange(fSimulated, fBackSub, hptD0_vs_ptJet, ptDBinEdges, deltaRBinEdges, ptjetBinEdges[iPtRange], ptjetBinEdges[iPtRange + 1], fOut);
+    }
 
-    // Plot the efficiency histogram and further corrected histograms
-    PlotHistograms(histStruct, jetptMin, jetptMax);
-
-    // Save corrected distributions to file
-    SaveData(histStruct, jetptMin, jetptMax);
+    // Store final histogram to output file
+    hptD0_vs_ptJet[0]->Write();
+    hptD0_vs_ptJet[1]->Write();
+    hptD0_vs_ptJet[2]->Write();
+    fOut->Close();
+    delete fOut;
 
     time(&end); // end instant of program execution
     
@@ -467,6 +554,6 @@ void EfficiencyEstimation(){
 }
 
 int main(){
-    EfficiencyEstimation();
+    EfficiencyEstimation_2D();
     return 0;
 }
