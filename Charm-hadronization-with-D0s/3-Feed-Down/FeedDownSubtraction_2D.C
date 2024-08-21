@@ -321,7 +321,7 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile
     const double MCPHfPtMaxcut = 30.; // on particle level D0
     const double MCDHfPtMaxcut = 30.; // on detector level D0
     const double jetptMin = ptjetBinEdges_particle[0];
-    const double jetptMax = ptjetBinEdges_particle[ptjetBinEdges_particle.size() - 1]
+    const double jetptMax = ptjetBinEdges_particle[ptjetBinEdges_particle.size() - 1];
 
     // method 1: create 2D response matrix of non-prompt flattened Delta R and pT,jet, for overall pT,D
     //(DeltaR_detector, pTjet_detector, DeltaR_particle, pTjet_particle) -> flattened to (detector, particle)
@@ -387,25 +387,30 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile
         if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)) && !MCPhfprompt
             && (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut)) && !MCDhfprompt) {
             
-            // Access the efficiency histogram correspondent to the right pT,jet range
+            // Access the efficiency histogram correspondent to the correct pT,jet range
             bool filled = false;
             // Loop through pT,D bin edges to find the appropriate histogram and fill it
             for (size_t iEdge = 0; iEdge < ptjetBinEdges_particle.size() - 1 && !filled; iEdge++) {
                 if ((MCPjetPt >= ptjetBinEdges_particle[iEdge]) && (MCPjetPt < ptjetBinEdges_particle[iEdge + 1])) {
-                    hEffPrompt = (TH1D*)fEfficiency->Get(Form("JetPtRange_%.0f_%0.f/efficiency_prompt",jetptMin,jetptMax));
+                    hEffPrompt = (TH1D*)fEfficiency->Get(Form("JetPtRange_%.0f_%0.f/efficiency_prompt",ptjetBinEdges_particle[iEdge],ptjetBinEdges_particle[iEdge + 1]));
+                    if (!hEffPrompt || hEffPrompt->IsZombie()) {
+                        std::cerr << Form("Error: Unable to open efficiency histogram JetPtRange_%.0f_%0.f/efficiency_prompt in ROOT data file.",jetptMin,jetptMax) << std::endl;
+                    }
                     filled = true; // Exit the loop once the correct histogram is found
+
+                    // Find the bin corresponding to the given pT,D value
+                    int bin = hEffPrompt->FindBin(MCDhfPt);
+                    // Get the efficiency value from the bin content
+                    double efficiency_prompt = hEffPrompt->GetBinContent(bin);
+
+                    // Fill 4D RooUnfoldResponse object
+                    //dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
+                    dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt, 1./efficiency_prompt); // jet pT shape is influenced by D0 pT efficiency
                 }
                 
             }
             
-            // Find the bin corresponding to the given pT,D value
-            int bin = hEffPrompt->FindBin(MCDhfPt);
-            // Get the efficiency value from the bin content
-            double efficiency_prompt = hEffPrompt->GetBinContent(bin);
-
-            // Fill 4D RooUnfoldResponse object
-            //dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
-            dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt, 1./efficiency_prompt); // jet pT shape is influenced by D0 pT efficiency
+            
         }
         
     }
@@ -777,7 +782,6 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     cNonPrompt->cd(4);
     dataContainer.hAllptDPowheg[1]->SetStats(0);
     dataContainer.hAllptDPowheg[1]->Draw("colz");
-    //dataContainer.hFolded->Draw("colz");
     cNonPrompt->cd(5);
     TH1D* hProjectionX2 = dataContainer.hAllptDPowheg[2]->ProjectionX();
     hProjectionX2->SetMarkerStyle(kCircle);
@@ -842,68 +846,23 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     dataContainer.nimaFolded->SetStats(0);
     dataContainer.nimaFolded->Draw("colz");
     cOutputRangeCorrection->cd(5);
-    dataContainer.hAllptDPowheg[4]->SetStats(0);
-    dataContainer.hAllptDPowheg[4]->Draw("colz");
+    dataContainer.hAllptDPowheg[2]->SetStats(0);
+    dataContainer.hAllptDPowheg[2]->Draw("colz");
     cOutputRangeCorrection->cd(3);
     dataContainer.hDivMeasuredRange->SetStats(0);
     dataContainer.hDivMeasuredRange->Draw("text");
 
     //
-    // Outside response range data removal for prompts
-    //
-    TCanvas* cMCPoutRespPrompt = new TCanvas("cMCPoutRespPrompt","Outside response range data removal for prompts");
-    cMCPoutRespPrompt->Divide(2,2);
-    cMCPoutRespPrompt->cd(1);
-    dataContainer.hTruthPrompt->SetStats(0);
-    dataContainer.hTruthPrompt->SetTitle("Inside response range truth data, prompt");
-    dataContainer.hTruthPrompt->Draw("text");
-    cMCPoutRespPrompt->cd(2);
-    dataContainer.hTruthTotalRangePrompt->SetStats(0);
-    dataContainer.hTruthTotalRangePrompt->SetTitle("Total truth range data, prompt");
-    dataContainer.hTruthTotalRangePrompt->Draw("text");
-    cMCPoutRespPrompt->cd(3);
-    dataContainer.MCPoutRespInput->Draw("colz");
-    cMCPoutRespPrompt->cd(4);
-    dataContainer.hDivTruthRangePrompt->SetStats(0);
-    dataContainer.hDivTruthRangePrompt->Draw("text");
-
-    //
     // Detector vs. particle match
     //
     TCanvas* cDetPartMatch = new TCanvas("cDetPartMatch","Detector vs. particle level match");
-    cDetPartMatch->Divide(2,3);
+    cDetPartMatch->Divide(2,2);
     cDetPartMatch->cd(1);
-    dataContainer.JetPtInRespInput->SetStats(0);
-    dataContainer.JetPtInRespInput->Draw("colz");
-    cDetPartMatch->cd(2);
-    dataContainer.DeltaRInRespInput->SetStats(0);
-    dataContainer.DeltaRInRespInput->Draw("colz");
-    cDetPartMatch->cd(3);
-    dataContainer.JetPtTotalInput->SetStats(0);
-    dataContainer.JetPtTotalInput->Draw("colz");
-    cDetPartMatch->cd(4);
-    dataContainer.DeltaRTotalInput->SetStats(0);
-    dataContainer.DeltaRTotalInput->Draw("colz");
-    cDetPartMatch->cd(5);
     dataContainer.JetPtOutRespInput->SetStats(0);
     dataContainer.JetPtOutRespInput->Draw("colz");
-    cDetPartMatch->cd(6);
+    cDetPartMatch->cd(2);
     dataContainer.DeltaROutRespInput->SetStats(0);
     dataContainer.DeltaROutRespInput->Draw("colz");
-
-    TCanvas* cOutResp = new TCanvas("cOutResp","Outside response range, non-prompt, by subtraction");
-    cOutResp->Divide(2,2);
-    cOutResp->cd(1);
-    dataContainer.MCPoutRespSub->SetStats(0);
-    dataContainer.MCPoutRespSub->Draw("text");
-    cOutResp->cd(2);
-    dataContainer.MCPoutRespInput->SetStats(0);
-    dataContainer.MCPoutRespInput->Draw("text");
-    cOutResp->cd(3);
-    dataContainer.hLowJetPtOut->Draw("colz");
-    //dataContainer.MCPoutRespSub->ProjectionX()->Draw();
-    cOutResp->cd(4);
-    dataContainer.MCPoutRespSub->ProjectionY()->Draw();
 
     //
     // For image printing
@@ -916,7 +875,7 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     dataContainer.hAllptDPowheg[0]->Draw("colz");
     cFoldedData->cd(2);
     dataContainer.hAllptDPowheg[2]->SetStats(0);
-    dataContainer.hFolded->Draw("colz");
+    dataContainer.hAllptDPowheg[2]->Draw("colz");
     cFoldedData->cd(3);
     TH1D* hProjectionX4 = dataContainer.hAllptDPowheg[0]->ProjectionX();
     hProjectionX4->SetMarkerStyle(kCircle);
@@ -925,7 +884,7 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     hProjectionX4->SetStats(0);
     hProjectionX4->Draw();
     cFoldedData->cd(4);
-    hProjectionX1->Draw();
+    hProjectionX2->Draw();
 
     
 
@@ -946,22 +905,22 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     //
     TString imagePath = "../Images/3-Feed-Down/";
     cResponse->Update();
-    cResponse->SaveAs(imagePath + "FD_response_matrix.png");
+    cResponse->SaveAs(imagePath + "FD_response_matrix_2D.png");
     cMatching->Update();
-    cMatching->SaveAs(imagePath + "FD_response_match_histograms.png");
+    cMatching->SaveAs(imagePath + "FD_response_match_histograms_2D.png");
     cSBFeedDown->Update();
-    cSBFeedDown->SaveAs(imagePath + "FD_subtracted.png");
+    cSBFeedDown->SaveAs(imagePath + "FD_subtracted_2D.png");
     cFoldedData->Update();
-    cFoldedData->SaveAs(imagePath + "FD_folded_data.png");
+    cFoldedData->SaveAs(imagePath + "FD_folded_data_2D.png");
 
     //
     // Storing in a single pdf file
     //
-    cPowheg->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
-    cMatching->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cNonPrompt->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cResponse->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cSBFeedDown->Print(Form("pT_feeddown_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cPowheg->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf(",jetptMin,jetptMax));
+    cMatching->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf",jetptMin,jetptMax));
+    cNonPrompt->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf",jetptMin,jetptMax));
+    cResponse->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf",jetptMin,jetptMax));
+    cSBFeedDown->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf)",jetptMin,jetptMax));
 
 }
 
