@@ -31,6 +31,7 @@ int HistogramCounter(TFile* file) {
         }
     }
 
+    std::cout << numHistograms << " histograms found in file.\n";
     return numHistograms;
 }
 
