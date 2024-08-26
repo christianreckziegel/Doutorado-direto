@@ -352,9 +352,9 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
     SubtractionResult vectorOutputs;
 
     // obtaining 1D invariant mass histograms from the projection
-    for (size_t iHist = 0; iHist < histograms2d.size(); iHist++) {
+    for (size_t iHisto = 0; iHisto < histograms2d.size(); iHisto++) {
         //
-        tempHist = histograms2d[iHist]->ProjectionX(Form("h_mass_proj_%zu", iHist));
+        tempHist = histograms2d[iHisto]->ProjectionX(Form("h_mass_proj_%zu", iHisto));
         vectorOutputs.histograms.push_back(tempHist);
     }
 
@@ -365,29 +365,50 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
         // Getting fit parameters
         double m_0 = fittings[iHisto]->GetParameter(3); // Get the value of parameter 'm_0'
         double sigma = fittings[iHisto]->GetParameter(4); // Get the value of parameter 'sigma'
+
+        // Check which sides should be used for the total side-band distribution (if at least one sigma fit inside left range)
+        if (m_0 - (startingBackSigma+1)*sigma <  vectorOutputs.histograms[iHisto]->GetBinLowEdge(1)) {
+            std::cout << "m_0 - 5*sigma < 1.72, Using only right side of bands." << std::endl;
+
+        } else {
+            // Count for how many sigmas is there room inside the left side range
+            double sigNumLeft = (m_0 - startingBackSigma*sigma - vectorOutputs.histograms[iHisto]->GetBinLowEdge(1))/sigma;
+            std::cout << sigNumLeft << "sigmas fit inside the left side range for the background distribution estimation." << std::endl;
+        }
+        
         
         // Finding side-band region: 4*sigma < side-band < 9*sigma
-        double leftSB = fittings[backgroundHist]->Integral(m_0 - (backgroundSigmas + startingBackSigma) * sigma,m_0 - startingBackSigma * sigma);
+        double leftSB = fittings[backgroundHist]->Integral(m_0 - (startingBackSigma + backgroundSigmas) * sigma,m_0 - startingBackSigma * sigma);
         double rightSB = fittings[backgroundHist]->Integral(m_0 + startingBackSigma * sigma,m_0 + (startingBackSigma + backgroundSigmas) * sigma);
         double sidebandIntegral = leftSB + rightSB; // yield of background in background region
+        double leftSB_2 = fittings[iHisto]->Integral(m_0 - (startingBackSigma + backgroundSigmas) * sigma,m_0 - startingBackSigma * sigma);
+        double rightSB_2 = fittings[iHisto]->Integral(m_0 + startingBackSigma * sigma,m_0 + (startingBackSigma + backgroundSigmas) * sigma);
         // Finding side-band region: signal < |2*sigma|
         double backSigIntegral = fittings[backgroundHist]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of background in signal region
         double fitSigIntegral = fittings[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
-
+        
         // Calculating scaling parameter
         double alpha = backSigIntegral/sidebandIntegral;
-        cout << "alpha = " << alpha << endl;
+        
+        bool printValues = true;
+        if (printValues) {
+            cout << "leftSB = " << leftSB << endl;
+            cout << "rightSB = " << rightSB << endl;
+            cout << "Raw sideband integral sum = " << sidebandIntegral << endl;
+            cout << "Integral of signal+background function in signal region = " << fitSigIntegral << endl;
+            cout << "alpha = " << alpha << endl;
+        }
 
         // Create side-band histogram
-        double xMin = histograms2d[iHisto]->GetXaxis()->GetXmin();
-        double xMax = histograms2d[iHisto]->GetXaxis()->GetXmax();
+        //double xMin = histograms2d[iHisto]->GetXaxis()->GetXmin();
+        //double xMax = histograms2d[iHisto]->GetXaxis()->GetXmax();
         //histograms2d[iHisto]->GetXaxis()->SetRangeUser(xMin, xMax);
         int lowBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - (startingBackSigma + backgroundSigmas) * sigma);
         int highBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - startingBackSigma * sigma);
         h_sideBand = histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_%zu", iHisto),lowBin, highBin); // start with left sideband
         lowBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + startingBackSigma * sigma);
         highBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + (startingBackSigma + backgroundSigmas) * sigma);
-        tempHist = histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_%zu", iHisto), lowBin, highBin); // right sideband
+        tempHist = histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_%zu", iHisto), lowBin, highBin); // sum the right sideband
         h_sideBand->Add(tempHist);
 
         // Apply scaling to background function
@@ -398,13 +419,32 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
         lowBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
         highBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
         h_signal = histograms2d[iHisto]->ProjectionY(Form("h_signal_proj_%zu", iHisto), lowBin, highBin);
-        vectorOutputs.signalHist.push_back(h_signal);
-        
-        
+        vectorOutputs.signalHist.push_back(h_signal);        
 
+        // Compare areas
+        if (printValues) {
+            cout << "In signal region:\n";
+            cout << "\tsignal histogram integral = " << h_signal->Integral() << endl;
+            cout << "\tsignal histogram bin width = " << h_signal->GetXaxis()->GetBinWidth(1) << endl;
+            cout << "\tsignal histogram integral with bin width accounted = " << h_signal->Integral() * h_signal->GetXaxis()->GetBinWidth(1) << endl;
+            cout << "\tsig+back function integral = " << fitSigIntegral << endl;
+            cout << "\tback function integral = " << backSigIntegral << endl;
+            cout << "\tback histogram integral = " << h_sideBand->Integral() << endl;
+            cout << "background/raw signal ratio for histograms = " << backSigIntegral/fitSigIntegral << endl;
+            cout << "background/raw signal ratio for fit functions = " << h_sideBand->Integral() / h_signal->Integral() << endl;
+        }
+        
         // Subtract background histogram from signal histogram
         h_back_subtracted = (TH1D*)h_signal->Clone(Form("h_back_subtracted_%zu", iHisto));
         h_back_subtracted->Add(h_sideBand,-1.0);
+        if (printValues) {
+            cout << "Side-band integral = " << h_sideBand->Integral() << endl;
+            cout << "Side-band entries = " << h_sideBand->GetEntries() << endl;
+            cout << "Signal integral = " << h_signal->Integral() << endl;
+            cout << "Signal entries = " << h_signal->GetEntries() << endl;
+            cout << "Signal subtracted integral = " << h_back_subtracted->Integral() << endl;
+            cout << "Signal subtracted entries = " << h_back_subtracted->GetEntries() << endl << endl;
+        }
         h_back_subtracted->Scale(1/0.9545);
         vectorOutputs.subtractedHist.push_back(h_back_subtracted);
 
@@ -489,6 +529,17 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
 
     }
 
+    // Plot fitting functions only
+    TCanvas* cFitsOnly = new TCanvas("cFitsOnly","Fit functions");
+    cFitsOnly->SetCanvasSize(1800,1000);
+    cFitsOnly->Divide(3,static_cast<int>(histograms.size() / 3)); // columns, lines
+    for (size_t iHisto = 0; iHisto < histograms.size(); iHisto++) {
+        cFitsOnly->cd(iHisto+1);
+        int backgroundHist = histograms.size() + iHisto;
+        fittings[iHisto]->Draw();
+    }
+    
+
     // Plotting output observable
     TCanvas* cSideBand = new TCanvas("cSideBand", "delta R for side-band", 800, 600);
     cSideBand->SetCanvasSize(1800,1000);
@@ -510,7 +561,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
 
     for (size_t iHisto = 0; iHisto < outputStruct.histograms.size(); iHisto++) {
         cSideBand->cd(iHisto+1);
-        outputStruct.sidebandHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        //outputStruct.sidebandHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.sidebandHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
         outputStruct.sidebandHist[iHisto]->GetYaxis()->SetTitle("yields");
         outputStruct.sidebandHist[iHisto]->SetMarkerStyle(kFullTriangleUp);
@@ -521,7 +572,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
 
         cSignal->cd(iHisto+1);
-        outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        //outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.signalHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
         outputStruct.signalHist[iHisto]->GetYaxis()->SetTitle("yields");
         outputStruct.signalHist[iHisto]->SetMarkerStyle(kFullSquare);
@@ -531,7 +582,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
 
         cSubtracted->cd(iHisto+1);
-        outputStruct.subtractedHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        //outputStruct.subtractedHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.subtractedHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
         outputStruct.subtractedHist[iHisto]->GetYaxis()->SetTitle("yields");
         outputStruct.subtractedHist[iHisto]->SetMarkerStyle(kFullCircle);
@@ -541,7 +592,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
 
         cSigPlusBack->cd(iHisto+1);
-        outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        //outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.signalHist[iHisto]->Draw();
         outputStruct.sidebandHist[iHisto]->Draw("same");
         outputStruct.subtractedHist[iHisto]->Draw("same");
@@ -551,7 +602,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     
     TCanvas* cAllPt = new TCanvas("cAllPt","All pT,D final deltaR distribution");
     cAllPt->SetCanvasSize(1800,1000);
-    outputStruct.hSubtracted_allPtSummed->GetXaxis()->SetRangeUser(0.0, 0.5);
+    //outputStruct.hSubtracted_allPtSummed->GetXaxis()->SetRangeUser(0.0, 0.5);
     outputStruct.hSubtracted_allPtSummed->SetTitle(";#DeltaR;yields");
     outputStruct.hSubtracted_allPtSummed->SetMarkerStyle(kFullCircle);
     outputStruct.hSubtracted_allPtSummed->SetMarkerColor(kRed);
@@ -620,7 +671,7 @@ void BackgroundSubtraction(){
     double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
     // mass histogram
     int massBins = 50; // default=100 
-    double minMass = 1.72; // 1.72
+    double minMass = 1.72; // use from 1.72, used to use 1.67
     double maxMass = 2.1;
     // Initial parameter values
     InitialParam parametersVectors;
