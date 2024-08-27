@@ -360,8 +360,12 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
 
     // Calculating scaling parameter
     for (size_t iHisto = 0; iHisto < vectorOutputs.histograms.size(); ++iHisto) {
+        
         // Corresponding background fit index
         int backgroundHist = vectorOutputs.histograms.size() + iHisto;
+        cout << "Sig+back fit index " << iHisto << endl;
+        cout << "Background only fit index " << backgroundHist << endl;
+
         // Getting fit parameters
         double m_0 = fittings[iHisto]->GetParameter(3); // Get the value of parameter 'm_0'
         double sigma = fittings[iHisto]->GetParameter(4); // Get the value of parameter 'sigma'
@@ -405,9 +409,11 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
         //histograms2d[iHisto]->GetXaxis()->SetRangeUser(xMin, xMax);
         int lowBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - (startingBackSigma + backgroundSigmas) * sigma);
         int highBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - startingBackSigma * sigma);
+        cout << "Left sideband lowbin=" << lowBin << "; highBin=" << highBin << endl;
         h_sideBand = histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_%zu", iHisto),lowBin, highBin); // start with left sideband
         lowBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + startingBackSigma * sigma);
         highBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + (startingBackSigma + backgroundSigmas) * sigma);
+        cout << "Right sideband lowbin=" << lowBin << "; highBin=" << highBin << endl;
         tempHist = histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_%zu", iHisto), lowBin, highBin); // sum the right sideband
         h_sideBand->Add(tempHist);
 
@@ -430,8 +436,8 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
             cout << "\tsig+back function integral = " << fitSigIntegral << endl;
             cout << "\tback function integral = " << backSigIntegral << endl;
             cout << "\tback histogram integral = " << h_sideBand->Integral() << endl;
-            cout << "background/raw signal ratio for histograms = " << backSigIntegral/fitSigIntegral << endl;
-            cout << "background/raw signal ratio for fit functions = " << h_sideBand->Integral() / h_signal->Integral() << endl;
+            cout << "background/raw signal ratio for fit functions = " << backSigIntegral/fitSigIntegral << endl;
+            cout << "background/raw signal ratio for histograms = " << h_sideBand->Integral() / h_signal->Integral() << endl;
         }
         
         // Subtract background histogram from signal histogram
