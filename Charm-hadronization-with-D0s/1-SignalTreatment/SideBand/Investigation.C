@@ -147,7 +147,7 @@ void Investigation(){
     // signal/side-band region parameters
     int signalSigmas = 2; // 2
     int startingBackSigma = 4; // 4
-    int backgroundSigmas = 2; // 4
+    int backgroundSigmas = 4; // 4
 
     // pT,jet
     double jetptMin = 5;
@@ -156,8 +156,8 @@ void Investigation(){
     // deltaR histogram
     std::vector<double> deltaRBinEdges = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4};
     // mass histogram
-    int massBins = 50; 
-    double minMass = 1.72;// 1.67
+    int massBins = 100; // default = 50
+    double minMass = 1.72;// in the past = 1.67, current default = 1.72
     double maxMass = 2.1;
 
     // creating histograms
@@ -260,51 +260,131 @@ void Investigation(){
     double m_0 = fitSigBack->GetParameter(3); // Get the value of parameter 'm_0'
     double sigma = fitSigBack->GetParameter(4); // Get the value of parameter 'sigma'
 
+    TH1D* h_sideBand;
+    TH1D* h_signal;
+    TH1D* h_back_subtracted;
+
+    // Check which sides should be used for the total side-band distribution (if at least 1 sigma fit inside left range)
+    if (m_0 - (startingBackSigma+1)*sigma <  h2_HFmass->ProjectionX("h_mass_")->GetBinLowEdge(1)) {
+        std::cout << "Using only right sideband." << std::endl;
+
+        // Count for how many sigmas is there room inside the left side range
+        double leftSidebandRange = (m_0 - startingBackSigma * sigma) - h2_HFmass->ProjectionX("h_mass_")->GetBinLowEdge(1);
+        int leftSigmas = static_cast<int>(leftSidebandRange / sigma);// get the integral number
+        std::cout << leftSigmas << " sigmas fit inside the left side range for the background distribution estimation." << std::endl;
+        // Count for how many sigmas is there room inside the right side range
+        double rightSidebandRange = h2_HFmass->ProjectionX("h_mass_")->GetBinLowEdge(h2_HFmass->ProjectionX("h_mass_")->GetNbinsX()+1) - (m_0 + startingBackSigma*sigma);
+        int rightSigmas = static_cast<int>(rightSidebandRange / sigma);// get the integral number
+        std::cout << rightSigmas << " sigmas fit inside the right side range for the background distribution estimation." << std::endl;
+
+        // Ensure only a maximum of 4 sigmas (backgroundSigmas) are used
+        if (leftSigmas > backgroundSigmas) {
+            leftSigmas = backgroundSigmas;
+        }
+        if (rightSigmas > backgroundSigmas) {
+            rightSigmas = backgroundSigmas;
+        }
+
+        cout << "Left extreme = " << m_0 - (startingBackSigma + leftSigmas) * sigma << endl;
+        cout << "Right extreme = " << m_0 + (startingBackSigma + rightSigmas) * sigma << endl;
+        
+        // Finding side-band region: 4*sigma < side-band < 8*sigma
+        double rightSB = fitBack->Integral(m_0 + startingBackSigma * sigma,m_0 + (startingBackSigma + rightSigmas) * sigma);
+        // Finding side-band region: signal < |2*sigma|
+        double backSigIntegral = fitBack->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of background in signal region
+        double fitSigIntegral = fitSigBack->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+
+        // Calculating scaling parameter
+        double alpha = backSigIntegral/rightSB;
+        std::cout << "alpha = " << alpha << std::endl;
+
+        // Create side-band histogram: use only the right sideband
+        int lowBin = h2_HFmass->GetXaxis()->FindBin(m_0 + startingBackSigma * sigma);
+        int highBin = h2_HFmass->GetXaxis()->FindBin(m_0 + (startingBackSigma + rightSigmas) * sigma);
+        h_sideBand = h2_HFmass->ProjectionY("h_sideband_proj_temp", lowBin, highBin); // sum the right sideband
+
+        // Apply scaling to background function
+        //h_sideBand->Scale(alpha);
+
+        // Create signal histogram
+        lowBin = h2_HFmass->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
+        highBin = h2_HFmass->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
+        h_signal = h2_HFmass->ProjectionY("h_signal_proj", lowBin, highBin);
+
+        cout << "Distribution ratio of sideband over raw signal: " << h_sideBand->Integral() / h_signal->Integral() << endl;
+        cout << "Fit function ratio of sideband over raw signal: " << (rightSB)/ fitSigIntegral << endl;
+
+        h_sideBand->Scale(alpha);
+
+        // Subtract background histogram from signal histogram
+        h_back_subtracted = (TH1D*)h_signal->Clone("h_back_subtracted");
+        h_back_subtracted->Add(h_sideBand,-1.0);
+
+        h_back_subtracted->Scale(1/0.9545);
+
+    } else {
+        std::cout << "Using both left and right sidebands.\n";
+
+        // Count for how many sigmas is there room inside the left side range
+        double leftSidebandRange = (m_0 - startingBackSigma * sigma) - h2_HFmass->ProjectionX("h_mass_")->GetBinLowEdge(1);
+        int leftSigmas = static_cast<int>(leftSidebandRange / sigma);// get the integral number
+        std::cout << leftSigmas << " sigmas fit inside the left side range for the background distribution estimation." << std::endl;
+        // Count for how many sigmas is there room inside the right side range
+        double rightSidebandRange = h2_HFmass->ProjectionX("h_mass_")->GetBinLowEdge(h2_HFmass->ProjectionX("h_mass_")->GetNbinsX()+1) - (m_0 + startingBackSigma*sigma);
+        int rightSigmas = static_cast<int>(rightSidebandRange / sigma);// get the integral number
+        std::cout << rightSigmas << " sigmas fit inside the right side range for the background distribution estimation." << std::endl;
+
+        // Ensure only a maximum of 4 sigmas (backgroundSigmas) are used
+        if (leftSigmas > backgroundSigmas) {
+            leftSigmas = backgroundSigmas;
+        }
+        if (rightSigmas > backgroundSigmas) {
+            rightSigmas = backgroundSigmas;
+        }
+
+        cout << "Left extreme = " << m_0 - (startingBackSigma + leftSigmas) * sigma << endl;
+        cout << "Right extreme = " << m_0 + (startingBackSigma + rightSigmas) * sigma << endl;
+
+        // Finding side-band region: 4*sigma < side-band < 8*sigma
+        double leftSB = fitBack->Integral(m_0 - (startingBackSigma + leftSigmas) * sigma,m_0 - startingBackSigma * sigma);
+        double rightSB = fitBack->Integral(m_0 + startingBackSigma * sigma,m_0 + (startingBackSigma + rightSigmas) * sigma);
+        // Finding side-band region: signal < |2*sigma|
+        double backSigIntegral = fitBack->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of background in signal region
+        double fitSigIntegral = fitSigBack->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+
+        // Calculating scaling parameter
+        double alpha = backSigIntegral/(leftSB+rightSB);
+        std::cout << "alpha = " << alpha << std::endl;
     
-    
-    // Finding side-band region: 4*sigma < side-band < 9*sigma
-    double leftSB = fitBack->Integral(m_0 - (startingBackSigma + backgroundSigmas) * sigma,m_0 - startingBackSigma * sigma);
-    double rightSB = fitBack->Integral(m_0 + startingBackSigma * sigma,m_0 + (startingBackSigma + backgroundSigmas) * sigma);
-    // Finding side-band region: signal < |2*sigma|
-    double backSigIntegral = fitBack->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of background in signal region
-    double fitSigIntegral = fitSigBack->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+        // Create side-band histogram
+        int lowBin = h2_HFmass->GetXaxis()->FindBin(m_0 - (startingBackSigma + leftSigmas) * sigma);
+        int highBin = h2_HFmass->GetXaxis()->FindBin(m_0 - startingBackSigma * sigma);
+        h_sideBand = h2_HFmass->ProjectionY("h_sideband_proj",lowBin, highBin); // start with left sideband
+        lowBin = h2_HFmass->GetXaxis()->FindBin(m_0 + startingBackSigma * sigma);
+        highBin = h2_HFmass->GetXaxis()->FindBin(m_0 + (startingBackSigma + rightSigmas) * sigma);
+        TH1D* tempHist = h2_HFmass->ProjectionY("h_sideband_proj_temp", lowBin, highBin); // sum the right sideband
+        h_sideBand->Add(tempHist);
 
-    std::cout << "Integrals calculated:" << std::endl;
-    std::cout << "Left sideband integral: " << leftSB << std::endl;
-    std::cout << "Right sideband integral: " << rightSB << std::endl;
-    std::cout << "Background signal region integral: " << backSigIntegral << std::endl;
-    std::cout << "Signal+background signal region integral: " << fitSigIntegral << std::endl;
+        // Apply scaling to background function
+        //h_sideBand->Scale(alpha);
 
-    // Calculating scaling parameter
-    double alpha = backSigIntegral/(leftSB+rightSB);
-    cout << "alpha = " << alpha << endl;
+        // Create signal histogram
+        lowBin = h2_HFmass->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
+        highBin = h2_HFmass->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
+        h_signal = h2_HFmass->ProjectionY("h_signal_proj", lowBin, highBin);
 
-    // Create side-band histogram
-    int lowBin = h2_HFmass->GetXaxis()->FindBin(m_0 - (startingBackSigma + backgroundSigmas) * sigma);
-    int highBin = h2_HFmass->GetXaxis()->FindBin(m_0 - startingBackSigma * sigma);
-    TH1D* h_sideBand = h2_HFmass->ProjectionY("h_sideband_proj",lowBin, highBin); // start with left sideband
-    lowBin = h2_HFmass->GetXaxis()->FindBin(m_0 + startingBackSigma * sigma);
-    highBin = h2_HFmass->GetXaxis()->FindBin(m_0 + (startingBackSigma + backgroundSigmas) * sigma);
-    TH1D* tempHist = h2_HFmass->ProjectionY("h_sideband_proj_temp", lowBin, highBin); // sum the right sideband
-    h_sideBand->Add(tempHist);
+        cout << "Distribution ratio of sideband over raw signal: " << h_sideBand->Integral() / h_signal->Integral() << endl;
+        cout << "Fit function ratio of sideband over raw signal: " << (leftSB + rightSB)/ fitSigIntegral << endl;
 
-    // Apply scaling to background function
-    h_sideBand->Scale(alpha);
+        h_sideBand->Scale(alpha);
 
-    // Create signal histogram
-    lowBin = h2_HFmass->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
-    highBin = h2_HFmass->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
-    TH1D* h_signal = h2_HFmass->ProjectionY("h_signal_proj", lowBin, highBin);
+        // Subtract background histogram from signal histogram
+        h_back_subtracted = (TH1D*)h_signal->Clone("h_back_subtracted");
+        h_back_subtracted->Add(h_sideBand,-1.0);
 
-    // Subtract background histogram from signal histogram
-    TH1D* h_back_subtracted = (TH1D*)h_signal->Clone("h_back_subtracted");
-    h_back_subtracted->Add(h_sideBand,-1.0);
-
-    h_back_subtracted->Scale(1/0.9545);
-
-    std::cout << "Sideband histogram integral (after scaling): " << h_sideBand->Integral() << std::endl;
-    std::cout << "Signal histogram integral: " << h_signal->Integral() << std::endl;
-    std::cout << "Background subtracted histogram integral: " << h_back_subtracted->Integral() << std::endl;
+        h_back_subtracted->Scale(1/0.9545);
+        
+    }
 
     std::cout << "Background subtracted." << std::endl;
 
@@ -333,6 +413,10 @@ void Investigation(){
 
     cInvMass->cd(2);
     h_back_subtracted->Draw();
+    cInvMass->cd(3);
+    h_sideBand->Draw();
+    cInvMass->cd(4);
+    h_signal->Draw();
     
 
     time(&end); // end instant of program execution
