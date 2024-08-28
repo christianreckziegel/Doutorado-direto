@@ -57,8 +57,8 @@ struct FeedDownData {
 
     TH2D* nimaFolded;                                       // 2D folded data with Nima's folding function
     RooUnfoldResponse response;                             // response matrix for non-prompt D0s only, for overall pT,D; using RooUnfoldResponse object, method 1
-    std::vector<TH3D*> hPowheg;                             // deltaR vs pT,D vs pT,jet; [0] = generator level, [1] = treated but not yet detector level
-    std::vector<TH2D*> hAllptDPowheg;                       // deltaR vs pT,jet; [0] = generator level, [1] = method 1 folded, [2] = method 2 folded
+    std::vector<TH3D*> hPowheg;                             // deltaR vs pT,D vs pT,jet; [0] = generator level, [1] = efficiency scaled
+    std::vector<TH2D*> hAllptDPowheg;                       // deltaR vs pT,jet; [0] = before folding, [1] = before folding with outside range removed, [2] = folded
     std::vector<TH1D*> hEfficiencies;                       // inclusive = 0, prompt only = 1, non-prompt only = 2
     TH2D* hSBFeedDownSubtracted;                            // non-prompt subtracted Delta R distribution, all pT,D
 
@@ -511,7 +511,7 @@ TH2D* removeOutsideData(FeedDownData& dataContainer) {
 
     // Get kinematic efficiency 2D histogram diving intersection over total range
     dataContainer.hDivTruthRange->Divide(dataContainer.hTruthTotalRange);
-    dataContainer.hDivTruthRange->SetTitle("Inside response range / Total truth range (Kinematic efficiency?)");
+    dataContainer.hDivTruthRange->SetTitle("#varepsilon_{kin} = Inside response range / Total truth range (Kinematic efficiency?)");
 
     // Correct POWHEG data multiplying each bin by corresponding kinematic efficiency
     hPowhegCorrected->Multiply(dataContainer.hDivTruthRange);
@@ -536,14 +536,14 @@ TH2D* removeOutsideData(FeedDownData& dataContainer) {
 TH2D* addOutsideData(FeedDownData& dataContainer) {
 
     // Copy original immediately folded distribution structure
-    TH2D* hFoldedCorrected = (TH2D*)dataContainer.hAllptDPowheg[0]->Clone("hPowhegRangeCorrected");
+    TH2D* hFoldedCorrected = (TH2D*)dataContainer.hAllptDPowheg[1]->Clone("hPowhegRangeCorrected");
 
     // Start with histogram of total range area
     dataContainer.hDivMeasuredRange = dynamic_cast<TH2D*>(dataContainer.hMeasured->Clone("hInsideOverTotalDivision"));
 
     // Get kinematic efficiency 2D histogram diving total range over intersection
     dataContainer.hDivMeasuredRange->Divide(dataContainer.hMeasuredTotalRange);
-    dataContainer.hDivMeasuredRange->SetTitle("Inside response range / Total measured range (kinematic efficiency?)");
+    dataContainer.hDivMeasuredRange->SetTitle("#varepsilon_{kin} = Inside response range / Total measured range");
 
     // Correct POWHEG data multiplying each bin by corresponding kinematic efficiency
     hFoldedCorrected->Divide(dataContainer.hDivMeasuredRange);
@@ -575,36 +575,35 @@ void getLuminosities(TFile* fPowheg, double luminosity_powheg, double luminosity
 }
 
 // Module for folding particle level data from POWHEG simulation
-void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, TFile* fEfficiency, double& luminosity, double& BR) {
+void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, TFile* fEfficiency, double& luminosity, double& BR, double& jetptMin, double& jetptMax) {
     //
     // 0th step: clone 3D histogram in order to save the smeared at the end (while keeping the original)
     //
-    TH3D* hTreatedPowheg = static_cast<TH3D*>(dataContainer.hPowheg[0]->Clone("h_subtraction_Bs"));
+    TH3D* hTreatedPowheg = (TH3D*)dataContainer.hPowheg[0]->Clone("h_subtraction_Bs");
     hTreatedPowheg->SetTitle("POWHEG + PYTHIA efficiency scaled;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}};#frac{#epsilon_{non-prompt}}{prompt}#frac{1}{L_{int}}p_{T,D}^{b #rightarrow D^{0}};p_{T,jet}^{ch}");
-
+    
     //
     // 1st step: obtain the 2D Delta R vs pT,jet projection for all pT,D bins before folding
     //
-    // using a smart pointer provided by the C++ Standard Library
-    TH2D* hAllptDPow = static_cast<TH2D*>(hTreatedPowheg->Project3D("zx"));
-    hAllptDPow->SetName("h_true_nonprompt");
-    //hAllptDPow->SetTitle(";#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}}_{truth};p_{T,jet}^{ch}");
+    TH2D* hAllptDPow = (TH2D*)hTreatedPowheg->Project3D("zx")->Clone("h_true_nonprompt");
     hAllptDPow->SetTitle("Before folding;#DeltaR^{b #rightarrow D^{0}}_{truth};p_{T,jet}^{ch}");
     // transfer ownership of the histogram from the unique_ptr to dataContainer object
-    dataContainer.hAllptDPowheg.emplace_back(hAllptDPow); // [0] = not folded
-
+    dataContainer.hAllptDPowheg.push_back(hAllptDPow); // [0] = not folded
+    
     //
     // 2nd step: scale by 1 over POWHEG integrated luminosity
     // (skip this step for now)
-    dataContainer.hAllptDPowheg[0]->Scale(1/luminosity_powheg); //luminosity/luminosity_powheg
+    //dataContainer.hAllptDPowheg[0]->Scale(1/luminosity_powheg); //luminosity/luminosity_powheg
 
     //
     // 3rd step: scale by efficiency ratio
     //
     TH1D* hEffPrompt;
     TH1D* hEffNonPrompt;
-    hEffPrompt = (TH1D*)fEfficiency->Get("hptD0_vs_ptJet_prompt");
-    hEffNonPrompt = (TH1D*)fEfficiency->Get("hptD0_vs_ptJet_nonprompt");
+    hEffPrompt = (TH1D*)fEfficiency->Get(Form("OverallPtRange_%0.f_%0.f/efficiency_prompt",jetptMin,jetptMax));
+    hEffNonPrompt = (TH1D*)fEfficiency->Get(Form("OverallPtRange_%0.f_%0.f/efficiency_nonprompt",jetptMin,jetptMax));
+    //hEffPrompt = (TH1D*)fEfficiency->Get("hptD0_vs_ptJet_prompt");
+    //hEffNonPrompt = (TH1D*)fEfficiency->Get("hptD0_vs_ptJet_nonprompt");
     if (!hEffPrompt || !hEffNonPrompt) {
         std::cerr << "Error: could not retrieve efficiency histograms.\n";
     }
@@ -616,29 +615,34 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, 
     // the order of nested loop dictates which is the scaled axis
     for (int xBin = 1; xBin <= nBinsX; xBin++) {
         for (int zBin = 1; zBin <= nBinsZ; zBin++) {
-            // Inner loop over y-axis bins (pT,D): this is scaled axis (pT,D bins)
+            // Inner loop over y-axis bins (pT,D): this is the scaled axis (pT,D bins)
             for (int yBin = 1; yBin <= nBinsY; yBin++) {
                 double binContent = hTreatedPowheg->GetBinContent(xBin, yBin, zBin);
                 double binError = hTreatedPowheg->GetBinError(xBin, yBin, zBin);
-
+                
                 // Obtain efficiencies ratio for specific bin
+                // Obtain efficiencies ratio for specific bin
+                //double effPrompt = hEffPrompt->GetBinContent(yBin);
+                //double effNonPrompt = hEffNonPrompt->GetBinContent(yBin);
                 double effPrompt = hEffPrompt->GetBinContent(yBin, zBin);
                 double effNonPrompt = hEffNonPrompt->GetBinContent(yBin, zBin);
 
                 if (effPrompt == 0) {
-                    std::cerr << "Error: null prompt efficiency value for bin (" << xBin << "," << yBin << "," << zBin << ").\n";
+                    std::cerr << "Null prompt efficiency value for bin (" << xBin << "," << yBin << "," << zBin << ").\n";
+                } else {
+                    // Scale the y-axis content and error by non-prompt efficiency/prompt efficiency
+                    hTreatedPowheg->SetBinContent(xBin, yBin, zBin, binContent * effNonPrompt / effPrompt);
+                    hTreatedPowheg->SetBinError(xBin, yBin, zBin, binError * effNonPrompt / effPrompt);
                 }
                 
-                // Scale the y-axis content and error by non-prompt efficiency/prompt efficiency
-                hTreatedPowheg->SetBinContent(xBin, yBin, zBin, binContent * effNonPrompt / effPrompt);
-                hTreatedPowheg->SetBinError(xBin, yBin, zBin, binError * effNonPrompt / effPrompt);
+                
             }
         }
         
         
         
     }
-    // Save modified 3D histogram
+    // Save modified efficiency scaled 3D histogram
     dataContainer.hPowheg.emplace_back(hTreatedPowheg);
     
     
@@ -665,7 +669,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, 
     //
     // 7th step::scale by measured integrated luminosity and BR of D0 decay channel
     //
-    dataContainer.hAllptDPowheg[2]->Scale(BR*luminosity);
+    //dataContainer.hAllptDPowheg[2]->Scale(BR*luminosity);
 
     std::cout << "Generator data smeared.\n";
 }
@@ -916,8 +920,10 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     //
     // Storing in a single pdf file
     //
+    cPowheg->Update();
     cPowheg->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf(",jetptMin,jetptMax));
     cMatching->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf",jetptMin,jetptMax));
+    cNonPrompt->Update();
     cNonPrompt->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf",jetptMin,jetptMax));
     cResponse->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf",jetptMin,jetptMax));
     cSBFeedDown->Print(Form("pT_feeddown_%.0f_to_%.0fGeV_2D.pdf)",jetptMin,jetptMax));
@@ -996,7 +1002,7 @@ void FeedDownSubtraction_2D(){
     getLuminosities(fPowheg, luminosity_powheg, luminosity);
 
     // Fold data using two methods
-    smearGeneratorData(dataContainer, luminosity_powheg, fEfficiency, luminosity, BR);
+    smearGeneratorData(dataContainer, luminosity_powheg, fEfficiency, luminosity, BR, jetptMin, jetptMax);
 
     // Subtract non-prompt distribution from prompt efficiency corrected ones
     feedDown(dataContainer, jetptMin, jetptMax, fEfficiency);

@@ -854,10 +854,10 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile
     const double MCDyCut = 0.8; // on detector level D0
     const double MCPDeltaRcut = 0.4; // on particle level delta R
     const double MCDDeltaRcut = 0.4; // on detector level delta R
-    const double MCPHfPtMincut = 3.; // on particle level
-    const double MCDHfPtMincut = 3.; // on detector level
-    const double MCPHfPtMaxcut = 30.; // on particle level
-    const double MCDHfPtMaxcut = 30.; // on detector level
+    const double MCPHfPtMincut = 3.; // on particle level D0
+    const double MCDHfPtMincut = 3.; // on detector level D0
+    const double MCPHfPtMaxcut = 30.; // on particle level D0
+    const double MCDHfPtMaxcut = 30.; // on detector level D0
 
     // method 1: create 2D response matrix of non-prompt flattened Delta R and pT,jet, for overall pT,D
     //(DeltaR_detector, pTjet_detector, DeltaR_particle, pTjet_particle) -> flattened to (detector, particle)
@@ -923,7 +923,7 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile
         if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)) && !MCPhfprompt
             && (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut)) && !MCDhfprompt) {
         
-            // Find the bin corresponding to the given pT value
+            // Find the bin corresponding to the given pT,D value
             int bin = hEffPrompt->FindBin(MCDhfPt);
             // Get the efficiency value from the bin content
             double efficiency_prompt = hEffPrompt->GetBinContent(bin);
@@ -1204,7 +1204,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, 
     // 2nd step: scale by 1 over POWHEG integrated luminosity
     // (skip this step for now)
     //hTreatedPowheg->Scale(1/luminosity);
-    dataContainer.hAllptDPowheg[0]->Scale(1/luminosity_powheg); //luminosity/luminosity_powheg
+    //dataContainer.hAllptDPowheg[0]->Scale(1/luminosity_powheg); //luminosity/luminosity_powheg
 
     //
     // 3rd step: scale by efficiency ratio
@@ -1228,7 +1228,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, 
             for (int yBin = 1; yBin <= nBinsY; yBin++) {
                 double binContent = hTreatedPowheg->GetBinContent(xBin, yBin, zBin);
                 double binError = hTreatedPowheg->GetBinError(xBin, yBin, zBin);
-
+                
                 // Obtain efficiencies ratio for specific bin
                 double effPrompt = hEffPrompt->GetBinContent(yBin);
                 double effNonPrompt = hEffNonPrompt->GetBinContent(yBin);
@@ -1290,7 +1290,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, 
     //
     // 7th step::scale by measured integrated luminosity and BR of D0 decay channel
     //
-    dataContainer.hAllptDPowheg[4]->Scale(BR*luminosity);
+    //dataContainer.hAllptDPowheg[4]->Scale(BR*luminosity);
 
     std::cout << "Generator data smeared.\n";
 }
@@ -1958,6 +1958,7 @@ void saveData(const FeedDownData& dataContainer, const double& jetptMin, const d
 }
 
 void FeedDownSubtraction(){
+
     // Execution time calculation
     time_t start, end;
     time(&start); // initial instant of program execution
@@ -1967,26 +1968,19 @@ void FeedDownSubtraction(){
     double luminosity_powheg = 0;
     double BR = 0.0393; // D0 -> KPi decay channel branching ratio = (3.93 +- 0.04) %
 
-    // D0 mass in GeV/c^2
-    double m_0_parameter = 1.86484;
-    double sigmaInitial = 0.012;
     // jet pT cuts
     std::vector<double> ptjetBinEdges_particle = {5., 7., 15., 30.};
     std::vector<double> ptjetBinEdges_detector = {5., 7., 15., 30.};
     double jetptMin = ptjetBinEdges_particle[0]; // GeV
     double jetptMax = ptjetBinEdges_particle[ptjetBinEdges_particle.size() - 1]; // GeV
+
     // deltaR histogram
-    int deltaRbins = 10000; // deltaRbins = numberOfPoints, default=10 bins for [0. 0.4]
     std::vector<double> deltaRBinEdges_particle = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; // TODO: investigate structure before 0.005: 0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4
     std::vector<double> deltaRBinEdges_detector = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4};
     double minDeltaR = deltaRBinEdges_particle[0];
     double maxDeltaR = deltaRBinEdges_particle[deltaRBinEdges_particle.size() - 1];
-    // mass histogram
-    int massBins = 100; 
-    double minMass = 1.67;
-    double maxMass = 2.1;
+    
     // pT,D histograms
-    int ptBins = 100;
     std::vector<double> ptDBinEdges_particle = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
     std::vector<double> ptDBinEdges_detector = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
     double minPtD = ptDBinEdges_particle[0];
@@ -1996,8 +1990,8 @@ void FeedDownSubtraction(){
     TFile* fPowheg = new TFile("../SimulatedData/POWHEG/trees_powheg_fd_central.root","read");
     TFile* fSimulatedO2 = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/AO2D_merged_All.root","read");
     TFile* fEfficiency = new TFile(Form("../2-Efficiency/backSubEfficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
-    TFile* fBackSub = new TFile(Form("../1-SignalTreatment/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
-    TFile* fSigExt = new TFile(Form("../1-SignalTreatment/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    TFile* fSigExt = new TFile(Form("../1-SignalTreatment/SignalExtraction/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     if (!fSimulatedO2 || fSimulatedO2->IsZombie()) {
         std::cerr << "Error: Unable to open simulated data ROOT file." << std::endl;
     }
@@ -2008,12 +2002,6 @@ void FeedDownSubtraction(){
         std::cerr << "Error: Unable to open signal extracted ROOT file." << std::endl;
     }
     
-    std::vector<const char*> names = {"histPt1", "histPt2", "histPt3", 
-                                      "histPt4", "histPt5", "histPt6",
-                                      "histPt7", "histPt8", "histPt9"};                                                     // Names of histograms
-    std::vector<const char*> titles = {"3 < p_{T,D} < 4 GeV/c", "4 < p_{T,D} < 5 GeV/c", "5 < p_{T,D} < 6 GeV/c",
-                                       "6 < p_{T,D} < 7 GeV/c", "7 < p_{T,D} < 8 GeV/c", "8 < p_{T,D} < 10 GeV/c",
-                                       "10 < p_{T,D} < 12 GeV/c", "12 < p_{T,D} < 15 GeV/c", "15 < p_{T,D} < 30 GeV/c"};    // Titles of histograms
     //FeedDownData dataContainer = createHistograms(deltaRBinEdges, ptDBinEdges, jetptMin, jetptMax);
     FeedDownData dataContainer = createHistograms(deltaRBinEdges_particle, ptDBinEdges_particle, ptjetBinEdges_particle,
                                                   deltaRBinEdges_detector, ptDBinEdges_detector, ptjetBinEdges_detector);
@@ -2038,9 +2026,6 @@ void FeedDownSubtraction(){
 
     // Save corrected distributions to file
     saveData(dataContainer, jetptMin, jetptMax);
-
-
-    
 
     time(&end); // end instant of program execution
     
