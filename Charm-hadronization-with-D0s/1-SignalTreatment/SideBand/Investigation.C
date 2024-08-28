@@ -161,7 +161,7 @@ void Investigation(){
     double maxMass = 2.1;
 
     // creating histograms
-    TH2D* h2_HFmass = new TH2D("histMass3", "6 < p_{T,D} < 7 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()); 
+    TH2D* h2_HFmass = new TH2D("histMass", "6 < p_{T,D} < 7 GeV/c;m(K#pi) GeV/c^{2};#DeltaR", massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()); 
 
     // opening file
     TFile* fDist = new TFile("../../ExperimentalData/Hyperloop_output/AO2D.root","read");
