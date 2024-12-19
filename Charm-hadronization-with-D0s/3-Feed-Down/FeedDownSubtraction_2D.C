@@ -392,7 +392,8 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile
             // Loop through pT,D bin edges to find the appropriate histogram and fill it
             for (size_t iEdge = 0; iEdge < ptjetBinEdges_particle.size() - 1 && !filled; iEdge++) {
                 if ((MCPjetPt >= ptjetBinEdges_particle[iEdge]) && (MCPjetPt < ptjetBinEdges_particle[iEdge + 1])) {
-                    hEffPrompt = (TH1D*)fEfficiency->Get(Form("JetPtRange_%.0f_%0.f/efficiency_prompt",ptjetBinEdges_particle[iEdge],ptjetBinEdges_particle[iEdge + 1]));
+                    hEffPrompt = (TH1D*)fEfficiency->Get(Form("OverallPtRange_%.0f_%.0f/efficiency_prompt",ptjetBinEdges_particle[iEdge],ptjetBinEdges_particle[iEdge + 1]));
+                    //hEffPrompt = (TH1D*)fEfficiency->Get(Form("JetPtRange_%.0f_%0.f/efficiency_prompt",ptjetBinEdges_particle[iEdge],ptjetBinEdges_particle[iEdge + 1]));
                     if (!hEffPrompt || hEffPrompt->IsZombie()) {
                         std::cerr << Form("Error: Unable to open efficiency histogram JetPtRange_%.0f_%0.f/efficiency_prompt in ROOT data file.",jetptMin,jetptMax) << std::endl;
                     }

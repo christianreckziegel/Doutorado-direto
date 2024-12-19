@@ -6,6 +6,12 @@
 
 using namespace std;
 
+//--- bit manipulation ---------------------------------------------------------
+#define BIT(n)       (1ULL << (n))
+#define SETBIT(n,i)  ((n) |= BIT(i))
+#define CLRBIT(n,i)  ((n) &= ~BIT(i))
+#define TESTBIT(n,i) ((Bool_t)(((n) & BIT(i)) != 0))
+
 double DeltaPhi(double phi1, double phi2) {
     // Compute the absolute difference between phi1 and phi2
     double dphi = std::abs(phi1 - phi2); 
@@ -366,7 +372,7 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
 
     // Calculating scaling parameter
     for (size_t iHisto = 0; iHisto < vectorOutputs.histograms.size(); ++iHisto) {
-        
+
         // Corresponding background fit index
         int backgroundHist = vectorOutputs.histograms.size() + iHisto;
 
@@ -598,7 +604,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
 
     for (size_t iHisto = 0; iHisto < outputStruct.histograms.size(); iHisto++) {
         cSideBand->cd(iHisto+1);
-        outputStruct.sidebandHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        //outputStruct.sidebandHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.sidebandHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
         outputStruct.sidebandHist[iHisto]->GetYaxis()->SetTitle("yields");
         outputStruct.sidebandHist[iHisto]->SetMarkerStyle(kFullTriangleUp);
@@ -609,7 +615,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
 
         cSignal->cd(iHisto+1);
-        outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        //outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.signalHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
         outputStruct.signalHist[iHisto]->GetYaxis()->SetTitle("yields");
         outputStruct.signalHist[iHisto]->SetMarkerStyle(kFullSquare);
@@ -619,7 +625,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
 
         cSubtracted->cd(iHisto+1);
-        outputStruct.subtractedHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        //outputStruct.subtractedHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.subtractedHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
         outputStruct.subtractedHist[iHisto]->GetYaxis()->SetTitle("yields");
         outputStruct.subtractedHist[iHisto]->SetMarkerStyle(kFullCircle);
@@ -629,7 +635,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax));
 
         cSigPlusBack->cd(iHisto+1);
-        outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        //outputStruct.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.signalHist[iHisto]->Draw();
         outputStruct.sidebandHist[iHisto]->Draw("same");
         outputStruct.subtractedHist[iHisto]->Draw("same");
@@ -639,7 +645,7 @@ void PlotHistograms(const std::vector<TH2D*>& histograms2d, const std::vector<TF
     
     TCanvas* cAllPt = new TCanvas("cAllPt","All pT,D final deltaR distribution");
     cAllPt->SetCanvasSize(1800,1000);
-    outputStruct.hSubtracted_allPtSummed->GetXaxis()->SetRangeUser(0.0, 0.5);
+    //outputStruct.hSubtracted_allPtSummed->GetXaxis()->SetRangeUser(0.0, 0.5);
     outputStruct.hSubtracted_allPtSummed->SetTitle(";#DeltaR;yields");
     outputStruct.hSubtracted_allPtSummed->SetMarkerStyle(kFullCircle);
     outputStruct.hSubtracted_allPtSummed->SetMarkerColor(kRed);

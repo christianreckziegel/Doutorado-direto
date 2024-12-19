@@ -400,11 +400,11 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fits, const dou
         fits.signals_and_reflections[iHist]->SetLineColor(38); // pastel blue
         latex->DrawLatex(statBoxPos-0.87, 0.70,"MC derived data:"); // Derived data from LHC24d3a (MC)
         latex->DrawLatex(statBoxPos-0.87, 0.65,"HF_LHC24d3a_All"); // Derived data from LHC24d3a (MC)
-        latex->DrawLatex(statBoxPos-0.4, 0.58, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
+        latex->DrawLatex(statBoxPos-0.87, 0.60, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
 
         // Creating legend for the three components in the final fit
         TLegend* legend = new TLegend(0.6,0.57,0.85,0.77);
-        legend->AddEntry(fits.signals[iHist],"Signal", "l");
+        legend->AddEntry(fits.signals[iHist],"Pure signal", "l");
         legend->AddEntry(fits.reflections[iHist],"Reflections", "l");
         legend->AddEntry(fits.signals_and_reflections[iHist],"Total fit", "l");
 

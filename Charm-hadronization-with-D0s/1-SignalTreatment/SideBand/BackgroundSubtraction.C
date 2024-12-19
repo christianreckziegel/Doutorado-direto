@@ -367,11 +367,6 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
         double m_0 = fittings[iHisto]->GetParameter(3); // Get the value of parameter 'm_0'
         double sigma = fittings[iHisto]->GetParameter(4); // Get the value of parameter 'sigma'
 
-        // Create subtracting and final histograms
-        TH1D* h_sideBand;
-        TH1D* h_signal;
-        TH1D* h_back_subtracted;
-
         // Check which sides should be used for the total side-band distribution (if at least 1 sigma fit inside left range)
         if (m_0 - (startingBackSigma+1)*sigma <  vectorOutputs.histograms[iHisto]->GetBinLowEdge(1)) {
             std::cout << "Using only right sideband." << std::endl;
@@ -745,7 +740,6 @@ void BackgroundSubtraction(){
     
     // bin sizes
     cout << "Mass bin width = " << (maxMass-minMass)/massBins << endl;
-    cout << "DeltaR bin width = " << (maxDeltaR-minDeltaR)/deltaRbins << endl;
 
 
     // Fill histograms

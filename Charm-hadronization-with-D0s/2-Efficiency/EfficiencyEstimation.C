@@ -352,12 +352,16 @@ void PlotHistograms(const EfficiencyData& histStruct, double jetptMin, double je
     //
     TString imagePath = "../Images/2-Efficiency/";
     cEff_1->Update();
+    cEff_1->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cEff_1->SaveAs(imagePath + "Efficiency_dNdpT.png");
     cEff_2->Update();
+    cEff_2->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cEff_2->SaveAs(imagePath + "Efficiency_acceptance.png");
     cCorrectedBackSub->Update();
+    cCorrectedBackSub->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cCorrectedBackSub->SaveAs(imagePath + "Efficiency_corrected_pT_bins.png");
     cCorrectedBackSub_allpt->Update();
+    cCorrectedBackSub_allpt->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cCorrectedBackSub_allpt->SaveAs(imagePath + "Efficiency_corrected.png");
 
     //
@@ -428,7 +432,7 @@ void EfficiencyEstimation(){
     EfficiencyData histStruct = createHistograms(ptDBinEdges); // pT histograms
 
     // opening files
-    TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
+    TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/Old_no_reflections/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
     TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fSigExt = new TFile(Form("../1-SignalTreatment/SignalExtraction/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     if (!fSimulated || fSimulated->IsZombie()) {

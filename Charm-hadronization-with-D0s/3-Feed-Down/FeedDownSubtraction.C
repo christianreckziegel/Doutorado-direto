@@ -63,8 +63,8 @@ struct FeedDownData {
 
     TH2D* hFolded;                                          // 2D representation of folded data from method 1
     TH2D* nimaFolded;                                       // 2D folded data with Nima's folding function
-    std::pair<TH2D*, TH2D*> refInputRange; // first = total, second = inside range
-    std::pair<TH2D*, TH2D*> refOutputRange; // first = total, second = inside range
+    std::pair<TH2D*, TH2D*> refInputRange;                  // first = total, second = inside range
+    std::pair<TH2D*, TH2D*> refOutputRange;                 // first = total, second = inside range
     RooUnfoldResponse response;                             // response matrix for non-prompt D0s only, for overall pT,D; using RooUnfoldResponse object, method 1
     THnSparseD* hResponse;                                  // response matrix for non-prompt D0s only, for overall pT,D; using manual folding operation (matrix multiplication), method 2
     std::vector<TH3D*> hPowheg;                             // deltaR vs pT,D vs pT,jet; [0] = generator level, [1] = treated but not yet detector level
@@ -169,10 +169,10 @@ FeedDownData createHistograms(const std::vector<double>& xBinEdges_particle, con
     // 2D truth and particle level data
     dataContainer.hTruth = new TH2D("hTruth2D", "Truth;#DeltaR^{part};p_{T,jet}^{part}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
     dataContainer.hTruthTotalRange = new TH2D("hTruth2D_totalRange", "Truth;#DeltaR^{part};p_{T,jet}^{part}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
-    dataContainer.MCPoutRespSub = new TH2D("MCPoutRespSub", "Truth outside response range by subtraction;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    dataContainer.MCPoutRespSub = new TH2D("MCPoutRespSub", "Truth outside response range by subtraction;#DeltaR^{part};p_{T,jet}^{part}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
 
-    dataContainer.hTruthPrompt = new TH2D("hTruth2DPrompt", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
-    dataContainer.hTruthTotalRangePrompt = new TH2D("hTruth2D_totalRangePrompt", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    dataContainer.hTruthPrompt = new TH2D("hTruth2DPrompt", "Truth;#DeltaR^{part};p_{T,jet}^{part}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    dataContainer.hTruthTotalRangePrompt = new TH2D("hTruth2D_totalRangePrompt", "Truth;#DeltaR^{part};p_{T,jet}^{part}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
 
     dataContainer.hLossRatio = new TH2D("hLossRatio", "Frequency of loss of less than 5 GeV/c jets;#DeltaR^{part};p_{T,jet}^{part}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
 
@@ -223,8 +223,8 @@ FeedDownData createHistograms(const std::vector<double>& xBinEdges_particle, con
     xNumBinEdges = xBinEdges_detector.size();
     yNumBinEdges = yBinEdges_detector.size();
     zNumBinEdges = zBinEdges_detector.size();
-    dataContainer.hMeasured = new TH2D("hMeasured2D", "Measured;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
-    dataContainer.hMeasuredTotalRange = new TH2D("hMeasured2D_totalRange", "Measured;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
+    dataContainer.hMeasured = new TH2D("hMeasured2D", "Measured;#DeltaR^{det};p_{T,jet}^{det}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
+    dataContainer.hMeasuredTotalRange = new TH2D("hMeasured2D_totalRange", "Measured;#DeltaR^{det};p_{T,jet}^{det}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
     dataContainer.hFolded = new TH2D("hFolded2D", "Folded;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
 
     // zAxis.size()-1, zAxis.data(), zAxis.size()-1, zAxis.data()
@@ -351,7 +351,7 @@ void fillHistograms(TFile* fPowheg, TFile* fSimulatedO2, FeedDownData& dataConta
     // O2 matching task measured and truth histograms
     //
     // Accessing TTree
-    tree = (TTree*)fSimulatedO2->Get("O2matchtable");
+    tree = (TTree*)fSimulatedO2->Get("DF_2263915935550653/O2matchtable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening O2 matching tree.\n";
@@ -873,7 +873,7 @@ void buildResponseMatrix(FeedDownData& dataContainer, TFile* fSimulatedO2, TFile
     // O2 matching task measured and truth histograms
     //
     // Accessing TTree
-    TTree* tree = (TTree*)fSimulatedO2->Get("O2matchtable");
+    TTree* tree = (TTree*)fSimulatedO2->Get("DF_2263915935550653/O2matchtable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening O2 matching tree.\n";
@@ -1097,7 +1097,7 @@ TH2D* removeOutsideData(FeedDownData& dataContainer) {
 
     // Get kinematic efficiency 2D histogram diving intersection over total range
     dataContainer.hDivTruthRange->Divide(dataContainer.hTruthTotalRange);
-    dataContainer.hDivTruthRange->SetTitle("Inside response range / Total truth range (Kinematic efficiency?)");
+    dataContainer.hDivTruthRange->SetTitle("#varepsilon_{Kinematic} = Inside response range / Total truth range");
 
     // Correct POWHEG data multiplying each bin by corresponding kinematic efficiency
     hPowhegCorrected->Multiply(dataContainer.hDivTruthRange);
@@ -1111,7 +1111,7 @@ TH2D* removeOutsideData(FeedDownData& dataContainer) {
 
     // Get kinematic efficiency 2D histogram diving intersection over total range
     dataContainer.hDivTruthRangePrompt->Divide(dataContainer.hTruthTotalRange);
-    dataContainer.hDivTruthRangePrompt->SetTitle("Inside response range / Total truth range (Kinematic efficiency?), prompt D0s");
+    dataContainer.hDivTruthRangePrompt->SetTitle("#varepsilon_{Kinematic} = Inside response range / Total truth range, prompt D0s");
 
     // Outside range by subtraction
     dataContainer.MCPoutRespSub = (TH2D*)dataContainer.hTruthTotalRange->Clone("MCPoutRespSub");
@@ -1146,7 +1146,7 @@ TH2D* addOutsideData(FeedDownData& dataContainer) {
 
     // Get kinematic efficiency 2D histogram diving total range over intersection
     dataContainer.hDivMeasuredRange->Divide(dataContainer.hMeasuredTotalRange);
-    dataContainer.hDivMeasuredRange->SetTitle("Inside response range / Total measured range (kinematic efficiency?)");
+    dataContainer.hDivMeasuredRange->SetTitle("#varepsilon_{Kinematic} = Inside response range / Total measured range");
 
     // Correct POWHEG data multiplying each bin by corresponding kinematic efficiency
     hFoldedCorrected->Divide(dataContainer.hDivMeasuredRange);
@@ -1278,7 +1278,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, 
     dataContainer.hAllptDPowheg.emplace_back(hFoldedNonPrompt_2); // [3] = folded method 2
     // ii. manual matrix multiplication with Nima's function (1D index calculation?)
     dataContainer.nimaFolded = nimaFolding(dataContainer.response, dataContainer.hAllptDPowheg[1], dataContainer.hMeasured);
-    dataContainer.nimaFolded->SetTitle("Folded with Nima's 1D index function;#frac{1}{L_{int}}#DeltaR^{b #rightarrow D^{0}}_{reco};p_{T,jet}^{ch}");
+    dataContainer.nimaFolded->SetTitle("Folded with Nima's 1D index function;#DeltaR^{b #rightarrow D^{0}}_{reco};p_{T,jet}^{ch}");
 
     //
     // 6th step: add outside of response range data in folded data
@@ -1906,8 +1906,30 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     cFoldedData->cd(4);
     hProjectionX1->Draw();
 
-    
+    // Kinematic efficiency: particle level
+    TCanvas* cDivTruthRange = new TCanvas("cDivTruthRange","Kinematic efficiency: particle level");
+    dataContainer.hDivTruthRange->Draw("text");
+    // Kinematic efficiency: detector level
+    TCanvas* cDivMeasuredRange = new TCanvas("cDivMeasuredRange","Kinematic efficiency: detector level");
+    dataContainer.hDivMeasuredRange->Draw("text");
 
+    TCanvas* cPowhegWorkflow = new TCanvas("cPowhegWorkflow","cPowhegWorkflow");
+    cPowhegWorkflow->Divide(2,2);
+    // POWHEG MC data before folding
+    cPowhegWorkflow->cd(1);
+    dataContainer.hAllptDPowheg[0]->Draw("colz");
+    // POWHEG MC data before folding with kinematic efficiency correction applied
+    cPowhegWorkflow->cd(2);
+    dataContainer.hAllptDPowheg[1]->SetTitle("Before folding with kinematic efficiency correction");
+    dataContainer.hAllptDPowheg[1]->Draw("colz");
+    // POWHEG MC data after folding
+    cPowhegWorkflow->cd(3);
+    dataContainer.nimaFolded->SetTitle("Folded by direct 4D matrix multiplication");
+    dataContainer.nimaFolded->Draw("colz");
+    // POWHEG MC data after folding with kinematic efficiency correction applied
+    cPowhegWorkflow->cd(4);
+    dataContainer.hAllptDPowheg[4]->SetTitle("Folded with kinematic efficiency correction");
+    dataContainer.hAllptDPowheg[4]->Draw("colz");
 
     //
     // Feed-down subtracted Delta R distributions
@@ -1925,13 +1947,26 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     //
     TString imagePath = "../Images/3-Feed-Down/";
     cResponse->Update();
+    cResponse->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cResponse->SaveAs(imagePath + "FD_response_matrix.png");
     cMatching->Update();
+    cMatching->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cMatching->SaveAs(imagePath + "FD_response_match_histograms.png");
     cSBFeedDown->Update();
+    cSBFeedDown->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cSBFeedDown->SaveAs(imagePath + "FD_subtracted.png");
     cFoldedData->Update();
+    cFoldedData->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cFoldedData->SaveAs(imagePath + "FD_folded_data.png");
+    cDivTruthRange->Update();
+    cDivTruthRange->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cDivTruthRange->SaveAs(imagePath + "FD_kinematic_efficiency_particle.png");
+    cDivMeasuredRange->Update();
+    cDivMeasuredRange->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cDivMeasuredRange->SaveAs(imagePath + "FD_kinematic_efficiency_detector.png");
+    cPowhegWorkflow->Update();
+    cPowhegWorkflow->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cPowhegWorkflow->SaveAs(imagePath + "FD_POWHEG_workflow.png");
 
     //
     // Storing in a single pdf file
@@ -1988,7 +2023,7 @@ void FeedDownSubtraction(){
 
     // Opening files
     TFile* fPowheg = new TFile("../SimulatedData/POWHEG/trees_powheg_fd_central.root","read");
-    TFile* fSimulatedO2 = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/AO2D_merged_All.root","read");
+    TFile* fSimulatedO2 = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/HF_LHC24d3a_All/AO2D.root","read"); // /McChargedMatched/AO2D_merged_All.root
     TFile* fEfficiency = new TFile(Form("../2-Efficiency/backSubEfficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fSigExt = new TFile(Form("../1-SignalTreatment/SignalExtraction/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
