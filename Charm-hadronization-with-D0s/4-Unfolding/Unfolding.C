@@ -154,7 +154,7 @@ void fillHistograms(TFile* fData, TFile* fSimulatedO2, UnfoldData& dataContainer
     // O2 matching task measured and truth histograms
     //
     // Accessing TTree
-    tree = (TTree*)fSimulatedO2->Get("O2matchtable");
+    tree = (TTree*)fSimulatedO2->Get("DF_2263915935550653/O2matchtable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening O2 matching tree.\n";
@@ -270,7 +270,7 @@ void buildResponseMatrix(UnfoldData& dataContainer, TFile* fSimulatedO2, TFile* 
     // O2 matching task measured and truth histograms
     //
     // Accessing TTree
-    TTree* tree = (TTree*)fSimulatedO2->Get("O2matchtable");
+    TTree* tree = (TTree*)fSimulatedO2->Get("DF_2263915935550653/O2matchtable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening O2 matching tree.\n";
@@ -467,10 +467,10 @@ void Unfolding(){
 
     // Opening files
     TFile* fData = new TFile("../ExperimentalData/Hyperloop_output/AO2D.root","read");
-    TFile* fSimulatedO2 = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/AO2D_merged_All.root","read");
+    TFile* fSimulatedO2 = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/HF_LHC24d3a_All/AO2D.root","read");
     TFile* fEfficiency = new TFile(Form("../2-Efficiency/backSubEfficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
-    TFile* fBackSub = new TFile(Form("../1-SignalTreatment/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
-    TFile* fSigExt = new TFile(Form("../1-SignalTreatment/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    TFile* fSigExt = new TFile(Form("../1-SignalTreatment/SignalExtraction/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     if (!fData || fData->IsZombie()) {
         std::cerr << "Error: Unable to open the ROOT file." << std::endl;
     }
