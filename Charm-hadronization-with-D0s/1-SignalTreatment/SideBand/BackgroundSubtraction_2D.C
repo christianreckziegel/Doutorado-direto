@@ -520,6 +520,15 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
         
     }
     
+    // Set negative count bin entries to 0
+    for (size_t iHisto = 0; iHisto < vectorOutputs.subtractedHist.size(); iHisto++) {
+        for (int iBin = 1; iBin <= vectorOutputs.subtractedHist[iHisto]->GetNbinsX(); iBin++) {
+            if (vectorOutputs.subtractedHist[iHisto]->GetBinContent(iBin) < 0) {
+                vectorOutputs.subtractedHist[iHisto]->SetBinContent(iBin,0);
+            }
+        }
+    }
+    
     std::cout << "Background estimated and subtracted below signal region for current iteration.\n\n";
 
     // Return the output struct object containing filled histogram vectors
@@ -812,6 +821,7 @@ void AnalyzeJetPtRange(TFile* fDist, TH2D* hDeltaR_vs_ptJet, std::vector<double>
     int massBins = 50; // default=100 
     double minMass = 1.72; // use from 1.72, used to use 1.67
     double maxMass = 2.1;
+    
     // Initial parameter values
     InitialParam parametersVectors;
     parametersVectors.paramA = {6047.36, 3334.83, 3819.97, 1988.98, 1.1*1049.22, 1.1*2048.5, 944.77, 1460.87, 1448.5,};

@@ -85,7 +85,7 @@ EfficiencyData createHistograms(const std::vector<double>& binEdges) {
 }
 
 // Module to fill histograms from TFile data
-void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptMin, double jetptMax) {
+void fillHistograms(TFile* fSimulated, const EfficiencyData& histStruct, double jetptMin, double jetptMax) {
     
     // Defining cuts
     const double jetRadius = 0.4;
@@ -97,8 +97,8 @@ void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptM
     // MC generator level tree and histograms
     //
     // Accessing TTree
-    TTree* tree = (TTree*)file->Get("O2mcpjetdisttable");
-
+    TTree* tree = (TTree*)fSimulated->Get("DF_merged/O2mcpjetdisttable");
+    
     // Check for correct access
     if (!tree) {
         cout << "Error opening tree.\n";
@@ -106,19 +106,21 @@ void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptM
     // defining variables for accessing the TTree
     float axisDistance, jetPt, jetEta, jetPhi;
     float hfPt, hfEta, hfPhi, hfMass, hfY;
+    float jetnconst_float;
     bool hfprompt, hfmatch;
 
-    tree->SetBranchAddress("fJetHfDist",&axisDistance);
-    tree->SetBranchAddress("fJetPt",&jetPt);
-    tree->SetBranchAddress("fJetEta",&jetEta);
-    tree->SetBranchAddress("fJetPhi",&jetPhi);
-    tree->SetBranchAddress("fHfPt",&hfPt);
-    tree->SetBranchAddress("fHfEta",&hfEta);
-    tree->SetBranchAddress("fHfPhi",&hfPhi);
+    tree->SetBranchAddress("fMCJetHfDist",&axisDistance);
+    tree->SetBranchAddress("fMCJetPt",&jetPt);
+    tree->SetBranchAddress("fMCJetEta",&jetEta);
+    tree->SetBranchAddress("fMCJetPhi",&jetPhi);
+    tree->SetBranchAddress("fMCJetNConst",&jetnconst_float);
+    tree->SetBranchAddress("fMCHfPt",&hfPt);
+    tree->SetBranchAddress("fMCHfEta",&hfEta);
+    tree->SetBranchAddress("fMCHfPhi",&hfPhi);
     hfMass = 1.86483; // D0 rest mass in GeV/c^2
-    tree->SetBranchAddress("fHfY",&hfY);
-    tree->SetBranchAddress("fHfPrompt",&hfprompt);
-    tree->SetBranchAddress("fHfMatch",&hfmatch);
+    tree->SetBranchAddress("fMCHfY",&hfY);
+    tree->SetBranchAddress("fMCHfPrompt",&hfprompt);
+    tree->SetBranchAddress("fMCHfMatch",&hfmatch);
 
 
     int nEntries = tree->GetEntries();
@@ -150,16 +152,19 @@ void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptM
     // MC detector level tree and histograms
     //
     // Accessing TTree
-    tree = (TTree*)file->Get("O2mcdjetdisttable");
+    tree = (TTree*)fSimulated->Get("DF_merged/O2mcdjetdisttable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening tree.\n";
     }
-
+    // defining ML score variables for accessing the TTree
+    float hfmlscore0, hfmlscore1, hfmlscore2;
+    int jetnconst_int;
     tree->SetBranchAddress("fJetHfDist",&axisDistance);
     tree->SetBranchAddress("fJetPt",&jetPt);
     tree->SetBranchAddress("fJetEta",&jetEta);
     tree->SetBranchAddress("fJetPhi",&jetPhi);
+    tree->SetBranchAddress("fJetNConst",&jetnconst_int);
     tree->SetBranchAddress("fHfPt",&hfPt);
     tree->SetBranchAddress("fHfEta",&hfEta);
     tree->SetBranchAddress("fHfPhi",&hfPhi);
@@ -167,6 +172,9 @@ void fillHistograms(TFile* file, const EfficiencyData& histStruct, double jetptM
     tree->SetBranchAddress("fHfY",&hfY);
     tree->SetBranchAddress("fHfPrompt",&hfprompt);
     tree->SetBranchAddress("fHfMatch",&hfmatch);
+    tree->SetBranchAddress("fHfMlScore0",&hfmlscore0);
+    tree->SetBranchAddress("fHfMlScore1",&hfmlscore1);
+    tree->SetBranchAddress("fHfMlScore2",&hfmlscore2);
 
     nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
@@ -432,7 +440,7 @@ void EfficiencyEstimation(){
     EfficiencyData histStruct = createHistograms(ptDBinEdges); // pT histograms
 
     // opening files
-    TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/Old_no_reflections/AO2D_merged_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
+    TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/New_with_reflections/Merged_AO2D_HF_LHC24d3a_All.root","read"); //../SimulatedData/Hyperloop_output/AO2D_merged.root
     TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fSigExt = new TFile(Form("../1-SignalTreatment/SignalExtraction/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     if (!fSimulated || fSimulated->IsZombie()) {
@@ -440,9 +448,6 @@ void EfficiencyEstimation(){
     }
     if (!fBackSub || fBackSub->IsZombie()) {
         std::cerr << "Error: Unable to open background subtracted data ROOT file." << std::endl;
-    }
-    if (!fSigExt || fSigExt->IsZombie()) {
-        std::cerr << "Error: Unable to open signal extracted ROOT file." << std::endl;
     }
     
     // Fill histograms

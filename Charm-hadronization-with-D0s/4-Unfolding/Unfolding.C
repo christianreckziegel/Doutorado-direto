@@ -47,16 +47,26 @@ double DeltaPhi(double phi1, double phi2) {
 }
 
 struct UnfoldData {
-    TH2D* hMeasured;                                        // 2D representation of response measured data
-    TH2D* hMeasuredTotalRange;                              // 2D total measured range data
-    TH2D* hDivMeasuredRange;                                // 2D division of (inside range) / (total range) for measured data
-    TH2D* hTruth;                                           // 2D representation of response truth data
-    TH2D* hTruthTotalRange;                                 // 2D total truth range data
-    TH2D* hDivTruthRange;                                   // 2D division of (inside range) / (total range) for truth data
+    // Step 2: apply efficiency (pT,D dependent) correction
+    std::pair<TH1D*, TH1D*> hSelectionEfficiency;                           // first = prompt D0s, second = non-prompt D0s
 
-    RooUnfoldResponse response;                             // response matrix for non-prompt D0s only, for overall pT,D; using RooUnfoldResponse object, method 1
-    std::vector<TH1D*> hEfficiencies;                       // inclusive = 0, prompt only = 1, non-prompt only = 2
+    // Step: background subtracted, efficiency corrected, B fed-down 2D distribution (pT,jet vs DeltaR)
+    TH2D* hBFedDownData;
 
+    // Step 4: bayesian unfolding
+    std::vector<TH2D*> hKineEffParticle = {nullptr, nullptr, nullptr};      // particle level (addition): [0] = numerator, [1] = denominator, [2] = efficiency
+    std::vector<TH2D*> hKineEffDetector = {nullptr, nullptr, nullptr};      // detector level (removal): [0] = numerator, [1] = denominator, [2] = efficiency
+    TH2D* hBFedDownDataKinCorrected = nullptr;                            // 2D histogram with detector level kinematic efficiency correction
+    RooUnfoldResponse* response;                                             // response matrix for folding
+    std::vector<TH2D*> hResponse2D = {nullptr, nullptr};                     // response projections matrix: first = DeltaR, second = pT,jet
+    std::vector<RooUnfoldBayes*> unfold;                                     // unfolding objects, there are iterationNumber unfolding objects
+    TH2D* hMeasuredTemplate = nullptr;                                      // template for measured data (jet pT vs DeltaR), used for hUnfolded binning
+    TH2D* hTruthTemplate = nullptr;
+    std::vector<TH2D*> hUnfolded;                                         // unfolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
+    std::vector<TH2D*> hUnfoldedKinCorrected;                             // unfolded 2D histogram with detector level kinematic correction, there are iterationNumber unfolding objects
+
+    // Refolding test
+    std::vector<TH2D*> hRefolded;                                           // refolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
 };
 
 // Obtain the bin edges of a histogram (useful for asymmetrical bin sizes)
@@ -79,72 +89,119 @@ std::vector<double> getBinEdges(const TAxis* axis) {
 }
 
 // Module to create TH2D histograms including interest variable
-UnfoldData createHistograms(const std::vector<double>& xBinEdges_particle, const std::vector<double>& yBinEdges_particle, const std::vector<double>& zBinEdges_particle,
-                              const std::vector<double>& xBinEdges_detector, const std::vector<double>& yBinEdges_detector, const std::vector<double>& zBinEdges_detector) {
+UnfoldData createHistograms(const std::vector<double>& ptjetBinEdges_particle, const std::vector<double>& deltaRBinEdges_particle, const std::vector<double>& ptDBinEdges_particle,
+                              const std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector,
+                            int& iterationNumber) {
                               //const double& jetptMin, const double& jetptMax) {
     // Create struct to store data
     UnfoldData dataContainer;
-
-    int xNumBinEdges = xBinEdges_particle.size();
-    int yNumBinEdges = yBinEdges_particle.size();
-    int zNumBinEdges = zBinEdges_particle.size();
     
-
-    //
-    // Matching histograms for folding process
-    //
-    // 2D truth and particle level data
-    dataContainer.hTruth = new TH2D("hTruth2D", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
-    dataContainer.hTruthTotalRange = new TH2D("hTruth2D_totalRange", "Truth;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_particle.data(), zNumBinEdges-1, zBinEdges_particle.data());
+    // Create kinematic efficiency histograms
+    dataContainer.hKineEffParticle[0] = new TH2D("hKineEffParticleNumerator", "Particle level kinematic efficiency numerator (prompt D^{0}'s);p_{T,jet}^{gen ch} (GeV/#it{c});#DeltaR", 
+                                                                                  ptjetBinEdges_particle.size() - 1, ptjetBinEdges_particle.data(), 
+                                                                                  deltaRBinEdges_particle.size() - 1, deltaRBinEdges_particle.data());
+    dataContainer.hKineEffParticle[1] = new TH2D("hKineEffParticleDenominator", "Particle level kinematic efficiency denominator (prompt D^{0}'s);p_{T,jet}^{gen ch} (GeV/#it{c});#DeltaR", 
+                                                                                  ptjetBinEdges_particle.size() - 1, ptjetBinEdges_particle.data(), 
+                                                                                  deltaRBinEdges_particle.size() - 1, deltaRBinEdges_particle.data());
+    dataContainer.hKineEffDetector[0] = new TH2D("hKineEffDetectorNumerator", "Detector level kinematic efficiency numerator (prompt D^{0}'s);p_{T,jet}^{reco ch} (GeV/#it{c});#DeltaR", 
+                                                                                  ptjetBinEdges_detector.size() - 1, ptjetBinEdges_detector.data(), 
+                                                                                  deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data());
+    dataContainer.hKineEffDetector[1] = new TH2D("hKineEffDetectorDenominator", "Detector level kinematic efficiency denominator (prompt D^{0}'s);p_{T,jet}^{reco ch} (GeV/#it{c});#DeltaR", 
+                                                                                  ptjetBinEdges_detector.size() - 1, ptjetBinEdges_detector.data(), 
+                                                                                  deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data());
     
-    // 2D measured and detector level data
-    xNumBinEdges = xBinEdges_detector.size();
-    yNumBinEdges = yBinEdges_detector.size();
-    zNumBinEdges = zBinEdges_detector.size();
-    dataContainer.hMeasured = new TH2D("hMeasured2D", "Inside response range measured;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
-    dataContainer.hMeasuredTotalRange = new TH2D("hMeasured2D_totalRange", "Total measured range;#DeltaR;p_{T,jet}", xNumBinEdges-1, xBinEdges_detector.data(), zNumBinEdges-1, zBinEdges_detector.data());
+    // Create template histograms used for response matrix creation
+    dataContainer.hMeasuredTemplate = new TH2D("hMeasuredTemplate", "Measured template;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}", 
+                                                                                  ptjetBinEdges_detector.size() - 1, ptjetBinEdges_detector.data(), 
+                                                                                  deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data());
+    dataContainer.hTruthTemplate = new TH2D("hTruthTemplate", "Truth template;p_{T,jet}^{gen} (GeV/#it{c});#DeltaR^{gen}", 
+                                                                                  ptjetBinEdges_detector.size() - 1, ptjetBinEdges_detector.data(), 
+                                                                                  deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data());
 
+    // Create response matrices
+    dataContainer.response = new RooUnfoldResponse(dataContainer.hKineEffDetector[0], dataContainer.hKineEffParticle[0]);
 
-    cout << "Matching histograms created.\n";
+    dataContainer.hResponse2D[0] = new TH2D("hResponseDeltaR", "Response matrix projection on #DeltaR;#DeltaR^{reco};#DeltaR^{gen}", 
+                                                                                  deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data(), 
+                                                                                  deltaRBinEdges_particle.size() - 1, deltaRBinEdges_particle.data());
+    dataContainer.hResponse2D[1] = new TH2D("hResponsePtJet", "Response matrix projection on p_{T,jet};p_{T,jet}^{reco} (GeV/#it{c});p_{T,jet}^{gen} (GeV/#it{c})", 
+                                                                                  ptjetBinEdges_detector.size() - 1, ptjetBinEdges_detector.data(), 
+                                                                                  ptjetBinEdges_particle.size() - 1, ptjetBinEdges_particle.data());
 
+    // Reserve space for the unfolding objects with the number of iterations
+    dataContainer.unfold.resize(iterationNumber);
 
+    // Reserve space for the unfolded TH2D* histograms with the number of iterations (and point to nullptr)
+    dataContainer.hUnfolded.resize(iterationNumber, nullptr);
 
+    // And also for the kinematic efficiency corrected version of the previous mentioned (and point to nullptr)
+    dataContainer.hUnfoldedKinCorrected.resize(iterationNumber, nullptr);
+
+    std::cout << "Template histograms and response object created." << std::endl;
     return dataContainer;
 }
 
+// Get the optimal BDT score cut for the corresponding pT,D of the entry
+double GetBkgProbabilityCut(double pT, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+    for (size_t i = 0; i < bdtPtCuts.size() - 1; ++i) {
+        if (pT >= bdtPtCuts[i].first && pT < bdtPtCuts[i + 1].first) {
+            return bdtPtCuts[i].second;
+        }
+    }
+    return 1.0; // Default: accept all if out of range
+}
 /**
  * @brief Module to fill histograms from O2 matching task simulation.
  * 
- * This helper function fill two kinds of histograms:
- * - POWHEG+PYTHIA simulated data on particle level with non-prompt D0 
- * - O2 simulated matched data between particle and detector level
+ * This helper function builds two kinds of objects:
+ * - the response matrix content
+ * - obtain the selection efficiency histograms
  *
- * @param fData The ROOT file with POWHEG+PYTHIA non-prompt D0 simulated data.
- * @param fSimulatedO2 The ROOT file with matched O2 simulated data.
+ * @param fFeedDown The ROOT file with output from Feed-down subtracted step.
+ * @param fEfficiency The ROOT file with run 3 style detector level selection efficiency.
  * @param dataContainer Container with already instanciated histograms.
  * @param jetptMin Min jet pT cut.
  * @param jetptMax Max jet pT cut.
  *
- * @note uses 0-based indexing for calculation but 1-based indexing for ROOT histograms.
  *
  * @see createHistograms() [Instanciate histograms.]
  */
-void fillHistograms(TFile* fData, TFile* fSimulatedO2, UnfoldData& dataContainer, double jetptMin, double jetptMax) {
+void fillHistograms(TFile* fFeedDown, TFile* fEfficiency, TFile* fSimulatedMCMatched, UnfoldData& dataContainer, double& jetptMin, double& jetptMax, double& hfptMin, double& hfptMax, 
+                    const std::vector<double>& deltaRBinEdges_particle, const std::vector<double>& deltaRBinEdges_detector, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+
     // Defining cuts
     const double jetRadius = 0.4;
     const double MCPetaCut = 0.9 - jetRadius; // on particle level jet
     const double MCDetaCut = 0.9 - jetRadius; // on detector level jet
     const double MCPyCut = 0.8; // on particle level D0
     const double MCDyCut = 0.8; // on detector level D0
-    const double MCPDeltaRcut = 0.4; // on particle level delta R
-    const double MCDDeltaRcut = 0.4; // on detector level delta R
-    const double MCPHfPtMincut = 3.; // on particle level
-    const double MCDHfPtMincut = 3.; // on detector level
-    const double MCPHfPtMaxcut = 30.; // on particle level
-    const double MCDHfPtMaxcut = 30.; // on detector level
+    const double MCPDeltaRcut = deltaRBinEdges_particle[deltaRBinEdges_particle.size() - 1]; // on particle level delta R
+    const double MCDDeltaRcut = deltaRBinEdges_detector[deltaRBinEdges_detector.size() - 1]; // on detector level delta R
+    const double MCPHfPtMincut = hfptMin; // on particle level D0
+    const double MCDHfPtMincut = hfptMin; // on detector level D0
+    const double MCPHfPtMaxcut = hfptMax; // on particle level D0
+    const double MCDHfPtMaxcut = hfptMax; // on detector level D0
+
+    // Access the background subtracted, efficiency corrected, fed-down distribution
+    dataContainer.hBFedDownData = (TH2D*)fFeedDown->Get("hBFedDownData");
+    if (dataContainer.hBFedDownData) {
+        dataContainer.hBFedDownData = (TH2D*)dataContainer.hBFedDownData->Clone("hBFedDownData");
+        std::cout << "Background subtracted, efficiency corrected, fed-down distribution acquired." << std::endl;
+    } else {
+        std::cout << "Error: failed to acquire background subtracted, efficiency corrected, fed-down distribution acquired." << std::endl;
+    }
+
+    // Access prompt efficiency
+    dataContainer.hSelectionEfficiency.first = (TH1D*)fEfficiency->Get("hSelectionEfficiencyPrompt");
+    dataContainer.hSelectionEfficiency.second = (TH1D*)fEfficiency->Get("hSelectionEfficiencyNonPrompt");
+    if (dataContainer.hSelectionEfficiency.first || dataContainer.hSelectionEfficiency.second) {
+        std::cout << "Efficiency histograms (run 3 style detector level) acquired." << std::endl;
+    } else {
+        std::cout << "Error: failed to acquire efficiency histograms (run 3 style detector level)." << std::endl;
+    }
 
     //
-    // Data to be unfolded tree and histograms
+    // Response matrix and kinematic efficiency histograms
     //
     // Accessing TTree
     TTree* tree;
@@ -154,7 +211,7 @@ void fillHistograms(TFile* fData, TFile* fSimulatedO2, UnfoldData& dataContainer
     // O2 matching task measured and truth histograms
     //
     // Accessing TTree
-    tree = (TTree*)fSimulatedO2->Get("DF_2263915935550653/O2matchtable");
+    tree = (TTree*)fSimulatedMCMatched->Get("DF_merged/O2matchtable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening O2 matching tree.\n";
@@ -168,18 +225,20 @@ void fillHistograms(TFile* fData, TFile* fSimulatedO2, UnfoldData& dataContainer
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
     bool MCDhfprompt;
+    // defining ML score variables for accessing the TTree
+    float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
 
     // particle level branches
-    tree->SetBranchAddress("fMCJetHfDist",&MCPaxisDistance);
-    tree->SetBranchAddress("fMCJetPt",&MCPjetPt);
-    tree->SetBranchAddress("fMCJetEta",&MCPjetEta);
-    tree->SetBranchAddress("fMCJetPhi",&MCPjetPhi);
-    tree->SetBranchAddress("fMCHfPt",&MCPhfPt);
-    tree->SetBranchAddress("fMCHfEta",&MCPhfEta);
-    tree->SetBranchAddress("fMCHfPhi",&MCPhfPhi);
+    tree->SetBranchAddress("fMcJetHfDist",&MCPaxisDistance);
+    tree->SetBranchAddress("fMcJetPt",&MCPjetPt);
+    tree->SetBranchAddress("fMcJetEta",&MCPjetEta);
+    tree->SetBranchAddress("fMcJetPhi",&MCPjetPhi);
+    tree->SetBranchAddress("fMcHfPt",&MCPhfPt);
+    tree->SetBranchAddress("fMcHfEta",&MCPhfEta);
+    tree->SetBranchAddress("fMcHfPhi",&MCPhfPhi);
     MCPhfMass = 1.86483; // D0 rest mass in GeV/c^2
-    tree->SetBranchAddress("fMCHfY",&MCPhfY);
-    tree->SetBranchAddress("fMCHfPrompt",&MCPhfprompt);
+    tree->SetBranchAddress("fMcHfY",&MCPhfY);
+    tree->SetBranchAddress("fMcHfPrompt",&MCPhfprompt);
     // detector level branches
     tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance);
     tree->SetBranchAddress("fJetPt",&MCDjetPt);
@@ -191,185 +250,221 @@ void fillHistograms(TFile* fData, TFile* fSimulatedO2, UnfoldData& dataContainer
     tree->SetBranchAddress("fHfMass",&MCDhfMass);
     tree->SetBranchAddress("fHfY",&MCDhfY);
     tree->SetBranchAddress("fHfPrompt",&MCDhfprompt);
+    tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
+    tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
+    tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
 
     nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
         
-        // calculating delta R
-        double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
-        double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
-        
-        
-
-        // Fill histograms considering jet pT and detector acceptance for PROMPT particles, inside response range (truth and measured levels)
-        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)) && MCPhfprompt
-            && (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut)) && MCDhfprompt) {
-            
-            // Filling measured 2D histogram
-            dataContainer.hMeasured->Fill(MCDDeltaR, MCDjetPt);
-
-            // Filling truth 2D histogram
-            dataContainer.hTruth->Fill(MCPDeltaR, MCPjetPt);
+        // Apply prompt selection (i.e., only c → D0, not B → D0)
+        if (!MCDhfprompt) {
+            continue;
         }
 
-        // Fill reference output total measured range histograms for non-prompt particles
-        if ((abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut)) && MCDhfprompt) {
-            dataContainer.hMeasuredTotalRange->Fill(MCDDeltaR, MCDjetPt);
-        }
-
-    }
-
-    cout << "Response matched histograms filled.\n";
-
-}
-
-/**
- * @brief Module to build 2D response matrix out of flattened 1D input data.
- * 
- * This helper function fill two kinds of histograms:
- * - POWHEG+PYTHIA simulated data on particle level with non-prompt D0 
- * - O2 simulated matched data between particle and detector level
- * 
- * @param dataContainer Container with already instanciated histograms.
- * @param fSimulatedO2 The ROOT file with matched O2 simulated data.
- * @param fEfficiency The ROOT file containing efficiency values.
- * @param jetptMin Min jet pT cut.
- * @param jetptMax Max jet pT cut.
- *
- * @note uses 0-based indexing for calculation but 1-based indexing for ROOT histograms.
- *
- * @see createHistograms() [Instanciate histograms.]
- */
-void buildResponseMatrix(UnfoldData& dataContainer, TFile* fSimulatedO2, TFile* fEfficiency, double jetptMin, double jetptMax) {
-    
-    // Defining cuts
-    const double jetRadius = 0.4;
-    const double MCPetaCut = 0.9 - jetRadius; // on particle level jet
-    const double MCDetaCut = 0.9 - jetRadius; // on detector level jet
-    const double MCPyCut = 0.8; // on particle level D0
-    const double MCDyCut = 0.8; // on detector level D0
-    const double MCPDeltaRcut = 0.4; // on particle level delta R
-    const double MCDDeltaRcut = 0.4; // on detector level delta R
-    const double MCPHfPtMincut = 3.; // on particle level
-    const double MCDHfPtMincut = 3.; // on detector level
-    const double MCPHfPtMaxcut = 30.; // on particle level
-    const double MCDHfPtMaxcut = 30.; // on detector level
-
-    // method 1: create 2D response matrix of prompt flattened Delta R and pT,jet, for overall pT,D
-    //(DeltaR_detector, pTjet_detector, DeltaR_particle, pTjet_particle) -> flattened to (detector, particle)
-    dataContainer.response = RooUnfoldResponse(dataContainer.hMeasured, dataContainer.hTruth);
-
-    std::cout << "Response matrix created.\n";
-
-    // Access prompt efficiency
-    TH1D* hEffPrompt = (TH1D*)fEfficiency->Get("efficiency_prompt");
-
-    //__________________________________________-
-    //
-    // O2 matching task measured and truth histograms
-    //
-    // Accessing TTree
-    TTree* tree = (TTree*)fSimulatedO2->Get("DF_2263915935550653/O2matchtable");
-    // Check for correct access
-    if (!tree) {
-        cout << "Error opening O2 matching tree.\n";
-    }
-
-    // defining variables for accessing particle level data on TTree
-    float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
-    float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
-    bool MCPhfprompt;
-    // defining variables for accessing detector level data on TTree
-    float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
-    float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
-    bool MCDhfprompt;
-
-    // particle level branches
-    tree->SetBranchAddress("fMCJetHfDist",&MCPaxisDistance);
-    tree->SetBranchAddress("fMCJetPt",&MCPjetPt);
-    tree->SetBranchAddress("fMCJetEta",&MCPjetEta);
-    tree->SetBranchAddress("fMCJetPhi",&MCPjetPhi);
-    tree->SetBranchAddress("fMCHfPt",&MCPhfPt);
-    tree->SetBranchAddress("fMCHfEta",&MCPhfEta);
-    tree->SetBranchAddress("fMCHfPhi",&MCPhfPhi);
-    MCPhfMass = 1.86483; // D0 rest mass in GeV/c^2
-    tree->SetBranchAddress("fMCHfY",&MCPhfY);
-    tree->SetBranchAddress("fMCHfPrompt",&MCPhfprompt);
-    // detector level branches
-    tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance);
-    tree->SetBranchAddress("fJetPt",&MCDjetPt);
-    tree->SetBranchAddress("fJetEta",&MCDjetEta);
-    tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
-    tree->SetBranchAddress("fHfPt",&MCDhfPt);
-    tree->SetBranchAddress("fHfEta",&MCDhfEta);
-    tree->SetBranchAddress("fHfPhi",&MCDhfPhi);
-    tree->SetBranchAddress("fHfMass",&MCDhfMass);
-    tree->SetBranchAddress("fHfY",&MCDhfY);
-    tree->SetBranchAddress("fHfPrompt",&MCDhfprompt);
-
-    int nEntries = tree->GetEntries();
-    for (int entry = 0; entry < nEntries; ++entry) {
-        tree->GetEntry(entry);
-        
         // calculating delta R
         double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
         double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
 
-        // Fill histograms considering jet pT and detector acceptance
-        if ((abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)) && MCPhfprompt
-            && (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut)) && MCDhfprompt) {
+        bool genLevelRange = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= deltaRBinEdges_particle[0]) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut));
+        bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= deltaRBinEdges_detector[0]) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut));
+        // Get the threshold for this pT range
+        double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, bdtPtCuts);
+        bool passBDTcut = (MCDhfMlScore0 < maxBkgProb) ? true : false;
+        
+        // Fill response matrix and kinematic efficiency histograms
+        if (genLevelRange && recoLevelRange && passBDTcut) {
             
-            // Find the bin corresponding to the given pT value
-            int bin = hEffPrompt->FindBin(MCDhfPt);
+            // Find the bin corresponding to the given pT,D value
+            int bin = dataContainer.hSelectionEfficiency.first->FindBin(MCDhfPt);
             // Get the efficiency value from the bin content
-            double efficiency_prompt = hEffPrompt->GetBinContent(bin);
-
-            // Fill 4D RooUnfoldResponse object
-            dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt);
-            //dataContainer.response.Fill(MCDDeltaR, MCDjetPt, MCPDeltaR, MCPjetPt, 1./efficiency_prompt); // jet pT shape is influenced by D0 pT efficiency
+            double efficiency_prompt = dataContainer.hSelectionEfficiency.first->GetBinContent(bin);
+            // Fill 4D RooUnfoldResponse object (jet pT shape is influenced by D0 pT efficiency)
+            dataContainer.response->Fill(MCDjetPt, MCDDeltaR, MCPjetPt, MCPDeltaR, 1./efficiency_prompt);
+            // Fill response matrix projections
+            dataContainer.hResponse2D[0]->Fill(MCDDeltaR, MCPDeltaR, 1./efficiency_prompt);
+            dataContainer.hResponse2D[1]->Fill(MCDjetPt, MCPjetPt, 1./efficiency_prompt);
+            
+            // Fill kinematic efficiency numerator histograms
+            dataContainer.hKineEffParticle[0]->Fill(MCPjetPt, MCPDeltaR);
+            dataContainer.hKineEffDetector[0]->Fill(MCDjetPt, MCDDeltaR);
         }
+        if (genLevelRange) {
+            // Fill kinematic efficiency denominator histogram for full particle level range
+            dataContainer.hKineEffParticle[1]->Fill(MCPjetPt, MCPDeltaR);
+        }
+        if (recoLevelRange && passBDTcut) {
+            // Fill kinematic efficiency denominator histogram for full detector level range
+            dataContainer.hKineEffDetector[1]->Fill(MCDjetPt, MCDDeltaR);
+        }
+    }
+    std::cout << "Response object and kinematic efficiency histograms filled." << std::endl;
+}
+
+// Detector level kinematic efficiency: removal of data
+void removeOutsideData(UnfoldData& dataContainer) {
+    // Calculate detector level kinematic efficiency histograms
+    dataContainer.hKineEffDetector[2] = (TH2D*)dataContainer.hKineEffDetector[0]->Clone("hKineEffDetectorEfficiency");
+    dataContainer.hKineEffDetector[2]->Sumw2();
+    dataContainer.hKineEffDetector[2]->Divide(dataContainer.hKineEffDetector[1]); // A = A / B:  A = A->Divide(B)
+
+    // Copy background subtracted, efficiency corrected, fed-down subtracted 2D histogram
+    dataContainer.hBFedDownDataKinCorrected = (TH2D*)dataContainer.hBFedDownData->Clone("hBFedDownDataKinCorrected");
+    dataContainer.hBFedDownDataKinCorrected->SetTitle("Fed-down with #varepsilon_{kin}^{detector} correction;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}");
+
+    // Apply kinematic efficiency correction
+    dataContainer.hBFedDownDataKinCorrected->Sumw2();
+    dataContainer.hBFedDownDataKinCorrected->Multiply(dataContainer.hKineEffDetector[2]);
+
+    //return dataContainer.hBFedDownDataKinCorrected;
+    std::cout << "Detector level kinematic efficiency applied (removal)." << std::endl;
+}
+
+// Particle level kinematic efficiency: addition of data
+TH2D* addOutsideData(TH2D* hKineEffParticle, TH2D* hUnfolded, int& iterationNumber) {
+
+    // Copy unfolded 2D histogram
+    TH2D* hUnfoldedKinCorrected = (TH2D*)hUnfolded->Clone(Form("hUnfoldedKinCor_iter%d", iterationNumber));
+    hUnfoldedKinCorrected->SetTitle(Form("Unfolded with #varepsilon_{kin}^{particle} correction with %d iterations", iterationNumber));
+    // Apply kinematic efficiency correction
+    hUnfoldedKinCorrected->Sumw2();
+    hKineEffParticle->Sumw2();
+    hUnfoldedKinCorrected->Divide(hKineEffParticle); // A = A / B:  A = A->Divide(B)
+
+    std::cout << "Particle level kinematic efficiency applied (addition)." << std::endl;
+    return hUnfoldedKinCorrected;
+
+}
+
+void performUnfolding(UnfoldData& dataContainer, int& iterationNumber) {
+
+    // Correct distribution with detector level kinematic efficiency (remove entries)
+    removeOutsideData(dataContainer);
+
+    // Calculate particle level kinematic efficiency histograms
+    dataContainer.hKineEffParticle[2] = (TH2D*)dataContainer.hKineEffParticle[0]->Clone("hKineEffParticleEfficiency");
+    dataContainer.hKineEffParticle[2]->Sumw2();
+    dataContainer.hKineEffParticle[2]->Divide(dataContainer.hKineEffParticle[1]); // A = A / B:  A = A->Divide(B)
+
+    // Unfold in multiple iterations
+    for (int iIter = 1; iIter <= iterationNumber; iIter++) {
+        dataContainer.unfold[iIter - 1] = new RooUnfoldBayes(dataContainer.response, dataContainer.hBFedDownDataKinCorrected, iIter);
+        dataContainer.hUnfolded[iIter - 1] = (TH2D*) dataContainer.unfold[iIter - 1]->Hreco(RooUnfold::kCovariance); // kCovariance = 2 = Errors from the square root of of the covariance matrix given by the unfolding
+        dataContainer.hUnfolded[iIter - 1]->SetTitle(Form("Immediately unfolded 2D histogram with %d iterations;p_{T,jet}^{gen} (GeV/#it{c});#DeltaR^{gen}", iIter));
+        dataContainer.hUnfolded[iIter - 1]->SetName(Form("hUnfolded_iter%d", iIter));
+
+        // Correct distribution with particle level kinematic efficiency (add entries)
+        dataContainer.hUnfoldedKinCorrected[iIter - 1] = addOutsideData(dataContainer.hKineEffParticle[2],dataContainer.hUnfolded[iIter - 1], iIter);
         
     }
+    std::cout << "Unfolding procedure performed." << std::endl;
+}
+
+void convergenceTest(UnfoldData& dataContainer) {
+    //
+    std::cout << "Convergence test performed." << std::endl;
+}
+
+// Manual folding of TH2D data using a RooUnfoldResponse object.
+TH2D* manualFolding(RooUnfoldResponse* response, TH2D* hTruth, TH2D* hMeasured) {
     
-    std::cout << "Response matrix filled.\n";
+    // Create empty histogram for the folded data
+    TH2D* hFolded = (TH2D*)hMeasured->Clone("hFolded");
+    hFolded->Reset();
+    hFolded->Sumw2();
+
+    // Get the number of bins in measured and truth histograms
+    int nBinsXMeasured = hFolded->GetNbinsX();
+    int nBinsYMeasured = hFolded->GetNbinsY();
+    int nBinsXTruth = hTruth->GetNbinsX();
+    int nBinsYTruth = hTruth->GetNbinsY();
+    
+    // Debug: print a few values from the response matrix
+    bool debug = false;
+    if (debug) {
+        std::cout << "Measured histogram: " << nBinsXMeasured << " x " << nBinsYMeasured << std::endl;
+        std::cout << "Response matrix dimensions: " 
+                << response->GetNbinsMeasured() << " x " << response->GetNbinsTruth() << std::endl;
+    }
+    
+
+    // loop through detector level bins
+    for (int iMeasured = 0; iMeasured < nBinsXMeasured; iMeasured++) {
+        for (int jMeasured = 0; jMeasured < nBinsYMeasured; jMeasured++) {
+            double foldedValue = 0;
+            double foldedError2 = 0;
+
+            // obtaining flattened 1D index through row-major ordering
+            int index_x_measured = iMeasured + nBinsXMeasured*jMeasured;
+
+            // calculating element iMeasured,jMeasured of folded 2D matrix
+            for (int iTruth = 0; iTruth < nBinsXTruth; iTruth++) {
+                for (int jTruth = 0; jTruth < nBinsYTruth; jTruth++) {
+                    // obtaining flattened 1D index through row-major ordering
+                    int index_x_truth = iTruth + nBinsXTruth*jTruth;
+                    // calculating matrix element product
+                    double truthValue = hTruth->GetBinContent(iTruth + 1,jTruth + 1);
+                    double responseValue = (*response)(index_x_measured, index_x_truth);
+                    foldedValue += truthValue * responseValue;
+                    foldedError2 = std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow((*response)(index_x_measured, index_x_truth),2);
+                }
+            }
+            hFolded->SetBinContent(iMeasured + 1, jMeasured + 1, foldedValue);
+            hFolded->SetBinError(iMeasured + 1, jMeasured + 1, std::sqrt(foldedError2));
+        }
+    }
+    
+    std::cout << "Folded manually with bin index flattening." << std::endl;
+
+    return hFolded;
 }
 
+void refoldingTest(UnfoldData& dataContainer) {
+    
+    // Ensure the vector has the right size and initialized with nullptrs
+    size_t nIter = dataContainer.hUnfoldedKinCorrected.size();
+    dataContainer.hRefolded.resize(nIter, nullptr);
 
-/**
- * @brief Remove entries in region not treated by response matrix from the unfolding input data.
- * 
- *
- * @param dataContainer Container with total and intersection range data and the input data to be corrected.
- *
- * @return Corrected measured data input 2D distribution
- *
- * @note 
- *
- * @see smearGeneratorData() [Correct truth POWHEG data before folding.]
- */
-TH2D* removeOutsideData(UnfoldData& dataContainer) {
+    // Loop through unfolded histograms of different iterations number
+    for (size_t iHisto = 0; iHisto < nIter; iHisto++) {
+        // Copy unfolded histogram (with detector level kinematic efficiency correction)
+        dataContainer.hRefolded[iHisto] = (TH2D*)dataContainer.hUnfoldedKinCorrected[iHisto]->Clone(Form("hRefolded_iter%zu",iHisto+1));
+        dataContainer.hRefolded[iHisto]->SetTitle("Refolded with particle and detector level #varepsilon_{kin} corrections;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}");
+        
+        // Apply detector level kinematic efficiency correction (multiply)
+        dataContainer.hRefolded[iHisto]->Multiply(dataContainer.hKineEffDetector[2]);
 
-    // Copy original data distribution structure
-    //TH2D* hDataCorrected = (TH2D*)dataContainer.hAllptDPowheg[0]->Clone("hPowhegRangeCorrected");
+        // Fold it with the response matrix
+        dataContainer.hRefolded[iHisto] = manualFolding(dataContainer.response, dataContainer.hRefolded[iHisto], dataContainer.hMeasuredTemplate);
 
-    // Start with histogram of intersection area only (inside response ranges)
-    dataContainer.hDivMeasuredRange = dynamic_cast<TH2D*>(dataContainer.hMeasured->Clone("hInsideOverTotalDivision"));
+        // Apply particle level kinematic efficiency correction (divide)
+        dataContainer.hRefolded[iHisto]->Divide(dataContainer.hKineEffParticle[2]);
 
-    // Get kinematic efficiency 2D histogram diving intersection over total range
-    dataContainer.hDivMeasuredRange->Divide(dataContainer.hMeasuredTotalRange);
-    dataContainer.hDivMeasuredRange->SetTitle("#varepsilon_{kinematic} = Inside response range / Total measured range");
+        dataContainer.hRefolded[iHisto]->SetTitle(Form("Refolded with %zu iterations", iHisto+1));
+        // Clean up intermediate clone (optional if not reused)
+        //delete hRefoldInput;
 
-    // Correct POWHEG data multiplying each bin by corresponding kinematic efficiency
-    //hDataCorrected->Multiply(dataContainer.hDivMeasuredRange);
+    }
+    
+    
 
-
-    return dataContainer.hDivMeasuredRange;
-    //return hDataCorrected;
-
+    std::cout << "Refolding test performed." << std::endl;
 }
 
+void closureTest(UnfoldData& dataContainer) {
+    // Build MC input sample (20%): matched data with detector level to test and particle level to compare with
 
+    // Build MC correction sample (80%): build all MC level correction objects (efficiencies and response matrices)
+
+    // 1 - Unfolding closure test
+
+    // 2 - Unfolding closure test + sideband subtraction correction steps
+
+    // 3 - Unfolding closure test + sideband subtraction correction steps + feed-down subtraction steps
+
+    std::cout << "Closure test performed." << std::endl;
+}
 
 void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, const double& jetptMax) {
     cout << "Plotting histograms...\n";
@@ -381,126 +476,211 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     latex->SetNDC(); // Set the coordinates to be normalized device coordinates
     latex->SetTextSize(0.03);
 
-    //
-    // Measured kinematic efficiency
-    //
-    TCanvas* cMeasuredKinEff = new TCanvas("cMeasuredKinEff","Measured data kinematic efficiency");
-    cMeasuredKinEff->SetCanvasSize(1800,1000);
-    //cMeasuredKinEff->Divide(2,2);
-    //cMeasuredKinEff->cd(1);
-    //dataContainer.hMeasured->Draw("colz");
-    //cMeasuredKinEff->cd(2);
-    //dataContainer.hMeasuredTotalRange->Draw("colz");
-    //cMeasuredKinEff->cd(3);
-    cMeasuredKinEff->cd();
-    dataContainer.hDivMeasuredRange->Draw("text");
+    TCanvas* cKinEff = new TCanvas("cKinEff","Kinematic efficiencies");
+    cKinEff->Divide(2,2);
+    cKinEff->cd(1);
+    dataContainer.hKineEffDetector[2]->Draw("text");
+    cKinEff->cd(2);
+    dataContainer.hKineEffParticle[2]->Draw("text");
 
-    //
-    // Response matrix representation in 2D histogram
-    //
-    TCanvas* cResponse = new TCanvas("cResponse","Response matrix");
-    cResponse->SetCanvasSize(1800,1000);
-    cResponse->cd();
-    const TH2* hResponse2D = dataContainer.response.Hresponse();
-    TH2D* hResponse2DClone = static_cast<TH2D*>(hResponse2D->Clone("hResponse2DClone"));
-    hResponse2DClone->SetTitle("2D representation of RooUnfoldResponse;2D Reconstructed;2D Truth");
-    hResponse2DClone->Draw("colz");
+    TCanvas* cResponse = new TCanvas("cResponse","Response matrix 2D representation");
+    cResponse->Divide(2,2);
+    cResponse->cd(1);
+    const TH2* hresponse2D = dataContainer.response->Hresponse();
+    TH2D* hresponse2DClone = static_cast<TH2D*>(hresponse2D->Clone("hResponse2D"));
+    hresponse2DClone->SetTitle("2D response matrix from 4D RooUnfoldResponse - prompt D^{0}'s;2D Reconstructed;2D Truth");
+    hresponse2DClone->Draw("colz");
+    cResponse->cd(2);
+    dataContainer.hResponse2D[0]->Draw("colz");
+    cResponse->cd(3);
+    dataContainer.hResponse2D[1]->Draw("colz");
 
+    TCanvas* cUnfoldedIter = new TCanvas("cUnfoldedIter","Unfolded histograms for each iteration");
+    cUnfoldedIter->cd();
+    TLegend* lUnfoldedIter = new TLegend(0.6,0.57,0.7,0.77);
+    std::vector<TH1D*> hUnfoldedKinCorrectedProj(dataContainer.hUnfoldedKinCorrected.size());
+    int secondBin = 2;
+    int lastButOneBin = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetNbins() - 1; // penultimate bin
+    for (size_t iIter = 0; iIter < dataContainer.hUnfoldedKinCorrected.size(); iIter++) {
+        // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
+        hUnfoldedKinCorrectedProj[iIter] = dataContainer.hUnfoldedKinCorrected[iIter]->ProjectionY(Form("hProjIter_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
+        hUnfoldedKinCorrectedProj[iIter]->SetLineColor(kBlack + iIter);
+        lUnfoldedIter->AddEntry(hUnfoldedKinCorrectedProj[iIter],Form("Iteration %zu", iIter+1), "le");
+        if (iIter == 0) {
+            hUnfoldedKinCorrectedProj[iIter]->Draw();
+        } else {
+            hUnfoldedKinCorrectedProj[iIter]->Draw("same");
+        }
+        
+    }
+    lUnfoldedIter->Draw();
+    double reportingJetPtMin = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
+    double reportingJetPtMax = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+
+    TCanvas* cSteps = new TCanvas("cSteps","Unfolding steps");
+    cSteps->Divide(4,2);
+    cSteps->cd(1);
+    dataContainer.hBFedDownData->Draw("colz");
+    cSteps->cd(2);
+    dataContainer.hBFedDownData->ProjectionY("hBFedDownDataProjY")->Draw();
+    cSteps->cd(3);
+    dataContainer.hBFedDownDataKinCorrected->Draw("colz");
+    cSteps->cd(4);
+    dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY")->Draw();
+    cSteps->cd(5);
+    dataContainer.hUnfolded[7]->Draw("colz");
+    cSteps->cd(6);
+    dataContainer.hUnfolded[7]->ProjectionY("hUnfoldedProjY")->Draw();
+    cSteps->cd(7);
+    dataContainer.hUnfoldedKinCorrected[7]->Draw("colz");
+    cSteps->cd(8);
+    dataContainer.hUnfoldedKinCorrected[7]->ProjectionY("hUnfoldedKinCorrectedProjY")->Draw();
+    
+    TCanvas* cRefoldedIter = new TCanvas("cRefoldedIter","Refolded histograms for each iteration");
+    cRefoldedIter->cd();
+    TLegend* lRefoldedIter = new TLegend(0.6,0.57,0.7,0.77);
+    for (size_t iHisto = 0; iHisto < dataContainer.hRefolded.size(); iHisto++)
+    {
+        dataContainer.hRefolded[iHisto]->SetLineColor(kBlack + iHisto);
+        lRefoldedIter->AddEntry(dataContainer.hRefolded[iHisto],Form("Refolded Iteration %zu", iHisto+1), "le");
+        if (iHisto == 0) {
+            dataContainer.hRefolded[iHisto]->ProjectionY(Form("hRefolded_iter%zu_Proj",iHisto+1))->Draw();
+        } else {
+            dataContainer.hRefolded[iHisto]->ProjectionY(Form("hRefolded_iter%zu_Proj",iHisto+1))->Draw("same");
+        }
+    }
+    dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY")->SetLineWidth(2);
+    lRefoldedIter->AddEntry(dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY"),"Original data", "le");
+    dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY")->Draw("same");
+    lRefoldedIter->Draw();
+    
     //
     // Storing images
     //
     TString imagePath = "../Images/4-Unfolding/";
+    cKinEff->Update();
+    cKinEff->SaveAs(imagePath + "Unfolding_kin_efficiencies.png");
     cResponse->Update();
-    cResponse->SaveAs(imagePath + "UN_response_matrix.png");
-    cMeasuredKinEff->Update();
-    cMeasuredKinEff->SaveAs(imagePath + "UN_measured_kin_efficiency.png");
+    cResponse->SaveAs(imagePath + "Unfolding_kin_efficiencies.png");
+    cUnfoldedIter->Update();
+    cUnfoldedIter->SaveAs(imagePath + "Unfolding_unfolded_matrix.png");
     
+    
+    //
+    // Storing in a single pdf file
+    //
+    cKinEff->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    cResponse->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cUnfoldedIter->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    //cKinEfficiency->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    //cFolded->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    //cFedDownData->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 
 }
 
-void saveData(const UnfoldData& dataContainer, const double& jetptMin, const double& jetptMax){
+void saveData(const UnfoldData& dataContainer, const double& jetptMin, const double& jetptMax) {
     // Open output file
-    TFile* outFile = new TFile(Form("backSubUnfold_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
+    TFile* outFile = new TFile(Form("unfolding_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
 
-    // store each histogram in file
-    //dataContainer.hSBUnfolded->Write();
+    // Store each histogram in file
+
+    // Selection efficiency
+    dataContainer.hSelectionEfficiency.first->Write();
+
+    // Kinematic efficiency
+    dataContainer.hKineEffParticle[2]->Write();
+    dataContainer.hKineEffDetector[2]->Write();
+
+    // 2D response matrices projections
+    dataContainer.hResponse2D[0]->Write();
+    dataContainer.hResponse2D[1]->Write();
+
+    // Create subdirectories
+    TDirectory* dirUnfolded = outFile->mkdir("Unfolded");
+    TDirectory* dirRefolded = outFile->mkdir("Refolded");
+
+    for (size_t iHisto = 0; iHisto < dataContainer.hUnfoldedKinCorrected.size(); iHisto++) {
+        // Unfolded histograms in "Unfolded" folder
+        dirUnfolded->cd();
+        dataContainer.hUnfoldedKinCorrected[iHisto]->Write();
+        // Refolded histograms in "Refolded" folder
+        dirRefolded->cd();
+        dataContainer.hRefolded[iHisto]->Write();
+    }
+    
     
     outFile->Close();
     delete outFile;
     
-    cout << "Data stored in file" << Form("backSubUnfold_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)) << endl;
+    cout << "Data stored in file" << Form("unfolding_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)) << endl;
 }
 
 void Unfolding(){
     // Execution time calculation
     time_t start, end;
     time(&start); // initial instant of program execution
+    
+    // Number of unfolding procedure iterations
+    int iterationNumber = 8;
 
-    // Luminosity (for now arbitrary)
-    double luminosity = 1000000;
-    double luminosity_powheg = 0;
-
-    // D0 mass in GeV/c^2
-    double m_0_parameter = 1.86484;
-    double sigmaInitial = 0.012;
     // jet pT cuts
-    std::vector<double> ptjetBinEdges_particle = {5., 7., 15., 30.};
-    std::vector<double> ptjetBinEdges_detector = {5., 7., 15., 30.};
+    std::vector<double> ptjetBinEdges_particle = {5., 7., 15., 30., 50.};
+    std::vector<double> ptjetBinEdges_detector = {5., 7., 15., 30., 50.};
     double jetptMin = ptjetBinEdges_particle[0]; // GeV
     double jetptMax = ptjetBinEdges_particle[ptjetBinEdges_particle.size() - 1]; // GeV
+
     // deltaR histogram
-    int deltaRbins = 10000; // deltaRbins = numberOfPoints, default=10 bins for [0. 0.4]
-    std::vector<double> deltaRBinEdges_particle = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; // TODO: investigate structure before 0.005: 0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4
-    std::vector<double> deltaRBinEdges_detector = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4};
+    std::vector<double> deltaRBinEdges_particle = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
+    std::vector<double> deltaRBinEdges_detector = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
     double minDeltaR = deltaRBinEdges_particle[0];
     double maxDeltaR = deltaRBinEdges_particle[deltaRBinEdges_particle.size() - 1];
-    // mass histogram
-    int massBins = 100; 
-    double minMass = 1.67;
-    double maxMass = 2.1;
+    
     // pT,D histograms
-    int ptBins = 100;
-    std::vector<double> ptDBinEdges_particle = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
-    std::vector<double> ptDBinEdges_detector = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
-    double minPtD = ptDBinEdges_particle[0];
-    double maxPtD = ptDBinEdges_particle[ptDBinEdges_particle.size() - 1];
+    std::vector<double> ptDBinEdges_particle = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.}; // default pT,D = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
+    std::vector<double> ptDBinEdges_detector = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.}; // default pT,D = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
+    double hfptMin = ptDBinEdges_particle[0];
+    double hfptMax = ptDBinEdges_particle[ptDBinEdges_particle.size() - 1];
+
+    // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
+    //std::vector<std::pair<double, double>> bdtPtCuts = {
+    //    {1, 0.03}, {2, 0.03}, {3, 0.05}, {4, 0.05}, {5, 0.08}, {6, 0.15}, {8, 0.22}, {12, 0.35}, {16, 0.47}, {24, 0.47}
+    //};
+    // Dataset: JE_HF_LHC24g5_All_D0
+    std::vector<std::pair<double, double>> bdtPtCuts = {
+        {0, 0.12}, {1, 0.12}, {2, 0.12}, {3, 0.16}, {4, 0.2}, {5, 0.25}, {6, 0.4}, {7, 0.4}, {8, 0.6}, {10, 0.8}, {12, 0.8}, {16, 1.0}, {50, 1.0}
+    };
 
     // Opening files
-    TFile* fData = new TFile("../ExperimentalData/Hyperloop_output/AO2D.root","read");
-    TFile* fSimulatedO2 = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/HF_LHC24d3a_All/AO2D.root","read");
-    TFile* fEfficiency = new TFile(Form("../2-Efficiency/backSubEfficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
-    TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
-    TFile* fSigExt = new TFile(Form("../1-SignalTreatment/SignalExtraction/sigExt_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    TFile* fSimulatedMCMatched = new TFile("../SimulatedData/Hyperloop_output/Train_runs/410603_Match/AO2D_mergedDFs.root","read");
+    TFile* fEfficiency = new TFile(Form("../2-Efficiency/selection_efficiency_run3style_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    TFile* fData = new TFile("../ExperimentalData/Hyperloop_output/HF_LHC23_pass4_Thin_small_2P3PDstar_DATA_newMLModel/AnalysisResults.root","read");
+    TFile* fFeedDown = new TFile(Form("../3-Feed-Down/outputFeedDown_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    if (!fSimulatedMCMatched || fSimulatedMCMatched->IsZombie()) {
+        std::cerr << "Error: Unable to open O2 MC matched ROOT file." << std::endl;
+    }
+    if (!fEfficiency || fEfficiency->IsZombie()) {
+        std::cerr << "Error: Unable to open estimated selection efficiency ROOT file." << std::endl;
+    }
     if (!fData || fData->IsZombie()) {
-        std::cerr << "Error: Unable to open the ROOT file." << std::endl;
+        std::cerr << "Error: Unable to open AnalysisResults.root data ROOT file." << std::endl;
     }
-    if (!fSimulatedO2 || fSimulatedO2->IsZombie()) {
-        std::cerr << "Error: Unable to open simulated data ROOT file." << std::endl;
-    }
-    if (!fBackSub || fBackSub->IsZombie()) {
-        std::cerr << "Error: Unable to open background subtracted data ROOT file." << std::endl;
-    }
-    if (!fSigExt || fSigExt->IsZombie()) {
-        std::cerr << "Error: Unable to open signal extracted ROOT file." << std::endl;
+    if (!fFeedDown || fFeedDown->IsZombie()) {
+        std::cerr << "Error: Unable to open AnalysisResults.root data ROOT file." << std::endl;
     }
     
-    std::vector<const char*> names = {"histPt1", "histPt2", "histPt3", 
-                                      "histPt4", "histPt5", "histPt6",
-                                      "histPt7", "histPt8", "histPt9"};                                                     // Names of histograms
-    std::vector<const char*> titles = {"3 < p_{T,D} < 4 GeV/c", "4 < p_{T,D} < 5 GeV/c", "5 < p_{T,D} < 6 GeV/c",
-                                       "6 < p_{T,D} < 7 GeV/c", "7 < p_{T,D} < 8 GeV/c", "8 < p_{T,D} < 10 GeV/c",
-                                       "10 < p_{T,D} < 12 GeV/c", "12 < p_{T,D} < 15 GeV/c", "15 < p_{T,D} < 30 GeV/c"};    // Titles of histograms
     //UnfoldData dataContainer = createHistograms(deltaRBinEdges, ptDBinEdges, jetptMin, jetptMax);
-    UnfoldData dataContainer = createHistograms(deltaRBinEdges_particle, ptDBinEdges_particle, ptjetBinEdges_particle,
-                                                  deltaRBinEdges_detector, ptDBinEdges_detector, ptjetBinEdges_detector);
+    UnfoldData dataContainer = createHistograms(ptjetBinEdges_particle, deltaRBinEdges_particle, ptDBinEdges_particle,
+                                                ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector,
+                                                iterationNumber);
 
     // Fill histograms with POWHEG simulation data
-    fillHistograms(fData, fSimulatedO2, dataContainer, jetptMin, jetptMax);
+    fillHistograms(fFeedDown, fEfficiency, fSimulatedMCMatched, dataContainer, jetptMin, jetptMax, hfptMin, hfptMax,
+                   deltaRBinEdges_particle, deltaRBinEdges_detector, bdtPtCuts);
 
-    // Create response matrices for all pT,D bins considered
-    buildResponseMatrix(dataContainer, fSimulatedO2, fEfficiency, jetptMin, jetptMax);
+    performUnfolding(dataContainer, iterationNumber);
 
-    TH2D* hremoveOutsideData = removeOutsideData(dataContainer);
+    refoldingTest(dataContainer);
 
     // Plot the efficiency histogram and further corrected histograms
     plotHistograms(dataContainer, jetptMin, jetptMax);

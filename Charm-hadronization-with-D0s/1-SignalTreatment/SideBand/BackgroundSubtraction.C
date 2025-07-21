@@ -80,7 +80,7 @@ void fillHistograms(TFile* fDist, const std::vector<TH2D*>& histograms, double j
     const double DeltaRcut = 0.4; // on particle level delta R
 
     // Accessing TTree
-    TTree* tree = (TTree*)fDist->Get("DF_2261906078621696/O2jetdisttable");
+    TTree* tree = (TTree*)fDist->Get("DF_merged/O2jetdisttable");
 
     // Assuming histograms and tree data correspond in some way
     if (!tree) {
@@ -88,17 +88,22 @@ void fillHistograms(TFile* fDist, const std::vector<TH2D*>& histograms, double j
     }
     // defining variables for accessing the TTree
     float axisDistance, jetPt, jetEta, jetPhi;
-    float hfPt, hfEta, hfPhi, hfMass, hfY;
+    float hfPt, hfEta, hfPhi, hfMass, hfY, hfMlScore0, hfMlScore1, hfMlScore2;
+    int jetNConst;
 
     tree->SetBranchAddress("fJetHfDist",&axisDistance);
     tree->SetBranchAddress("fJetPt",&jetPt);
     tree->SetBranchAddress("fJetEta",&jetEta);
     tree->SetBranchAddress("fJetPhi",&jetPhi);
+    tree->SetBranchAddress("fJetNConst",&jetNConst);
     tree->SetBranchAddress("fHfPt",&hfPt);
     tree->SetBranchAddress("fHfEta",&hfEta);
     tree->SetBranchAddress("fHfPhi",&hfPhi);
     tree->SetBranchAddress("fHfMass",&hfMass);
     tree->SetBranchAddress("fHfY",&hfY);
+    tree->SetBranchAddress("fHfMlScore0",&hfMlScore0); // background ML score
+    tree->SetBranchAddress("fHfMlScore1",&hfMlScore1); // prompt D0 ML score
+    tree->SetBranchAddress("fHfMlScore2",&hfMlScore2); // non-prompt D0 ML score
 
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
@@ -507,6 +512,16 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const std::ve
         
     }
 
+    // Set negative count bin entries to 0
+    for (size_t iHisto = 0; iHisto < vectorOutputs.subtractedHist.size(); iHisto++) {
+        for (int iBin = 1; iBin <= vectorOutputs.subtractedHist[iHisto]->GetNbinsX(); iBin++) {
+            if (vectorOutputs.subtractedHist[iHisto]->GetBinContent(iBin) < 0) {
+                vectorOutputs.subtractedHist[iHisto]->SetBinContent(iBin,0);
+                vectorOutputs.subtractedHist[iHisto]->SetBinError(iBin,0);
+            }
+        }
+    }
+
     // Return the output struct object containing filled histogram vectors
     return vectorOutputs;
     
@@ -693,30 +708,27 @@ void BackgroundSubtraction(){
     time_t start, end;
     time(&start); // initial instant of program execution
 
-    // D0 mass in GeV/c^2
-    double m_0_parameter = 1.86484;
-    double sigmaInitial = 0.012;
-
     // jet pT cuts
     std::vector<double> ptjetBinEdges = {5., 7., 15., 30.};
     double jetptMin = ptjetBinEdges[0]; // GeV
     double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
-
-    // pT,D bins
-    std::vector<double> ptDBinEdges = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
-
     // deltaR histogram
     int deltaRbins = 10000; // deltaRbins = numberOfPoints, default=10 bins for [0. 0.4]
-    //std::vector<double> deltaRBinEdges = {0.,0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.4}; // TODO: investigate structure before 0.005
     std::vector<double> deltaRBinEdges = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}; // chosen by Nima
     double minDeltaR = deltaRBinEdges[0];
     double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
+    // pT,D bins
+    std::vector<double> ptDBinEdges = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.};
+
+    // D0 mass in GeV/c^2
+    double m_0_parameter = 1.86484;
+    double sigmaInitial = 0.012;
 
     // mass histogram
-    int massBins = 100; // default=100 
+    int massBins = 50; // default=100 
     double minMass = 1.72; // use from 1.72, used to use 1.67
     double maxMass = 2.1;
-    
+
     // Initial parameter values
     InitialParam parametersVectors;
     parametersVectors.paramA = {6047.36, 3334.83, 3819.97, 1988.98, 1.1*1049.22, 1.1*2048.5, 944.77, 1460.87, 1448.5,};
@@ -727,7 +739,7 @@ void BackgroundSubtraction(){
     
 
     // Opening data file
-    TFile* fDist = new TFile("../../ExperimentalData/Hyperloop_output/AO2D.root","read");
+    TFile* fDist = new TFile("../../ExperimentalData/Hyperloop_output/HF_LHC23_pass4_Thin_small_2P3PDstar_DATA/AO2D.root","read");
     if (!fDist || fDist->IsZombie()) {
         std::cerr << "Error: Unable to open the ROOT file." << std::endl;
     }
@@ -764,12 +776,6 @@ void BackgroundSubtraction(){
 
     // Storing final histograms to output file
     SaveData(finalDeltaR,jetptMin,jetptMax);
-
-    // Cleanup
-    for (auto hist : histograms) {
-        delete hist;
-    }
-    histograms.clear();
 
     time(&end); // end instant of program execution
     // Calculating total time taken by the program. 
