@@ -353,6 +353,7 @@ void performUnfolding(UnfoldData& dataContainer, int& iterationNumber) {
         dataContainer.hUnfolded[iIter - 1] = (TH2D*) dataContainer.unfold[iIter - 1]->Hreco(RooUnfold::kCovariance); // kCovariance = 2 = Errors from the square root of of the covariance matrix given by the unfolding
         dataContainer.hUnfolded[iIter - 1]->SetTitle(Form("Immediately unfolded 2D histogram with %d iterations;p_{T,jet}^{gen} (GeV/#it{c});#DeltaR^{gen}", iIter));
         dataContainer.hUnfolded[iIter - 1]->SetName(Form("hUnfolded_iter%d", iIter));
+        dataContainer.hUnfolded[iIter - 1]->Sumw2();
 
         // Correct distribution with particle level kinematic efficiency (add entries)
         dataContainer.hUnfoldedKinCorrected[iIter - 1] = addOutsideData(dataContainer.hKineEffParticle[2],dataContainer.hUnfolded[iIter - 1], iIter);
@@ -407,7 +408,7 @@ TH2D* manualFolding(RooUnfoldResponse* response, TH2D* hTruth, TH2D* hMeasured) 
                     double truthValue = hTruth->GetBinContent(iTruth + 1,jTruth + 1);
                     double responseValue = (*response)(index_x_measured, index_x_truth);
                     foldedValue += truthValue * responseValue;
-                    foldedError2 = std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow((*response)(index_x_measured, index_x_truth),2);
+                    foldedError2 += std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow((*response)(index_x_measured, index_x_truth),2);
                 }
             }
             hFolded->SetBinContent(iMeasured + 1, jMeasured + 1, foldedValue);
@@ -431,15 +432,17 @@ void refoldingTest(UnfoldData& dataContainer) {
         // Copy unfolded histogram (with detector level kinematic efficiency correction)
         dataContainer.hRefolded[iHisto] = (TH2D*)dataContainer.hUnfoldedKinCorrected[iHisto]->Clone(Form("hRefolded_iter%zu",iHisto+1));
         dataContainer.hRefolded[iHisto]->SetTitle("Refolded with particle and detector level #varepsilon_{kin} corrections;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}");
-        
+        dataContainer.hRefolded[iHisto]->Sumw2(); // Ensure errors are propagated correctly
+        dataContainer.hKineEffParticle[2]->Sumw2();
+
         // Apply detector level kinematic efficiency correction (multiply)
-        dataContainer.hRefolded[iHisto]->Multiply(dataContainer.hKineEffDetector[2]);
+        dataContainer.hRefolded[iHisto]->Multiply(dataContainer.hKineEffParticle[2]);
 
         // Fold it with the response matrix
         dataContainer.hRefolded[iHisto] = manualFolding(dataContainer.response, dataContainer.hRefolded[iHisto], dataContainer.hMeasuredTemplate);
 
         // Apply particle level kinematic efficiency correction (divide)
-        dataContainer.hRefolded[iHisto]->Divide(dataContainer.hKineEffParticle[2]);
+        //dataContainer.hRefolded[iHisto]->Divide(dataContainer.hKineEffDetector[2]);
 
         dataContainer.hRefolded[iHisto]->SetTitle(Form("Refolded with %zu iterations", iHisto+1));
         // Clean up intermediate clone (optional if not reused)
@@ -539,22 +542,58 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     
     TCanvas* cRefoldedIter = new TCanvas("cRefoldedIter","Refolded histograms for each iteration");
     cRefoldedIter->cd();
-    TLegend* lRefoldedIter = new TLegend(0.6,0.57,0.7,0.77);
+    TLegend* lRefoldedIter = new TLegend(0.5,0.57,0.85,0.87);
     for (size_t iHisto = 0; iHisto < dataContainer.hRefolded.size(); iHisto++)
     {
         dataContainer.hRefolded[iHisto]->SetLineColor(kBlack + iHisto);
-        lRefoldedIter->AddEntry(dataContainer.hRefolded[iHisto],Form("Refolded Iteration %zu", iHisto+1), "le");
+        lRefoldedIter->AddEntry(dataContainer.hRefolded[iHisto],Form("Refolded Iteration %zu with #epsilon_{kin}^{part} correction", iHisto+1), "le");
         if (iHisto == 0) {
+            dataContainer.hRefolded[iHisto]->ProjectionY(Form("hRefolded_iter%zu_Proj",iHisto+1))->Sumw2();
             dataContainer.hRefolded[iHisto]->ProjectionY(Form("hRefolded_iter%zu_Proj",iHisto+1))->Draw();
         } else {
+            dataContainer.hRefolded[iHisto]->ProjectionY(Form("hRefolded_iter%zu_Proj",iHisto+1))->Sumw2();
             dataContainer.hRefolded[iHisto]->ProjectionY(Form("hRefolded_iter%zu_Proj",iHisto+1))->Draw("same");
         }
     }
     dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY")->SetLineWidth(2);
-    lRefoldedIter->AddEntry(dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY"),"Original data", "le");
+    lRefoldedIter->AddEntry(dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY"),"Original data with #epsilon_{kin}^{det} correction", "le");
     dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY")->Draw("same");
     lRefoldedIter->Draw();
-    
+
+    TCanvas* cRefoldedPtRanges = new TCanvas("cRefoldedPtRanges", "Refolded histograms for last iteration in different pT,jet ranges");
+    cRefoldedPtRanges->cd();
+    TLegend* lRefoldedPtRanges = new TLegend(0.5,0.57,0.85,0.87);
+    // Get last iteration refolded histogram
+    auto* hLastRefolded = dataContainer.hRefolded.back();
+    // Define bin ranges
+    int bin7  = hLastRefolded->GetXaxis()->FindBin(7.0);
+    int bin15 = hLastRefolded->GetXaxis()->FindBin(15.0);
+    int bin30 = hLastRefolded->GetXaxis()->FindBin(30.0);
+    // Create projections for refolded
+    auto* hProj_7_15 = hLastRefolded->ProjectionY("hRefolded_iter_8_Proj_7_15GeV", bin7, bin15);
+    hProj_7_15->SetLineColor(kBlue);
+    hProj_7_15->Draw();
+    lRefoldedPtRanges->AddEntry(hProj_7_15, "Refolded: 7 < p_{T,jet} < 15", "le");
+    auto* hProj_15_30 = hLastRefolded->ProjectionY("hRefolded_iter_8_Proj_15_30GeV", bin15+1, bin30);
+    hProj_15_30->SetLineColor(kRed);
+    hProj_15_30->Draw("same");
+    lRefoldedPtRanges->AddEntry(hProj_15_30, "Refolded: 15 < p_{T,jet} < 30", "le");
+    // Create projections for original (BFedDown) data
+    bin7  = dataContainer.hBFedDownDataKinCorrected->GetXaxis()->FindBin(7.0);
+    bin15 = dataContainer.hBFedDownDataKinCorrected->GetXaxis()->FindBin(15.0);
+    bin30 = dataContainer.hBFedDownDataKinCorrected->GetXaxis()->FindBin(30.0);
+    auto* hOrig_7_15 = dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY_7_15GeV", bin7, bin15);
+    hOrig_7_15->SetLineColor(kBlue);
+    hOrig_7_15->SetLineStyle(2); // dashed line for distinction
+    hOrig_7_15->Draw("same");
+    lRefoldedPtRanges->AddEntry(hOrig_7_15, "Original: 7 < p_{T,jet} < 15", "le");
+    auto* hOrig_15_30 = dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY_15_30GeV", bin15+1, bin30);
+    hOrig_15_30->SetLineColor(kRed);
+    hOrig_15_30->SetLineStyle(2);
+    hOrig_15_30->Draw("same");
+    lRefoldedPtRanges->AddEntry(hOrig_15_30, "Original: 15 < p_{T,jet} < 30", "le");
+    lRefoldedPtRanges->Draw();
+
     //
     // Storing images
     //
@@ -562,17 +601,22 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     cKinEff->Update();
     cKinEff->SaveAs(imagePath + "Unfolding_kin_efficiencies.png");
     cResponse->Update();
-    cResponse->SaveAs(imagePath + "Unfolding_kin_efficiencies.png");
+    cResponse->SaveAs(imagePath + "Unfolding_response.png");
     cUnfoldedIter->Update();
-    cUnfoldedIter->SaveAs(imagePath + "Unfolding_unfolded_matrix.png");
-    
+    cUnfoldedIter->SaveAs(imagePath + "Unfolding_unfolded_iterations.png");
+    cRefoldedIter->Update();
+    cRefoldedIter->SaveAs(imagePath + "Unfolding_refolded_comparison.png");
+    cRefoldedPtRanges->Update();
+    cRefoldedPtRanges->SaveAs(imagePath + "Unfolding_refolded_pt_ranges.png");
     
     //
     // Storing in a single pdf file
     //
     cKinEff->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
     cResponse->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cUnfoldedIter->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cUnfoldedIter->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cRefoldedIter->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cRefoldedPtRanges->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
     //cKinEfficiency->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     //cFolded->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     //cFedDownData->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
