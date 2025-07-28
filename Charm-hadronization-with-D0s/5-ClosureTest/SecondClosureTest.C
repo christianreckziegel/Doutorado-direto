@@ -10,26 +10,37 @@
  * 
 **/
 
-
+#include "sidebandClosure.h"
 using namespace std;
 
-// calculate delta phi such that 0 < delta phi < 2*pi
-double DeltaPhi(double phi1, double phi2) {
-    // Compute the absolute difference between phi1 and phi2
-    double dphi = std::abs(phi1 - phi2); 
-    if (dphi > M_PI) {
-        // subtract 2pi if the difference if bigger than pi
-        dphi = dphi - 2*M_PI;
-    }
+// Already defined in sidebandClosure header file: calculate delta phi such that 0 < delta phi < 2*pi
+// double DeltaPhi(double phi1, double phi2) {
+//     // Compute the absolute difference between phi1 and phi2
+//     double dphi = std::abs(phi1 - phi2); 
+//     if (dphi > M_PI) {
+//         // subtract 2pi if the difference if bigger than pi
+//         dphi = dphi - 2*M_PI;
+//     }
 
-    return dphi;
-}
+//     return dphi;
+// }
 
-struct ClosureTestData1 {
+// Already defined in sidebandClosure header file: get the optimal BDT score cut for the corresponding pT,D of the entry
+// double GetBkgProbabilityCut(double pT, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+//     for (size_t i = 0; i < bdtPtCuts.size() - 1; ++i) {
+//         if (pT >= bdtPtCuts[i].first && pT < bdtPtCuts[i + 1].first) {
+//             return bdtPtCuts[i].second;
+//         }
+//     }
+//     return 1.0; // Default: accept all if out of range
+// }
 
-    // Input objects
-    TH2D* hInputParticle = nullptr;
-    TH2D* hInputDetector = nullptr;
+
+struct ClosureTestData2 {
+
+    // Input objects: pT,jet vs DeltaR vs pT,D0
+    TH3D* hInputParticle = nullptr;
+    TH3D* hInputDetector = nullptr;
 
     // Correction objects
     RooUnfoldResponse* response;                                        // response matrix
@@ -41,22 +52,13 @@ struct ClosureTestData1 {
     std::vector<TH2D*> hUnfolded;                                       // unfolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
 };
 
-// Get the optimal BDT score cut for the corresponding pT,D of the entry
-double GetBkgProbabilityCut(double pT, const std::vector<std::pair<double, double>>& bdtPtCuts) {
-    for (size_t i = 0; i < bdtPtCuts.size() - 1; ++i) {
-        if (pT >= bdtPtCuts[i].first && pT < bdtPtCuts[i + 1].first) {
-            return bdtPtCuts[i].second;
-        }
-    }
-    return 1.0; // Default: accept all if out of range
-}
 
-ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, double& jetptMax, double& hfptMin, double& hfptMax, 
+ClosureTestData2 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, double& jetptMax, double& hfptMin, double& hfptMax, 
                                              const std::vector<double>& ptjetBinEdges_particle, const std::vector<double>& deltaRBinEdges_particle, const std::vector<double>& ptDBinEdges_particle,
                                              const std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector, 
                                              const std::vector<std::pair<double, double>>& bdtPtCuts) {
     // Create empty struct to store data
-    ClosureTestData1 dataContainer;
+    ClosureTestData2 dataContainer;
     
     // Defining cuts
     const double jetRadius = 0.4;
@@ -72,14 +74,16 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
     const double MCDHfPtMaxcut = hfptMax; // on detector level D0
     
     // Create 2D (detector level, prompt D0's, matched to particle level) input distribution pT,jet vs DeltaR
-    dataContainer.hInputDetector = new TH2D("hInputDetector", "Detector level prompt D^{0} jets distribution; pT,jet (GeV); #DeltaR", 
+    dataContainer.hInputDetector = new TH3D("hInputDetector", "Detector level prompt D^{0} jets distribution;p_{T,jet}^{reco} (GeV);#DeltaR^{reco};p_{T,D^{0}}^{reco};", 
                         ptjetBinEdges_detector.size() - 1, ptjetBinEdges_detector.data(), 
-                        deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data());
+                        deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data(),
+                        ptDBinEdges_detector.size() - 1, ptDBinEdges_detector.data());
     dataContainer.hInputDetector->Sumw2();
     // Create 2D (matched particle level, prompt D0's, matched to the previous detector level distribution) input distribution pT,jet vs DeltaR
-    dataContainer.hInputParticle = new TH2D("hInputParticle", "Particle level prompt D^{0} jets distribution; pT,jet (GeV); #DeltaR", 
-                        ptjetBinEdges_particle.size() - 1, ptjetBinEdges_particle.data(), 
-                        deltaRBinEdges_particle.size() - 1, deltaRBinEdges_particle.data());
+    dataContainer.hInputParticle = new TH3D("hInputParticle", "Particle level prompt D^{0} jets distribution;p_{T,jet}^{gen} (GeV);#DeltaR^{gen};p_{T,D^{0}}^{gen}", 
+                        ptjetBinEdges_particle.size() - 1, ptjetBinEdges_particle.data(),
+                        deltaRBinEdges_particle.size() - 1, deltaRBinEdges_particle.data(),
+                        ptDBinEdges_particle.size() - 1, ptDBinEdges_particle.data());
     dataContainer.hInputParticle->Sumw2();
 
     // Create kinematic efficiency histograms
@@ -232,7 +236,7 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
-    int MCDhfMatchedFrom, MCDhfSelectedAs;
+    float MCDhfMatchedFrom, MCDhfSelectedAs;
     tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
     tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
 
@@ -242,11 +246,9 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
     nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
-
-        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
-
-        // Apply prompt (excluding reflections) selection (i.e., only c → D0)
-        if (!MCDhfprompt || isReflection) {
+        
+        // Apply prompt (real+reflection) selection (i.e., only c → D0)
+        if (!MCDhfprompt) {
             continue;
         }
 
@@ -262,12 +264,12 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
 
         if (genLevelRange) {
             // Fill input distribution for particle level
-            dataContainer.hInputParticle->Fill(MCPjetPt, MCPDeltaR);
+            dataContainer.hInputParticle->Fill(MCPjetPt, MCPDeltaR, MCPhfPt);
             
         }
         if (recoLevelRange && passBDTcut) {
             // Fill input distribution for detector level
-            dataContainer.hInputDetector->Fill(MCDjetPt, MCDDeltaR);
+            dataContainer.hInputDetector->Fill(MCDjetPt, MCDDeltaR, MCDhfPt);
         }
     }
 
@@ -275,7 +277,7 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
 
 }
 
-void unfoldInputDetector(ClosureTestData1& dataContainer, int& iterationNumber) {
+void unfoldInputDetector(ClosureTestData2& dataContainer, int& iterationNumber) {
     // Correct input with detector level kinematic efficiency
     dataContainer.hInputDetector->Multiply(dataContainer.hKineEffDetector[2]); // A = A * B:  A = A->Multiply(B)
 
@@ -294,7 +296,7 @@ void unfoldInputDetector(ClosureTestData1& dataContainer, int& iterationNumber) 
         
     }
 }
-void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMin, const double& jetptMax) {
+void plotHistograms(const ClosureTestData2& dataContainer, const double& jetptMin, const double& jetptMax) {
     cout << "Plotting histograms...\n";
 
     gStyle->SetPalette(kRainbow);
@@ -336,7 +338,7 @@ void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMi
     //
     // Storing images
     //
-    TString imagePath = "../Images/5-ClosureTest/First";
+    TString imagePath = "../Images/5-ClosureTest/";
     cFirstClosureTest->Update();
     cFirstClosureTest->SaveAs(imagePath + "ClosureTest1_unfolding.png");    
     
@@ -349,7 +351,7 @@ void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMi
 
 }
 
-void saveData(const ClosureTestData1& dataContainer, const double& jetptMin, const double& jetptMax){
+void saveData(const ClosureTestData2& dataContainer, const double& jetptMin, const double& jetptMax){
     // Open output file
     TFile* outFile = new TFile(Form("closure_test_1_results_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
 
@@ -362,8 +364,8 @@ void saveData(const ClosureTestData1& dataContainer, const double& jetptMin, con
     std::cout << "Data stored in file" << Form("closure_test_1_results_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)) << endl;
 }
 
-// 1 - Unfolding closure test
-void FirstClosureTest(){
+// 2 - Sideband subtraction + efficiency correction + unfolding closure test
+void SecondClosureTest(){
     // Execution time calculation
     time_t start, end;
     time(&start); // initial instant of program execution
@@ -418,24 +420,7 @@ void FirstClosureTest(){
         std::cerr << "Error: Unable to open AnalysisResults.root data ROOT file." << std::endl;
     }
 
-    
-
-    // Create response matrix with correction sample (without efficiency scaling)
-    ClosureTestData1 dataContainer = createAnalysisObjects(fClosureInput, jetptMin, jetptMax, hfptMin, hfptMax, 
-                                             ptjetBinEdges_particle, deltaRBinEdges_particle, ptDBinEdges_particle,
-                                             ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector, 
-                                             bdtPtCuts);
-    
-    // Unfold the detector level distribution (with particle and detector level kinematic efficiency corrections)
-    unfoldInputDetector(dataContainer, iterationNumber);
-
-    // Compare the unfolded distribution with the particle level distribution
-
-    // Plot the efficiency histogram and further corrected histograms
-    plotHistograms(dataContainer, jetptMin, jetptMax);
-
-    // Save corrected distributions to file
-    //saveData(dataContainer, jetptMin, jetptMax);
+    TH3D* hBackgroundSubtracted = SidebandClosure(fClosureInput, ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts);
 
 
     
@@ -452,6 +437,6 @@ void FirstClosureTest(){
 }
 
 int main(){
-    FirstClosureTest();
+    SecondClosureTest();
     return 0;
 }

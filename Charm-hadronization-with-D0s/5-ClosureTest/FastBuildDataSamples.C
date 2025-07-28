@@ -10,7 +10,7 @@ void FastBuildDataSamples() {
     }
 
     // Create output file FIRST
-    TFile* outFile = new TFile("mc_split_fast.root", "RECREATE");
+    TFile* outFile = new TFile("mc_closure_input.root", "RECREATE");
     outFile->cd();
 
     // Clone original structure to disk-bound tree
