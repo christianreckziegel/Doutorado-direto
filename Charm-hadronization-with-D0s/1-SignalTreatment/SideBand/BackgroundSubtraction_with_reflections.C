@@ -111,6 +111,14 @@ Double_t reflectionOnlyFunction(Double_t* x, Double_t* par) {
     return result;
 }
 
+std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
+    auto* vec = (TVectorD*)fInput->Get(pathInFile);
+    if (!vec) {
+        throw std::runtime_error(Form("Could not find TVectorD at '%s'", pathInFile));
+    }
+    return std::vector<double>(vec->GetMatrixArray(), vec->GetMatrixArray() + vec->GetNoElements());
+}
+
 //__________________________________________________________________________________________________________________________
 // Module to create TH2D histograms including interest variable: UNIFORM bin sizes
 std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int xbins, double xmin, double xmax, int ybins, double ymin, double ymax) {
@@ -428,38 +436,71 @@ std::pair<std::array<double, 2>, std::array<double, 2>> calculateSidebandRegions
     double sigma = signalSigma1;
 
     // Check which sides should be used for the total side-band distribution (if at least 1 sigma fit inside left range)
-    if (m_0 - (startingBackSigma+1)*sigma <  hInvMass->GetBinLowEdge(1)) {
-        std::cout << "Using only right sideband." << std::endl;
+    bool useLeftSide = (m_0 - (startingBackSigma+1)*sigma) > hInvMass->GetBinLowEdge(1);
+    bool useRightSide = (m_0 + (startingBackSigma+1)*sigma) < hInvMass->GetBinLowEdge(hInvMass->GetNbinsX()+1);
+    std::cout << "Check if right side can be used: \t start point = " << m_0 + (startingBackSigma+1)*sigma << " ,\t Right histogram edge = " << hInvMass->GetBinLowEdge(hInvMass->GetNbinsX()+1) << std::endl;
+    // if (!useLeftSide && useRightSide) {//useLeftSide && !useRightSide - previous version: m_0 - (startingBackSigma+1)*sigma <  hInvMass->GetBinLowEdge(1)
+    //     std::cout << "Using only right sideband." << std::endl;
 
-        // Count for how many sigmas is there room inside the left side range
-        double leftSidebandRange = (m_0 - startingBackSigma * sigma) - hInvMass->GetBinLowEdge(1);
-        int leftSigmas = static_cast<int>(leftSidebandRange / sigma);// get the integral number
-        std::cout << leftSigmas << " sigmas fit inside the left side range for the background distribution estimation." << std::endl;
+    //     // Count for how many sigmas is there room inside the left side range
+    //     double leftSidebandRange = (m_0 - startingBackSigma * sigma) - hInvMass->GetBinLowEdge(1);
+    //     int leftSigmas = static_cast<int>(leftSidebandRange / sigma);// get the integral number
+    //     std::cout << leftSigmas << " sigmas fit inside the left side range for the background distribution estimation." << std::endl;
 
-        // Count for how many sigmas is there room inside the right side range
-        double rightSidebandRange = hInvMass->GetBinLowEdge(hInvMass->GetNbinsX()+1) - (m_0 + startingBackSigma*sigma);
-        int rightSigmas = static_cast<int>(rightSidebandRange / sigma);// get the integral number
-        std::cout << rightSigmas << " sigmas fit inside the right side range for the background distribution estimation." << std::endl;
+    //     // Count for how many sigmas is there room inside the right side range
+    //     double rightSidebandRange = hInvMass->GetBinLowEdge(hInvMass->GetNbinsX()+1) - (m_0 + startingBackSigma*sigma);
+    //     int rightSigmas = static_cast<int>(rightSidebandRange / sigma);// get the integral number
+    //     std::cout << rightSigmas << " sigmas fit inside the right side range for the background distribution estimation." << std::endl;
 
-        // Ensure only a maximum of 4 sigmas (backgroundSigmas) are used
-        if (leftSigmas > backgroundSigmas) {
-            leftSigmas = backgroundSigmas;
-        }
-        if (rightSigmas > backgroundSigmas) {
-            rightSigmas = backgroundSigmas;
-        }
+    //     // Ensure only a maximum of 4 sigmas (backgroundSigmas) are used
+    //     if (leftSigmas > backgroundSigmas) {
+    //         leftSigmas = backgroundSigmas;
+    //     }
+    //     if (rightSigmas > backgroundSigmas) {
+    //         rightSigmas = backgroundSigmas;
+    //     }
 
-        cout << "Left extreme = " << m_0 - (startingBackSigma + leftSigmas) * sigma << endl;
-        cout << "Right extreme = " << m_0 + (startingBackSigma + rightSigmas) * sigma << endl;
+    //     std::cout << "Left extreme = " << m_0 - (startingBackSigma + leftSigmas) * sigma << endl;
+    //     std::cout << "Right extreme = " << m_0 + (startingBackSigma + rightSigmas) * sigma << endl;
         
 
-        // Calculate right range limits
-        rightRange[0] = m_0 + startingBackSigma * sigma;
-        rightRange[1] = m_0 + (startingBackSigma + rightSigmas) * sigma;
+    //     // Calculate right range limits
+    //     rightRange[0] = m_0 + startingBackSigma * sigma;
+    //     rightRange[1] = m_0 + (startingBackSigma + rightSigmas) * sigma;
 
-    } else {
-        std::cout << "Using both left and right sidebands.\n";
+    // } else { // else if (useLeftSide && useRightSide)
+    //     std::cout << "Using both left and right sidebands.\n";
 
+    //     // Count for how many sigmas is there room inside the left side range
+    //     double leftSidebandRange = (m_0 - startingBackSigma * sigma) - hInvMass->GetBinLowEdge(1);
+    //     int leftSigmas = static_cast<int>(leftSidebandRange / sigma);// get the integral number
+    //     std::cout << leftSigmas << " sigmas fit inside the left side range for the background distribution estimation." << std::endl;
+
+    //     // Count for how many sigmas is there room inside the right side range
+    //     double rightSidebandRange = hInvMass->GetBinLowEdge(hInvMass->GetNbinsX()+1) - (m_0 + startingBackSigma*sigma);
+    //     int rightSigmas = static_cast<int>(rightSidebandRange / sigma);// get the integral number
+    //     std::cout << rightSigmas << " sigmas fit inside the right side range for the background distribution estimation." << std::endl;
+
+    //     // Ensure only a maximum of 4 sigmas (backgroundSigmas) are used
+    //     if (leftSigmas > backgroundSigmas) {
+    //         leftSigmas = backgroundSigmas;
+    //     }
+    //     if (rightSigmas > backgroundSigmas) {
+    //         rightSigmas = backgroundSigmas;
+    //     }
+
+    //     // Calculate left range limits
+    //     leftRange[0] = m_0 - (startingBackSigma + leftSigmas) * sigma;
+    //     leftRange[1] = m_0 - startingBackSigma * sigma;
+
+    //     // Calculate right range limits
+    //     rightRange[0] = m_0 + startingBackSigma * sigma;
+    //     rightRange[1] = m_0 + (startingBackSigma + rightSigmas) * sigma;
+        
+    // }
+
+    bool useIntegerSidebands = false;
+    if (useIntegerSidebands) {
         // Count for how many sigmas is there room inside the left side range
         double leftSidebandRange = (m_0 - startingBackSigma * sigma) - hInvMass->GetBinLowEdge(1);
         int leftSigmas = static_cast<int>(leftSidebandRange / sigma);// get the integral number
@@ -485,8 +526,34 @@ std::pair<std::array<double, 2>, std::array<double, 2>> calculateSidebandRegions
         // Calculate right range limits
         rightRange[0] = m_0 + startingBackSigma * sigma;
         rightRange[1] = m_0 + (startingBackSigma + rightSigmas) * sigma;
-        
+    } else {
+        // Count for how many sigmas is there room inside the left side range
+        double leftSidebandRange = (m_0 - startingBackSigma * sigma) - hInvMass->GetBinLowEdge(1);
+        double leftSigmas = leftSidebandRange / sigma;// get the fractional number
+        std::cout << leftSigmas << " sigmas fit inside the left side range for the background distribution estimation." << std::endl;
+
+        // Count for how many sigmas is there room inside the right side range
+        double rightSidebandRange = hInvMass->GetBinLowEdge(hInvMass->GetNbinsX()+1) - (m_0 + startingBackSigma*sigma);
+        double rightSigmas = rightSidebandRange / sigma;// get the fractional number
+        std::cout << rightSigmas << " sigmas fit inside the right side range for the background distribution estimation." << std::endl;
+
+        // Ensure only a maximum of 4 sigmas (backgroundSigmas) are used
+        if (leftSigmas > backgroundSigmas) {
+            leftSigmas = backgroundSigmas;
+        }
+        if (rightSigmas > backgroundSigmas) {
+            rightSigmas = backgroundSigmas;
+        }
+
+        // Calculate left range limits
+        leftRange[0] = m_0 - (startingBackSigma + leftSigmas) * sigma;
+        leftRange[1] = m_0 - startingBackSigma * sigma;
+
+        // Calculate right range limits
+        rightRange[0] = m_0 + startingBackSigma * sigma;
+        rightRange[1] = m_0 + (startingBackSigma + rightSigmas) * sigma;
     }
+    
     std::cout << "Left sideband: [" << leftRange[0] << ", " << leftRange[1] << "]\n";
     std::cout << "Right sideband: [" << rightRange[0] << ", " << rightRange[1] << "]\n";
     std::cout << "Sideband regions calculated.\n";
@@ -873,7 +940,7 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
         c_2d->cd(iHisto+1);
         histograms2d[iHisto]->Draw("colz");
 
-    }    
+    }
 
     /*TCanvas* cMCnet1 = new TCanvas("cMCnet1", "MCnet1", 800, 600);
     cMCnet1->SetCanvasSize(1800,1000);
@@ -1013,8 +1080,6 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
     latex->DrawLatex(statBoxPos-0.35, 0.5, "Obtained through signal and background fits");
     latex->DrawLatex(statBoxPos-0.35, 0.6, "Calculation region: |m_{inv} - m_{D^{0}}| < 2#sigma");
 
-    cout << "Histograms and fits plotted.\n";
-
     //
     // Storing images
     //
@@ -1038,12 +1103,15 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
     //cMCnet_template_mass->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
     cSigPlusBack->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
     cAllPt->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf)",jetptMin,jetptMax));
+
+    std::cout << "Histograms and fits plotted and stored to png and pdf files.\n";
 }
 
-void SaveData(SubtractionResult& outputStruct, double jetptMin, double jetptMax){
+void SaveData(SubtractionResult& outputStruct, double jetptMin, double jetptMax,
+              const std::vector<double>& deltaRBinEdges, const std::vector<double>& ptjetBinEdges, const std::vector<double>& ptDBinEdges) {
     // Open output file
-    TFile* outFile = new TFile(Form("backSub_%d_to_%d_jetpt_with_reflections.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
-    if (!outFile || outFile->IsZombie()) {
+    TFile* fOutput = new TFile(Form("backSub_%d_to_%d_jetpt_with_reflections.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
+    if (!fOutput || fOutput->IsZombie()) {
         std::cerr << "Error: Unable to open the output ROOT file." << std::endl;
     }
 
@@ -1056,32 +1124,40 @@ void SaveData(SubtractionResult& outputStruct, double jetptMin, double jetptMax)
     outputStruct.hSignificance->Write();
     // Final summed pT,D histogram
     outputStruct.hSubtracted_allPtSummed->Write();
+    
+    // Also store the axes used for the histograms
+    // Create a directory for axes
+    fOutput->mkdir("axes");
+    fOutput->cd("axes");
+    // Create TVectorD with same content
+    TVectorD vecDeltaR(deltaRBinEdges.size());
+    for (size_t i = 0; i < deltaRBinEdges.size(); ++i) {
+        vecDeltaR[i] = deltaRBinEdges[i];
+    }
+    vecDeltaR.Write("deltaRBinEdges");
+    TVectorD vecPtJet(ptjetBinEdges.size());
+    for (size_t i = 0; i < ptjetBinEdges.size(); ++i) {
+        vecPtJet[i] = ptjetBinEdges[i];
+    }
+    vecPtJet.Write("ptjetBinEdges");
+    TVectorD vecPtD(ptDBinEdges.size());
+    for (size_t i = 0; i < ptDBinEdges.size(); ++i) {
+        vecPtD[i] = ptDBinEdges[i];
+    }
+    vecPtD.Write("ptDBinEdges");
+
+    // Return to root directory (optional)
+    fOutput->cd();
+    
+    std::cout << "Data saved to file: " << fOutput->GetName() << std::endl;
 
     // Close output file
-    outFile->Close();
-    delete outFile;
-    
-    
+    fOutput->Close();
+    delete fOutput;
 }
 
-void BackgroundSubtraction_with_reflections(){
-    // Execution time calculation
-    time_t start, end;
-    time(&start); // initial instant of program execution
+void JetPtIterator(const double jetptMin, const double jetptMax, const std::vector<double>& ptjetBinEdges) {
 
-    // jet pT cuts
-    std::vector<double> ptjetBinEdges = {5., 7., 15., 30., 50.}; // default = 5., 7., 15., 30.
-    //double jetptMin = ptjetBinEdges[0]; // GeV
-    //double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
-    double jetptMin = 5.; // GeV
-    double jetptMax = 50.; // GeV
-    // deltaR histogram
-    int deltaRbins = 10000; // deltaRbins = numberOfPoints, default=10 bins for [0. 0.4]
-    std::vector<double> deltaRBinEdges = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
-    double minDeltaR = deltaRBinEdges[0];
-    double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
-    // pT,D bins
-    std::vector<double> ptDBinEdges = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.}; // 1., 2., 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 8., 10., 12., 15., 30.
     // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
     std::vector<std::pair<double, double>> bdtPtCuts = {
         {1, 0.03}, {2, 0.03}, {3, 0.05}, {4, 0.05}, {5, 0.08}, {6, 0.15}, {8, 0.22}, {12, 0.35}, {16, 0.47}, {24, 0.47}
@@ -1110,6 +1186,12 @@ void BackgroundSubtraction_with_reflections(){
     if (!fReflectionsMC || fReflectionsMC->IsZombie()) {
         std::cerr << "Error: Unable to open the ROOT reflections file." << std::endl;
     }
+    // Load ΔR bin edges
+    std::vector<double> deltaRBinEdges = LoadBinning(fReflectionsMC, "axes/deltaRBinEdges");
+    double minDeltaR = deltaRBinEdges[0];
+    double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
+    // Load pTD bin edges
+    std::vector<double> ptDBinEdges = LoadBinning(fReflectionsMC, "axes/ptDBinEdges");
 
     // Create multiple histograms
     std::vector<TH2D*> histograms2d = createHistograms(ptDBinEdges,                                 // the pT,D edges will determine the number of mass histograms
@@ -1141,18 +1223,43 @@ void BackgroundSubtraction_with_reflections(){
     PlotHistograms(outputStruct, histograms2d, fittings, jetptMin, jetptMax);
 
     // Storing final histograms to output file
-    SaveData(outputStruct,jetptMin,jetptMax);
+    SaveData(outputStruct,jetptMin,jetptMax, deltaRBinEdges, ptjetBinEdges, ptDBinEdges);
+
+}
+
+void BackgroundSubtraction_with_reflections() {
+    // Execution time calculation
+    time_t start, end;
+    time(&start); // initial instant of program execution
+    
+    // Opening
+    double jetptMin = 5.; // GeV
+    double jetptMax = 7.; // GeV
+    TFile* fReflectionsMC = new TFile(Form("../Reflections/reflections_%.0f_to_%.0fGeV.root",jetptMin,jetptMax),"read");
+    if (!fReflectionsMC || fReflectionsMC->IsZombie()) {
+        std::cerr << "Error: Unable to open the first ROOT reflections file." << std::endl;
+    }
+    // Load pTjet bin edges
+    //std::vector<double> ptjetBinEdges = LoadBinning(fReflectionsMC, "axes/ptjetBinEdges");
+    fReflectionsMC->Close();
+    std::vector<double> ptjetBinEdges = {15., 30.};
+
+    for (size_t iJetPt = 0; iJetPt < ptjetBinEdges.size() - 1; iJetPt++) {
+        // Apply side-band method to each pT,jet bin
+        std::cout << "Processing pT,jet bin: " << ptjetBinEdges[iJetPt] << " to " << ptjetBinEdges[iJetPt+1] << " GeV/c" << std::endl;
+        jetptMin = ptjetBinEdges[iJetPt];
+        jetptMax = ptjetBinEdges[iJetPt+1];
+
+        JetPtIterator(jetptMin, jetptMax, ptjetBinEdges);
+    }
 
     time(&end); // end instant of program execution
     // Calculating total time taken by the program. 
     double time_taken = double(end - start); 
     cout << "Time taken by program is : " << fixed 
          << time_taken/60 << setprecision(5); 
-    cout << " min " << endl; 
-
-    
+    cout << " min " << endl;
 }
-
 int main(){
     BackgroundSubtraction_with_reflections();
     return 0;
