@@ -403,7 +403,7 @@ TH2D* manualFolding(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
                     double truthValue = hTruth->GetBinContent(iTruth + 1,jTruth + 1);
                     double responseValue = response(index_x_measured, index_x_truth);
                     foldedValue += truthValue*responseValue;
-                    foldedError2 = std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow(response(index_x_measured, index_x_truth),2);
+                    foldedError2 += std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow(response(index_x_measured, index_x_truth),2);
                 }
             }
             hFolded->SetBinContent(iMeasured + 1, jMeasured + 1, foldedValue);
@@ -707,7 +707,10 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
 
 }
 
-void saveData(const FeedDownData& dataContainer, const double& jetptMin, const double& jetptMax){
+void saveData(const FeedDownData& dataContainer, const double& jetptMin, const double& jetptMax, 
+              const std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& ptjetBinEdges_particle,
+              const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& deltaRBinEdges_particle,
+              const std::vector<double>& ptDBinEdges_detector, const std::vector<double>& ptDBinEdges_particle){
     // Open output file
     TFile* outFile = new TFile(Form("outputFeedDown_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
 
@@ -717,10 +720,56 @@ void saveData(const FeedDownData& dataContainer, const double& jetptMin, const d
     // Store fed down data histogram
     dataContainer.hBFedDownData->Write();
     
+    // Also store the axes used for the histograms
+    // Create a directory for axes
+    outFile->mkdir("axes");
+    outFile->cd("axes");
+    // Create TVectorD with same content
+    TVectorD vecPtJet_detector(ptjetBinEdges_detector.size());
+    for (size_t i = 0; i < ptjetBinEdges_detector.size(); ++i) {
+        vecPtJet_detector[i] = ptjetBinEdges_detector[i];
+    }
+    vecPtJet_detector.Write("ptjetBinEdges_detector");
+    TVectorD vecDeltaR_detector(deltaRBinEdges_detector.size());
+    for (size_t i = 0; i < deltaRBinEdges_detector.size(); ++i) {
+        vecDeltaR_detector[i] = deltaRBinEdges_detector[i];
+    }
+    vecDeltaR_detector.Write("deltaRBinEdges_detector");
+    TVectorD vecPtD_detector(ptDBinEdges_detector.size());
+    for (size_t i = 0; i < ptDBinEdges_detector.size(); ++i) {
+        vecPtD_detector[i] = ptDBinEdges_detector[i];
+    }
+    vecPtD_detector.Write("ptDBinEdges_detector");
+    TVectorD vecPtJet_particle(ptjetBinEdges_particle.size());
+    for (size_t i = 0; i < ptjetBinEdges_particle.size(); ++i) {
+        vecPtJet_particle[i] = ptjetBinEdges_particle[i];
+    }
+    vecPtJet_particle.Write("ptjetBinEdges_particle");
+    TVectorD vecDeltaR_particle(deltaRBinEdges_particle.size());
+    for (size_t i = 0; i < deltaRBinEdges_particle.size(); ++i) {
+        vecDeltaR_particle[i] = deltaRBinEdges_particle[i];
+    }
+    vecDeltaR_particle.Write("deltaRBinEdges_particle");
+    TVectorD vecPtD_particle(ptDBinEdges_particle.size());
+    for (size_t i = 0; i < ptDBinEdges_particle.size(); ++i) {
+        vecPtD_particle[i] = ptDBinEdges_particle[i];
+    }
+    vecPtD_particle.Write("ptDBinEdges_particle");
+    // Return to root directory (optional)
+    outFile->cd();
+
     outFile->Close();
     delete outFile;
     
     cout << "Data stored in file" << Form("outputFeedDown_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)) << endl;
+}
+
+std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
+    auto* vec = (TVectorD*)fInput->Get(pathInFile);
+    if (!vec) {
+        throw std::runtime_error(Form("Could not find TVectorD at '%s'", pathInFile));
+    }
+    return std::vector<double>(vec->GetMatrixArray(), vec->GetMatrixArray() + vec->GetNoElements());
 }
 
 void FeedDownSubtraction_with_reflections(){
@@ -734,23 +783,31 @@ void FeedDownSubtraction_with_reflections(){
     double luminosity_powheg = 0;
     double BR = 0.0393; // D0 -> KPi decay channel branching ratio = (3.93 +- 0.04) %
 
-    // jet pT cuts
-    std::vector<double> ptjetBinEdges_particle = {5., 7., 15., 30., 50.};
-    std::vector<double> ptjetBinEdges_detector = {5., 7., 15., 30., 50.};
-    double jetptMin = ptjetBinEdges_particle[0]; // GeV
-    double jetptMax = ptjetBinEdges_particle[ptjetBinEdges_particle.size() - 1]; // GeV
+    TFile* fAxes = new TFile(Form("../1-SignalTreatment/SideBand/full_merged_ranges_back_sub.root"),"read");
+    if (!fAxes || fAxes->IsZombie()) {
+        std::cerr << "Error: Unable to open simulated data ROOT file." << std::endl;
+    }
+    // Load pTjet bin edges
+    std::vector<double> ptjetBinEdges_detector = LoadBinning(fAxes, "axes/ptjetBinEdges_detector");
+    double jetptMin = ptjetBinEdges_detector[0]; // GeV
+    double jetptMax = ptjetBinEdges_detector[ptjetBinEdges_detector.size() - 1]; // GeV
+    // Load ΔR bin edges
+    std::vector<double> deltaRBinEdges_detector = LoadBinning(fAxes, "axes/deltaRBinEdges_detector");
+    double minDeltaR = deltaRBinEdges_detector[0];
+    double maxDeltaR = deltaRBinEdges_detector[deltaRBinEdges_detector.size() - 1];
+    // Load pTD bin edges
+    std::vector<double> ptDBinEdges_detector = LoadBinning(fAxes, "axes/ptDBinEdges_detector");
+    double hfptMin = ptDBinEdges_detector[0]; //ptDBinEdges[0] - should start from 0 or from the lowest pT,D value?
+    double hfptMax = ptDBinEdges_detector[ptDBinEdges_detector.size() - 1];
+    fAxes->Close();
 
-    // deltaR histogram
-    std::vector<double> deltaRBinEdges_particle = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
-    std::vector<double> deltaRBinEdges_detector = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
-    double minDeltaR = deltaRBinEdges_particle[0];
-    double maxDeltaR = deltaRBinEdges_particle[deltaRBinEdges_particle.size() - 1];
-    
-    // pT,D histograms
-    std::vector<double> ptDBinEdges_particle = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.}; // default pT,D = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
-    std::vector<double> ptDBinEdges_detector = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.}; // default pT,D = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
-    double hfptMin = ptDBinEdges_particle[0];
-    double hfptMax = ptDBinEdges_particle[ptDBinEdges_particle.size() - 1];
+    TFile* fEfficiency = new TFile(Form("../2-Efficiency/selection_efficiency_run3style_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    if (!fEfficiency || fEfficiency->IsZombie()) {
+        std::cerr << "Error: Unable to open estimated selection efficiency ROOT file." << std::endl;
+    }
+    std::vector<double> ptjetBinEdges_particle = LoadBinning(fEfficiency, "axes/ptjetBinEdges_particle");
+    std::vector<double> deltaRBinEdges_particle = LoadBinning(fEfficiency, "axes/deltaRBinEdges_particle");
+    std::vector<double> ptDBinEdges_particle = LoadBinning(fEfficiency, "axes/ptDBinEdges_particle");
 
     // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
     //std::vector<std::pair<double, double>> bdtPtCuts = {
@@ -764,16 +821,12 @@ void FeedDownSubtraction_with_reflections(){
     // Opening files
     TFile* fPowheg = new TFile("../SimulatedData/POWHEG/trees_powheg_fd_central.root","read");
     TFile* fSimulatedMCMatched = new TFile("../SimulatedData/Hyperloop_output/Train_runs/410603_Match/AO2D_mergedDFs.root","read");
-    TFile* fEfficiency = new TFile(Form("../2-Efficiency/selection_efficiency_run3style_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fData = new TFile("../ExperimentalData/Hyperloop_output/HF_LHC23_pass4_Thin_small_2P3PDstar_DATA_newMLModel/AnalysisResults.root","read");
     if (!fPowheg || fPowheg->IsZombie()) {
         std::cerr << "Error: Unable to open POWHEG simulation data ROOT file." << std::endl;
     }
     if (!fSimulatedMCMatched || fSimulatedMCMatched->IsZombie()) {
         std::cerr << "Error: Unable to open O2 MC matched ROOT file." << std::endl;
-    }
-    if (!fEfficiency || fEfficiency->IsZombie()) {
-        std::cerr << "Error: Unable to open estimated selection efficiency ROOT file." << std::endl;
     }
     if (!fData || fData->IsZombie()) {
         std::cerr << "Error: Unable to open AnalysisResults.root data ROOT file." << std::endl;
@@ -799,7 +852,10 @@ void FeedDownSubtraction_with_reflections(){
     plotHistograms(dataContainer, jetptMin, jetptMax);
 
     // Save corrected distributions to file
-    saveData(dataContainer, jetptMin, jetptMax);
+    saveData(dataContainer, jetptMin, jetptMax, 
+             ptjetBinEdges_detector, ptjetBinEdges_particle,
+             deltaRBinEdges_detector, deltaRBinEdges_particle,
+             ptDBinEdges_detector, ptDBinEdges_particle);
 
     time(&end); // end instant of program execution
     

@@ -145,6 +145,9 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+    int MCDhfMatchedFrom, MCDhfSelectedAs;
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
 
     //
     // Filling objects
@@ -152,6 +155,8 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
+        
+        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
         
         // Apply prompt selection (i.e., only c → D0)
         if (!MCDhfprompt) {
@@ -232,7 +237,7 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
-    int MCDhfMatchedFrom, MCDhfSelectedAs;
+    //int MCDhfMatchedFrom, MCDhfSelectedAs;
     tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
     tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
 
@@ -294,6 +299,7 @@ void unfoldInputDetector(ClosureTestData1& dataContainer, int& iterationNumber) 
         
     }
 }
+
 void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMin, const double& jetptMax) {
     cout << "Plotting histograms...\n";
 
@@ -362,6 +368,14 @@ void saveData(const ClosureTestData1& dataContainer, const double& jetptMin, con
     std::cout << "Data stored in file" << Form("closure_test_1_results_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)) << endl;
 }
 
+std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
+    auto* vec = (TVectorD*)fInput->Get(pathInFile);
+    if (!vec) {
+        throw std::runtime_error(Form("Could not find TVectorD at '%s'", pathInFile));
+    }
+    return std::vector<double>(vec->GetMatrixArray(), vec->GetMatrixArray() + vec->GetNoElements());
+}
+
 // 1 - Unfolding closure test
 void FirstClosureTest(){
     // Execution time calculation
@@ -371,23 +385,31 @@ void FirstClosureTest(){
     // Number of unfolding procedure iterations
     int iterationNumber = 8;
 
-    // jet pT cuts
-    std::vector<double> ptjetBinEdges_particle = {5., 7., 15., 30., 50.};
-    std::vector<double> ptjetBinEdges_detector = {5., 7., 15., 30., 50.};
-    double jetptMin = ptjetBinEdges_particle[0]; // GeV
-    double jetptMax = ptjetBinEdges_particle[ptjetBinEdges_particle.size() - 1]; // GeV
+    TFile* fAxes = new TFile(Form("../1-SignalTreatment/SideBand/full_merged_ranges_back_sub.root"),"read");
+    if (!fAxes || fAxes->IsZombie()) {
+        std::cerr << "Error: Unable to open simulated data ROOT file." << std::endl;
+    }
+    // Load pTjet bin edges
+    std::vector<double> ptjetBinEdges_detector = LoadBinning(fAxes, "axes/ptjetBinEdges_detector");
+    double jetptMin = ptjetBinEdges_detector[0]; // GeV
+    double jetptMax = ptjetBinEdges_detector[ptjetBinEdges_detector.size() - 1]; // GeV
+    // Load ΔR bin edges
+    std::vector<double> deltaRBinEdges_detector = LoadBinning(fAxes, "axes/deltaRBinEdges_detector");
+    double minDeltaR = deltaRBinEdges_detector[0];
+    double maxDeltaR = deltaRBinEdges_detector[deltaRBinEdges_detector.size() - 1];
+    // Load pTD bin edges
+    std::vector<double> ptDBinEdges_detector = LoadBinning(fAxes, "axes/ptDBinEdges_detector");
+    double hfptMin = ptDBinEdges_detector[0]; //ptDBinEdges[0] - should start from 0 or from the lowest pT,D value?
+    double hfptMax = ptDBinEdges_detector[ptDBinEdges_detector.size() - 1];
+    fAxes->Close();
 
-    // deltaR histogram
-    std::vector<double> deltaRBinEdges_particle = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
-    std::vector<double> deltaRBinEdges_detector = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
-    double minDeltaR = deltaRBinEdges_particle[0];
-    double maxDeltaR = deltaRBinEdges_particle[deltaRBinEdges_particle.size() - 1];
-    
-    // pT,D histograms
-    std::vector<double> ptDBinEdges_particle = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.}; // default pT,D = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
-    std::vector<double> ptDBinEdges_detector = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.}; // default pT,D = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
-    double hfptMin = ptDBinEdges_particle[0];
-    double hfptMax = ptDBinEdges_particle[ptDBinEdges_particle.size() - 1];
+    TFile* fEfficiency = new TFile(Form("../2-Efficiency/selection_efficiency_run3style_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    if (!fEfficiency || fEfficiency->IsZombie()) {
+        std::cerr << "Error: Unable to open estimated selection efficiency ROOT file." << std::endl;
+    }
+    std::vector<double> ptjetBinEdges_particle = LoadBinning(fEfficiency, "axes/ptjetBinEdges_particle");
+    std::vector<double> deltaRBinEdges_particle = LoadBinning(fEfficiency, "axes/deltaRBinEdges_particle");
+    std::vector<double> ptDBinEdges_particle = LoadBinning(fEfficiency, "axes/ptDBinEdges_particle");
 
     // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
     //std::vector<std::pair<double, double>> bdtPtCuts = {
@@ -401,15 +423,11 @@ void FirstClosureTest(){
     // Opening files
     TFile* fSimulatedMCNonMatched = new TFile("../SimulatedData/Hyperloop_output/Train_runs/410602_Eff/AO2D_mergedDFs.root","read");
     TFile* fSimulatedMCMatched = new TFile("../SimulatedData/Hyperloop_output/Train_runs/410603_Match/AO2D_mergedDFs.root","read");
-    TFile* fEfficiency = new TFile(Form("../2-Efficiency/selection_efficiency_run3style_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fData = new TFile("../ExperimentalData/Hyperloop_output/HF_LHC23_pass4_Thin_small_2P3PDstar_DATA_newMLModel/AnalysisResults.root","read");
     TFile* fFeedDown = new TFile(Form("../3-Feed-Down/outputFeedDown_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fClosureInput = new TFile("mc_closure_input.root","read");
     if (!fSimulatedMCMatched || fSimulatedMCMatched->IsZombie()) {
         std::cerr << "Error: Unable to open O2 MC matched ROOT file." << std::endl;
-    }
-    if (!fEfficiency || fEfficiency->IsZombie()) {
-        std::cerr << "Error: Unable to open estimated selection efficiency ROOT file." << std::endl;
     }
     if (!fData || fData->IsZombie()) {
         std::cerr << "Error: Unable to open AnalysisResults.root data ROOT file." << std::endl;

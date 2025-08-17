@@ -265,59 +265,6 @@ void handleUnderOverflowGeneric(T* histogram) {
     }
 }
 
-/*void handleUnderOverflowTHnSparse(THnSparse* histogram) {
-    const int ndim = histogram->GetNdimensions();
-    const int* nBins = histogram->GetNbins();
-
-    std::vector<Long64_t> coord(ndim);
-    std::vector<Long64_t> underCoord(ndim);
-    std::vector<Long64_t> overCoord(ndim);
-
-    Long64_t nFilledBins = histogram->GetNbins();
-
-    for (Long64_t i = 0; i < nFilledBins; ++i) {
-        histogram->GetBinContent(i, coord.data());
-
-        // Handle each dimension separately
-        for (int d = 0; d < ndim; ++d) {
-            underCoord = coord;
-            overCoord = coord;
-
-            // Underflow
-            if (coord[d] == 0) {
-                underCoord[d] = -1;
-                double valUF = histogram->GetBinContent(underCoord.data());
-                double errUF = histogram->GetBinError(underCoord.data());
-                double valMain = histogram->GetBinContent(coord.data());
-                double errMain = histogram->GetBinError(coord.data());
-
-                histogram->SetBinContent(coord.data(), valMain + valUF);
-                histogram->SetBinError(coord.data(), std::sqrt(errMain * errMain + errUF * errUF));
-                histogram->SetBinContent(underCoord.data(), 0);
-                histogram->SetBinError(underCoord.data(), 0);
-            }
-
-            // Overflow
-            if (coord[d] == nBins[d] + 1) {
-                overCoord[d] = nBins[d] + 2;
-                double valOF = histogram->GetBinContent(overCoord.data());
-                double errOF = histogram->GetBinError(overCoord.data());
-                double valMain = histogram->GetBinContent(coord.data());
-                double errMain = histogram->GetBinError(coord.data());
-
-                histogram->SetBinContent(coord.data(), valMain + valOF);
-                histogram->SetBinError(coord.data(), std::sqrt(errMain * errMain + errOF * errOF));
-                histogram->SetBinContent(overCoord.data(), 0);
-                histogram->SetBinError(overCoord.data(), 0);
-            }
-        }
-    }
-}*/
-
-// Overload for THnSparse
-/*void handleUnderOverflowGeneric(THnSparse* histogram) {
-    handleUnderOverflowTHnSparse(histogram);
-}*/
 //_____________________________________________________________________________________________________________________________________________________________________________________
 // Function to fill the response matrix with underflow and overflow handling
 double FillResponse(RooUnfoldResponse& response, std::vector<double>& ptjetBinEdges_detector, std::vector<double>& ptDBinEdges_detector, std::vector<double>& ptjetBinEdges_particle, std::vector<double>& ptDBinEdges_particle,
@@ -479,25 +426,38 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, TFile* fEffRun2Style, Eff
 
                 // Get efficiency estimate to weight the response matrix
                 hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_prompt");
-                
+                // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
+                int bin = hEffWeight->FindBin(MCDhfPt);
+                double estimatedEfficiency = hEffWeight->GetBinContent(bin);
+                if (estimatedEfficiency == 0) {
+                    //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
+                    estimatedEfficiency = 1; // Avoid division by zero
+                }
 
                 // Fill 4D RooUnfoldResponse object
-                //histStruct.response.first.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
-                double estimatedEfficiency = FillResponse(histStruct.response.first, 
-                                             ptjetBinEdges_detector, ptDBinEdges_detector, ptjetBinEdges_particle, ptDBinEdges_particle, 
-                                             MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, hEffWeight, doUnderOverFlow);
+                histStruct.response.first.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
+                // double estimatedEfficiency = FillResponse(histStruct.response.first, 
+                //                              ptjetBinEdges_detector, ptDBinEdges_detector, ptjetBinEdges_particle, ptDBinEdges_particle, 
+                //                              MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, hEffWeight, doUnderOverFlow);
                 histStruct.responseProjections.first[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, prompt D0s
                 histStruct.responseProjections.first[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,D projection, prompt D0s
             } else{
 
                 // Get efficiency estimate to weight the response matrix
                 hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_nonprompt");
+                // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
+                int bin = hEffWeight->FindBin(MCDhfPt);
+                double estimatedEfficiency = hEffWeight->GetBinContent(bin);
+                if (estimatedEfficiency == 0) {
+                    //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
+                    estimatedEfficiency = 1; // Avoid division by zero
+                }
 
                 // Fill 4D RooUnfoldResponse object
-                //histStruct.response.second.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
-                double estimatedEfficiency = FillResponse(histStruct.response.second, 
-                                             ptjetBinEdges_detector, ptDBinEdges_detector, ptjetBinEdges_particle, ptDBinEdges_particle, 
-                                             MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, hEffWeight, doUnderOverFlow);
+                histStruct.response.second.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
+                // double estimatedEfficiency = FillResponse(histStruct.response.second, 
+                //                              ptjetBinEdges_detector, ptDBinEdges_detector, ptjetBinEdges_particle, ptDBinEdges_particle, 
+                //                              MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, hEffWeight, doUnderOverFlow);
                 histStruct.responseProjections.second[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, non-prompt D0s
                 histStruct.responseProjections.second[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,D projection, non-prompt D0s
             }
@@ -549,14 +509,14 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, TFile* fEffRun2Style, Eff
     cout << "Response matrix and kinematic correction histograms filled.\n";
 
     // Handle underflow and overflow for the kinematic efficiency matrices
-    handleUnderOverflow2D(histStruct.hKEffTruthTotalParticle.first);
-    handleUnderOverflow2D(histStruct.hKEffTruthTotalParticle.second);
-    handleUnderOverflow2D(histStruct.hKEffResponseParticle.first);
-    handleUnderOverflow2D(histStruct.hKEffResponseParticle.second);
-    handleUnderOverflow2D(histStruct.hKEffRecoTotalDetector.first);
-    handleUnderOverflow2D(histStruct.hKEffRecoTotalDetector.second);
-    handleUnderOverflow2D(histStruct.hKEffResponseDetector.first);
-    handleUnderOverflow2D(histStruct.hKEffResponseDetector.second);
+    // handleUnderOverflow2D(histStruct.hKEffTruthTotalParticle.first);
+    // handleUnderOverflow2D(histStruct.hKEffTruthTotalParticle.second);
+    // handleUnderOverflow2D(histStruct.hKEffResponseParticle.first);
+    // handleUnderOverflow2D(histStruct.hKEffResponseParticle.second);
+    // handleUnderOverflow2D(histStruct.hKEffRecoTotalDetector.first);
+    // handleUnderOverflow2D(histStruct.hKEffRecoTotalDetector.second);
+    // handleUnderOverflow2D(histStruct.hKEffResponseDetector.first);
+    // handleUnderOverflow2D(histStruct.hKEffResponseDetector.second);
 }
 
 void fillNonMatchedHistograms(TFile* fSimulatedMCNonMatched, EfficiencyData& histStruct, double& jetptMin, double& jetptMax, double& hfptMin, double& hfptMax, 
@@ -736,7 +696,7 @@ TH2D* manualFolding(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
                     double truthValue = hTruth->GetBinContent(iTruth + 1,jTruth + 1);
                     double responseValue = response(index_x_measured, index_x_truth);
                     foldedValue += truthValue*responseValue;
-                    foldedError2 = std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow(response(index_x_measured, index_x_truth),2);
+                    foldedError2 += std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow(response(index_x_measured, index_x_truth),2);
                 }
             }
             hFolded->SetBinContent(iMeasured + 1, jMeasured + 1, foldedValue);
@@ -1201,7 +1161,10 @@ void PlotHistograms(const EfficiencyData& histStruct, double jetptMin, double je
 
 }
 
-void SaveData(const EfficiencyData& histStruct, double jetptMin, double jetptMax) {
+void SaveData(const EfficiencyData& histStruct, double jetptMin, double jetptMax, 
+              const std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& ptjetBinEdges_particle,
+              const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& deltaRBinEdges_particle,
+              const std::vector<double>& ptDBinEdges_detector, const std::vector<double>& ptDBinEdges_particle) {
     // Open output file
     TFile* outFile = new TFile(Form("selection_efficiency_run3style_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
     
@@ -1223,11 +1186,57 @@ void SaveData(const EfficiencyData& histStruct, double jetptMin, double jetptMax
 
     // Efficiency corrected data
     histStruct.hEfficiencyCorrected.second->Write();
+    
+    // Also store the axes used for the histograms
+    // Create a directory for axes
+    outFile->mkdir("axes");
+    outFile->cd("axes");
+    // Create TVectorD with same content
+    TVectorD vecPtJet_detector(ptjetBinEdges_detector.size());
+    for (size_t i = 0; i < ptjetBinEdges_detector.size(); ++i) {
+        vecPtJet_detector[i] = ptjetBinEdges_detector[i];
+    }
+    vecPtJet_detector.Write("ptjetBinEdges_detector");
+    TVectorD vecDeltaR_detector(deltaRBinEdges_detector.size());
+    for (size_t i = 0; i < deltaRBinEdges_detector.size(); ++i) {
+        vecDeltaR_detector[i] = deltaRBinEdges_detector[i];
+    }
+    vecDeltaR_detector.Write("deltaRBinEdges_detector");
+    TVectorD vecPtD_detector(ptDBinEdges_detector.size());
+    for (size_t i = 0; i < ptDBinEdges_detector.size(); ++i) {
+        vecPtD_detector[i] = ptDBinEdges_detector[i];
+    }
+    vecPtD_detector.Write("ptDBinEdges_detector");
+    TVectorD vecPtJet_particle(ptjetBinEdges_particle.size());
+    for (size_t i = 0; i < ptjetBinEdges_particle.size(); ++i) {
+        vecPtJet_particle[i] = ptjetBinEdges_particle[i];
+    }
+    vecPtJet_particle.Write("ptjetBinEdges_particle");
+    TVectorD vecDeltaR_particle(deltaRBinEdges_particle.size());
+    for (size_t i = 0; i < deltaRBinEdges_particle.size(); ++i) {
+        vecDeltaR_particle[i] = deltaRBinEdges_particle[i];
+    }
+    vecDeltaR_particle.Write("deltaRBinEdges_particle");
+    TVectorD vecPtD_particle(ptDBinEdges_particle.size());
+    for (size_t i = 0; i < ptDBinEdges_particle.size(); ++i) {
+        vecPtD_particle[i] = ptDBinEdges_particle[i];
+    }
+    vecPtD_particle.Write("ptDBinEdges_particle");
+    // Return to root directory (optional)
+    outFile->cd();
 
     outFile->Close();
     delete outFile;
     
     std::cout << "Data stored.\n";
+}
+
+std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
+    auto* vec = (TVectorD*)fInput->Get(pathInFile);
+    if (!vec) {
+        throw std::runtime_error(Form("Could not find TVectorD at '%s'", pathInFile));
+    }
+    return std::vector<double>(vec->GetMatrixArray(), vec->GetMatrixArray() + vec->GetNoElements());
 }
 
 void Efficiency_run3_style_detector_level(){
@@ -1240,23 +1249,7 @@ void Efficiency_run3_style_detector_level(){
     double luminosity_powheg = 0;
     double BR = 0.0393; // D0 -> KPi decay channel branching ratio = (3.93 +- 0.04) %
 
-    // jet pT cuts
-    std::vector<double> ptjetBinEdges_particle = {5., 7., 15., 30., 50.}; // TODO: use 5., 7., 15., 30., 50. for final version
-    std::vector<double> ptjetBinEdges_detector = {5., 7., 15., 30., 50.};
-    double jetptMin = ptjetBinEdges_particle[0]; // GeV
-    double jetptMax = ptjetBinEdges_particle[ptjetBinEdges_particle.size() - 1]; // GeV
-
-    // deltaR histogram
-    std::vector<double> deltaRBinEdges_particle = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
-    std::vector<double> deltaRBinEdges_detector = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
-    double minDeltaR = deltaRBinEdges_particle[0];
-    double maxDeltaR = deltaRBinEdges_particle[deltaRBinEdges_particle.size() - 1];
     
-    // pT,D histograms
-    std::vector<double> ptDBinEdges_particle = {0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30., 50.}; // default pT,D = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
-    std::vector<double> ptDBinEdges_detector = {0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30., 50.}; // default pT,D = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
-    double hfptMin = ptDBinEdges_particle[0];
-    double hfptMax = ptDBinEdges_particle[ptDBinEdges_particle.size() - 1];
 
     // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
     //std::vector<std::pair<double, double>> bdtPtCuts = {
@@ -1267,14 +1260,11 @@ void Efficiency_run3_style_detector_level(){
         {0, 0.12}, {1, 0.12}, {2, 0.12}, {3, 0.16}, {4, 0.2}, {5, 0.25}, {6, 0.4}, {7, 0.4}, {8, 0.6}, {10, 0.8}, {12, 0.8}, {16, 1.0}, {50, 1.0}
     };
     
-    EfficiencyData histStruct = createHistograms(ptjetBinEdges_particle, ptDBinEdges_particle, ptjetBinEdges_detector, ptDBinEdges_detector); // pT histograms
-
     // opening files
     //TFile* fSimulatedMCNonMatched = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/New_with_reflections/Merged_AO2D_HF_LHC24d3a_All.root","read"); // previous dataset used
     //TFile* fSimulatedMCMatched = new TFile("../SimulatedData/Hyperloop_output/McChargedMatched/mergedMatched.root","read"); // previous dataset used
     TFile* fSimulatedMCNonMatched = new TFile("../SimulatedData/Hyperloop_output/Train_runs/410602_Eff/AO2D_mergedDFs.root","read");
     TFile* fSimulatedMCMatched = new TFile("../SimulatedData/Hyperloop_output/Train_runs/410603_Match/AO2D_mergedDFs.root","read");
-    TFile* fEffRun2Style = new TFile(Form("run2_style_efficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/full_merged_ranges_back_sub.root"),"read");
     if (!fSimulatedMCNonMatched || fSimulatedMCNonMatched->IsZombie()) {
         std::cerr << "Error: Unable to open full (not matched) simulated data ROOT file." << std::endl;
@@ -1282,9 +1272,29 @@ void Efficiency_run3_style_detector_level(){
     if (!fSimulatedMCMatched || fSimulatedMCMatched->IsZombie()) {
         std::cerr << "Error: Unable to open matched simulated data ROOT file." << std::endl;
     }
+
+    // Load pTjet bin edges
+    std::vector<double> ptjetBinEdges_detector = LoadBinning(fBackSub, "axes/ptjetBinEdges_detector");
+    std::vector<double> ptjetBinEdges_particle = ptjetBinEdges_detector;
+    double jetptMin = ptjetBinEdges_detector[0]; // GeV
+    double jetptMax = ptjetBinEdges_detector[ptjetBinEdges_detector.size() - 1]; // GeV
+    // Load ΔR bin edges
+    std::vector<double> deltaRBinEdges_detector = LoadBinning(fBackSub, "axes/deltaRBinEdges_detector");
+    std::vector<double> deltaRBinEdges_particle = deltaRBinEdges_detector;
+    double minDeltaR = deltaRBinEdges_detector[0];
+    double maxDeltaR = deltaRBinEdges_detector[deltaRBinEdges_detector.size() - 1];
+    // Load pTD bin edges
+    std::vector<double> ptDBinEdges_detector = LoadBinning(fBackSub, "axes/ptDBinEdges_detector");
+    std::vector<double> ptDBinEdges_particle = ptDBinEdges_detector;
+    double hfptMin = ptDBinEdges_detector[0]; //ptDBinEdges[0] - should start from 0 or from the lowest pT,D value?
+    double hfptMax = ptDBinEdges_detector[ptDBinEdges_detector.size() - 1];
+
+    TFile* fEffRun2Style = new TFile(Form("run2_style_efficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     if (!fEffRun2Style || fEffRun2Style->IsZombie()) {
         std::cerr << "Error: Unable to open run 2 style efficiency data ROOT file." << std::endl;
     }
+
+    EfficiencyData histStruct = createHistograms(ptjetBinEdges_particle, ptDBinEdges_particle, ptjetBinEdges_detector, ptDBinEdges_detector); // pT histograms
     
     // Fill matched histograms for corrections
     fillMatchedHistograms(fSimulatedMCMatched, fEffRun2Style, histStruct, ptjetBinEdges_detector, ptDBinEdges_detector, deltaRBinEdges_detector, ptjetBinEdges_particle, ptDBinEdges_particle, deltaRBinEdges_particle, bdtPtCuts);
@@ -1298,7 +1308,10 @@ void Efficiency_run3_style_detector_level(){
     PlotHistograms(histStruct, jetptMin, jetptMax);
 
     // Save corrected distributions to file
-    SaveData(histStruct, jetptMin, jetptMax);
+    SaveData(histStruct, jetptMin, jetptMax, 
+             ptjetBinEdges_detector, ptjetBinEdges_particle,
+             deltaRBinEdges_detector, deltaRBinEdges_particle,
+             ptDBinEdges_detector, ptDBinEdges_particle);
 
     time(&end); // end instant of program execution
     

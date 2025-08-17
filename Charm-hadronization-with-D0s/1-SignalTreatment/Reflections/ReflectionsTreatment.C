@@ -523,7 +523,8 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fits, const dou
 }
 
 // Module to save histograms and fits to output file
-void SaveData(TFile* fOutput, const HistogramGroup& histograms, FitsGroup& fits) {
+void SaveData(TFile* fOutput, const HistogramGroup& histograms, FitsGroup& fits, 
+              const std::vector<double>& deltaRBinEdges, const std::vector<double>& ptjetBinEdges, const std::vector<double>& ptDBinEdges) {
     // Save histograms to output file
     fOutput->cd();
     for (size_t i = 0; i < histograms.signals.size(); i++) {
@@ -539,25 +540,46 @@ void SaveData(TFile* fOutput, const HistogramGroup& histograms, FitsGroup& fits)
         fits.signals_and_reflections[i]->Write();
     }
     std::cout << "Reflection histograms and fits stored in file " << fOutput->GetName() << "." << std::endl;
+
+    // Also store the axes used for the histograms
+    // Create a directory for axes
+    fOutput->mkdir("axes");
+    fOutput->cd("axes");
+    // Create TVectorD with same content
+    TVectorD vecDeltaR(deltaRBinEdges.size());
+    for (size_t i = 0; i < deltaRBinEdges.size(); ++i) {
+        vecDeltaR[i] = deltaRBinEdges[i];
+    }
+    vecDeltaR.Write("deltaRBinEdges");
+    TVectorD vecPtJet(ptjetBinEdges.size());
+    for (size_t i = 0; i < ptjetBinEdges.size(); ++i) {
+        vecPtJet[i] = ptjetBinEdges[i];
+    }
+    vecPtJet.Write("ptjetBinEdges");
+    TVectorD vecPtD(ptDBinEdges.size());
+    for (size_t i = 0; i < ptDBinEdges.size(); ++i) {
+        vecPtD[i] = ptDBinEdges[i];
+    }
+    vecPtD.Write("ptDBinEdges");
+
+    // Return to root directory (optional)
+    fOutput->cd();
 }
 
-void ReflectionsTreatment(){
-    // Execution time calculation
-    time_t start, end;
-    time(&start); // initial instant of program execution
+void JetPtIterator(const double jetptMin, const double jetptMax, const std::vector<double>& ptjetBinEdges) {
 
     // D0 mass in GeV/c^2
     double m_0_parameter = 1.86484;
     double sigmaInitial = 0.012;
 
     // pT,jet cuts
-    std::vector<double> ptjetBinEdges = {5., 7., 15., 30., 50.};
+    //std::vector<double> ptjetBinEdges = {5., 7., 15., 30., 50.};
     //const double jetptMin = ptjetBinEdges[0]; // GeV
     //const double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
-    const double jetptMin = 5.; // GeV
-    const double jetptMax = 7.; // GeV
-    // DeltaR bins
-    std::vector<double> deltaRBinEdges = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4}
+    //const double jetptMin = 5.; // GeV
+    //const double jetptMax = 7.; // GeV
+    // DeltaR bins: default = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}
+    std::vector<double> deltaRBinEdges = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.225, 0.25, 0.275, 0.3, 0.325, 0.35, 0.375, 0.4, 0.5};
     double minDeltaR = deltaRBinEdges[0];
     double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
     // pT,D bins
@@ -615,10 +637,34 @@ void ReflectionsTreatment(){
     PlotHistograms(histograms, fits, jetptMin, jetptMax);
 
     // Storing final histograms to output file
-    SaveData(fOutput, histograms, fits);
+    SaveData(fOutput, histograms, fits, deltaRBinEdges, ptjetBinEdges, ptDBinEdges);
     
     // Clean current iteration data in order to avoid memory leaks
     //ClearData(outputStruct, massHistograms);
+
+    
+}
+
+void ReflectionsTreatment() {
+    // Execution time calculation
+    time_t start, end;
+    time(&start); // initial instant of program execution
+    
+    // pT,jet cuts
+    std::vector<double> ptjetBinEdges = {5., 7., 15., 30., 50.};
+    for (size_t iJetPt = 0; iJetPt < ptjetBinEdges.size() - 1; iJetPt++) {
+        
+        // Apply side-band method to each pT,jet bin
+        double jetptMin = ptjetBinEdges[iJetPt];
+        double jetptMax = ptjetBinEdges[iJetPt+1];
+
+        JetPtIterator(jetptMin, jetptMax, ptjetBinEdges);
+    }
+
+    // Compute the entire range too
+    double jetptMin = ptjetBinEdges[0];
+    double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1];
+    JetPtIterator(jetptMin, jetptMax, ptjetBinEdges);
 
     time(&end); // end instant of program execution
     // Calculating total time taken by the program. 
@@ -626,8 +672,6 @@ void ReflectionsTreatment(){
     cout << "Time taken by program is : " << fixed 
          << time_taken/60 << setprecision(5); 
     cout << " min " << endl;
-
-    
 }
 
 int main(){

@@ -288,24 +288,24 @@ void PerformCorrections(EfficiencyData& histStruct, TFile* fBackSub) {
 
         
         // Get pT,D corresponding range from the title of the histogram
-        TString title = hBackSub_temp->GetTitle();
-        double ptBinMin = 0, ptBinMax = 0;
-        if (title.Contains("#it{p}_{T, D^{0}}")) { // Typical title format: "1 < #it{p}_{T, D^{0}} < 2 GeV/#it{c}"
-            // Extract the substring containing the numerical range
-            Ssiz_t posStart = title.Index("#it{p}_{T, D^{0}}");
-            TString sub = title(posStart - 5, 20); // Get a substring window around the pT part
-
-            // Try to parse the form "X < #it{p}_{T, D^{0}} < Y"
-            int nParsed = sscanf(sub.Data(), "%lf < #it{p}_{T, D^{0}} < %lf", &ptBinMin, &ptBinMax);
-            if (nParsed != 2) {
-                std::cerr << "Failed to parse pT,D range from histogram title: " << title << std::endl;
-                ptBinMin = 0;
-                ptBinMax = 0;
+        TString title = hBackSub_temp->GetTitle(); // Typical title format: "1 < #it{p}_{T, D^{0}} < 2 GeV/#it{c}"
+        // Keep only digits, dots, spaces, and "<"
+        std::string clean;
+        for (char c : std::string(title.Data())) {
+            if ((c >= '0' && c <= '9') || c == '.' || c == '<' || c == ' ') {
+                clean += c;
             }
-        } else {
-            std::cerr << "Error: Histogram title does not contain '#it{p}_{T, D^{0}}'." << std::endl;
-            std::cerr << "Title for iHisto = " << iHisto << ": \"" << title << "\"" << std::endl;
         }
+        // Now parse
+        double ptBinMin = 0, ptBinMax = 0;
+        int nParsed = sscanf(clean.c_str(), "%lf < %*s < %lf", &ptBinMin, &ptBinMax);
+        //std::cout << "Parsed pT,D range: " << ptBinMin << " to " << ptBinMax << " GeV/c\n";
+        if (nParsed != 2) {
+            std::cerr << "Failed to parse pT,D range from histogram title: " << title << std::endl;
+            ptBinMin = 0;
+            ptBinMax = 0;
+        }
+        
         // Obtain efficiency to the correspondent pT interval (bin)
         int bin = histStruct.hEfficiencies[effOption]->FindBin((ptBinMin + ptBinMax) / 2.0); // Find the bin corresponding to the average pT,D value in the range
         efficiency = histStruct.hEfficiencies[effOption]->GetBinContent(bin);
@@ -519,28 +519,19 @@ void SaveData(const EfficiencyData& histStruct, double& jetptMin, double& jetptM
     cout << "Data stored.\n";
 }
 
+std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
+    auto* vec = (TVectorD*)fInput->Get(pathInFile);
+    if (!vec) {
+        throw std::runtime_error(Form("Could not find TVectorD at '%s'", pathInFile));
+    }
+    return std::vector<double>(vec->GetMatrixArray(), vec->GetMatrixArray() + vec->GetNoElements());
+}
+
 void Efficiency_run2_style(){
     // Execution time calculation
     time_t start, end;
     time(&start); // initial instant of program execution
 
-    // D0 mass in GeV/c^2
-    double m_0_parameter = 1.86484;
-    double sigmaInitial = 0.012;
-    // jet pT cuts
-    const std::vector<double> ptjetBinEdges = {5., 7., 15., 30., 50.}; // TODO: use 5., 7., 15., 30., 50. for final version
-    double jetptMin = ptjetBinEdges[0]; // GeV
-    double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
-    // deltaR histogram
-    int deltaRbins = 10; // deltaRbins = numberOfPoints, default=100 bins for [0. 1.0]
-    const std::vector<double> deltaRBinEdges = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}; // default = {0.,0.05, 0.1, 0.15, 0.2, 0.3, 0.4} chosen by Nima
-    double minDeltaR = deltaRBinEdges[0];
-    double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
-    // pT,D histograms
-    int ptBins = 100;
-    const std::vector<double> ptDBinEdges = {0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30., 50.}; // default pT,D = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
-    double hfptMin = ptDBinEdges[0]; //ptDBinEdges[0] - should start from 0 or from the lowest pT,D value?
-    double hfptMax = ptDBinEdges[ptDBinEdges.size() - 1];
     // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
     //std::vector<std::pair<double, double>> bdtPtCuts = {
     //    {1, 0.03}, {2, 0.03}, {3, 0.05}, {4, 0.05}, {5, 0.08}, {6, 0.15}, {8, 0.22}, {12, 0.35}, {16, 0.47}, {24, 0.47}
@@ -551,9 +542,26 @@ void Efficiency_run2_style(){
     };
     double backProbabilityCut = 1.0; // default value
     
-    EfficiencyData histStruct = createHistograms(ptDBinEdges); // pT histograms
+    // Initial values for opening the file
+    TFile* fAxes = new TFile(Form("../1-SignalTreatment/SideBand/full_merged_ranges_back_sub.root"),"read");
+    if (!fAxes || fAxes->IsZombie()) {
+        std::cerr << "Error: Unable to open simulated data ROOT file." << std::endl;
+    }
 
-    // opening files
+    // Load pT,jet bin edges
+    std::vector<double> ptjetBinEdges = LoadBinning(fAxes, "axes/ptjetBinEdges_detector");
+    double jetptMin = ptjetBinEdges[0]; // GeV
+    double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
+    // Load ΔR bin edges
+    std::vector<double> deltaRBinEdges = LoadBinning(fAxes, "axes/deltaRBinEdges_detector");
+    double minDeltaR = deltaRBinEdges[0];
+    double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
+    // Load pT,D bin edges
+    std::vector<double> ptDBinEdges = LoadBinning(fAxes, "axes/ptDBinEdges_detector");
+    double hfptMin = ptDBinEdges[0]; //ptDBinEdges[0] - should start from 0 or from the lowest pT,D value?
+    double hfptMax = ptDBinEdges[ptDBinEdges.size() - 1];
+
+    // Opening files
     //TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/New_with_reflections/Merged_AO2D_HF_LHC24d3a_All.root","read"); // previous used file
     TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/Train_runs/410602_Eff/AO2D_mergedDFs.root","read");
     TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/backSub_%d_to_%d_jetpt_with_reflections.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
@@ -563,7 +571,9 @@ void Efficiency_run2_style(){
     if (!fBackSub || fBackSub->IsZombie()) {
         std::cerr << "Error: Unable to open background subtracted data ROOT file." << std::endl;
     }
-    
+
+    EfficiencyData histStruct = createHistograms(ptDBinEdges); // pT histograms
+
     // Fill histograms
     fillHistograms(fSimulated, histStruct, jetptMin, jetptMax, hfptMin, hfptMax, deltaRBinEdges, bdtPtCuts, backProbabilityCut);
 

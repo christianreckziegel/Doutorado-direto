@@ -1134,18 +1134,17 @@ void SaveData(SubtractionResult& outputStruct, double jetptMin, double jetptMax,
     for (size_t i = 0; i < deltaRBinEdges.size(); ++i) {
         vecDeltaR[i] = deltaRBinEdges[i];
     }
-    vecDeltaR.Write("deltaRBinEdges");
+    vecDeltaR.Write("deltaRBinEdges_detector");
     TVectorD vecPtJet(ptjetBinEdges.size());
     for (size_t i = 0; i < ptjetBinEdges.size(); ++i) {
         vecPtJet[i] = ptjetBinEdges[i];
     }
-    vecPtJet.Write("ptjetBinEdges");
+    vecPtJet.Write("ptjetBinEdges_detector");
     TVectorD vecPtD(ptDBinEdges.size());
     for (size_t i = 0; i < ptDBinEdges.size(); ++i) {
         vecPtD[i] = ptDBinEdges[i];
     }
-    vecPtD.Write("ptDBinEdges");
-
+    vecPtD.Write("ptDBinEdges_detector");
     // Return to root directory (optional)
     fOutput->cd();
     
@@ -1227,6 +1226,113 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
 
 }
 
+void create3DBackgroundSubtracted(const std::vector<double>& ptjetBinEdges, const std::vector<double>& deltaRBinEdges, const std::vector<double>& ptDBinEdges){
+
+    // jet pT cuts
+    double jetptMin = ptjetBinEdges[0]; // GeV
+    double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
+    // deltaR histogram
+    double minDeltaR = deltaRBinEdges[0];
+    double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
+
+    TH3D* h3D = new TH3D("h3DBackgroundSubtracted", "Background subtracted; p_{T,jet} (GeV/c); #DeltaR; p_{T,D^{0}} (GeV/c)",
+                     ptjetBinEdges.size()-1, ptjetBinEdges.data(),
+                     deltaRBinEdges.size()-1, deltaRBinEdges.data(),
+                     ptDBinEdges.size()-1, ptDBinEdges.data());
+    h3D->Sumw2();
+
+    for (size_t iJetBin = 0; iJetBin < ptjetBinEdges.size() - 1; iJetBin++) {
+        TFile* fJetRange = new TFile(Form("backSub_%0.f_to_%0.f_jetpt_with_reflections.root",ptjetBinEdges[iJetBin],ptjetBinEdges[iJetBin+1]),"read");
+        if (!fJetRange || fJetRange->IsZombie()) {
+            std::cerr << "Error opening file " << Form("backSub_%0.f_to_%0.f_jetpt_with_reflections.root",ptjetBinEdges[iJetBin],ptjetBinEdges[iJetBin+1]) << std::endl;
+            continue;
+        }
+
+        for (int iHist = 0; iHist < 100; ++iHist) {
+            TString histName = Form("h_back_subtracted_%d", iHist);
+            TH1D* hDeltaR = (TH1D*)fJetRange->Get(histName);
+            if (!hDeltaR) break; // No more histograms
+            //std::cout << "Histogram x axis range: " << hDeltaR->GetXaxis()->GetXmin() << " to " << hDeltaR->GetXaxis()->GetXmax() << std::endl;
+
+            // Get bin centers
+            double ptJetCenter = 0.5 * (ptjetBinEdges[iJetBin] + ptjetBinEdges[iJetBin+1]);
+            TString title = hDeltaR->GetTitle();
+
+            // If the title is missing, try to get it from an older cycle
+            if (title.IsNull() || title.IsWhitespace()) {
+                TString fallbackName = histName + ";1";
+                TH1D* hFallback = (TH1D*)fJetRange->Get(fallbackName);
+                if (hFallback) {
+                    std::cout << "Using title from fallback for " << histName << std::endl;
+                    title = hFallback->GetTitle(); // use title only, keep content from cycle ;2
+                } else {
+                    std::cerr << "No valid title found for " << histName << std::endl;
+                    continue;
+                }
+            }
+
+            double ptDlow = -1, ptDhigh = -1;
+            if (sscanf(title.Data(), "%lf < #it{p}_{T, D^{0}} < %lf GeV/#it{c}", &ptDlow, &ptDhigh) != 2) {
+                std::cerr << "Could not parse pT,D range from histogram title: " << title << std::endl;
+                std::cout << "Trying to parse title: '" << title << "'" << std::endl;
+                std::cout << "hDeltaR histogram -> " << hDeltaR->GetName() << std::endl;
+                std::cout << "In file " << fJetRange->GetName() << std::endl;
+                continue;
+            }
+            double ptDCenter = 0.5 * (ptDlow + ptDhigh);
+
+
+            for (int iBin = 1; iBin <= hDeltaR->GetNbinsX(); ++iBin) {
+                double deltaRcenter = hDeltaR->GetBinCenter(iBin);
+                double content = hDeltaR->GetBinContent(iBin);
+                double error = hDeltaR->GetBinError(iBin);
+
+                // Fill the TH3D using centers
+                h3D->Fill(ptJetCenter, deltaRcenter, ptDCenter, content);
+                // Optionally, if you want to preserve error propagation:
+                int binX = h3D->GetXaxis()->FindBin(ptJetCenter);
+                int binY = h3D->GetYaxis()->FindBin(deltaRcenter);
+                int binZ = h3D->GetZaxis()->FindBin(ptDCenter);
+                h3D->SetBinError(binX, binY, binZ, error); // only if needed
+            }
+        }
+
+    }
+    
+    h3D->Draw("colz");
+
+    TFile* fOut = new TFile(Form("full_merged_ranges_back_sub.root"), "RECREATE");
+    h3D->Write();
+
+    // Also store the axes used for the histograms
+    // Create a directory for axes
+    fOut->mkdir("axes");
+    fOut->cd("axes");
+    // Create TVectorD with same content
+    TVectorD vecDeltaR(deltaRBinEdges.size());
+    for (size_t i = 0; i < deltaRBinEdges.size(); ++i) {
+        vecDeltaR[i] = deltaRBinEdges[i];
+    }
+    vecDeltaR.Write("deltaRBinEdges_detector");
+    TVectorD vecPtJet(ptjetBinEdges.size());
+    for (size_t i = 0; i < ptjetBinEdges.size(); ++i) {
+        vecPtJet[i] = ptjetBinEdges[i];
+    }
+    vecPtJet.Write("ptjetBinEdges_detector");
+    TVectorD vecPtD(ptDBinEdges.size());
+    for (size_t i = 0; i < ptDBinEdges.size(); ++i) {
+        vecPtD[i] = ptDBinEdges[i];
+    }
+    vecPtD.Write("ptDBinEdges_detector");
+
+    // Return to root directory (optional)
+    fOut->cd();
+
+    //fOut->Close();
+    std::cout << "3D histogram created and saved to " << fOut->GetName() << " with 3D histogram." << std::endl;
+
+}
+
 void BackgroundSubtraction_with_reflections() {
     // Execution time calculation
     time_t start, end;
@@ -1240,9 +1346,15 @@ void BackgroundSubtraction_with_reflections() {
         std::cerr << "Error: Unable to open the first ROOT reflections file." << std::endl;
     }
     // Load pTjet bin edges
-    //std::vector<double> ptjetBinEdges = LoadBinning(fReflectionsMC, "axes/ptjetBinEdges");
+    std::vector<double> ptjetBinEdges = LoadBinning(fReflectionsMC, "axes/ptjetBinEdges");
+    //std::vector<double> ptjetBinEdges = {15., 30.};
+    // Load ΔR bin edges
+    std::vector<double> deltaRBinEdges = LoadBinning(fReflectionsMC, "axes/deltaRBinEdges");
+    // Load pTD bin edges
+    std::vector<double> ptDBinEdges = LoadBinning(fReflectionsMC, "axes/ptDBinEdges");
     fReflectionsMC->Close();
-    std::vector<double> ptjetBinEdges = {15., 30.};
+    
+    
 
     for (size_t iJetPt = 0; iJetPt < ptjetBinEdges.size() - 1; iJetPt++) {
         // Apply side-band method to each pT,jet bin
@@ -1252,6 +1364,13 @@ void BackgroundSubtraction_with_reflections() {
 
         JetPtIterator(jetptMin, jetptMax, ptjetBinEdges);
     }
+    // Compute the entire range too
+    jetptMin = ptjetBinEdges[0];
+    jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1];
+    JetPtIterator(jetptMin, jetptMax, ptjetBinEdges);
+
+    // Create 3D final histogram with pT,jet vs DeltaR vs pT,D
+    create3DBackgroundSubtracted(ptjetBinEdges,deltaRBinEdges,ptDBinEdges);
 
     time(&end); // end instant of program execution
     // Calculating total time taken by the program. 
@@ -1260,6 +1379,7 @@ void BackgroundSubtraction_with_reflections() {
          << time_taken/60 << setprecision(5); 
     cout << " min " << endl;
 }
+
 int main(){
     BackgroundSubtraction_with_reflections();
     return 0;
