@@ -432,8 +432,12 @@ void SecondClosureTest(){
         std::cerr << "Error: Unable to open AnalysisResults.root data ROOT file." << std::endl;
     }
 
+    // Perform side-band subtraction
     TH3D* hBackgroundSubtracted = SidebandClosure(fClosureInput, ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts);
 
+    // Perform efficiency correction
+
+    // Perform unfolding
 
     
 
