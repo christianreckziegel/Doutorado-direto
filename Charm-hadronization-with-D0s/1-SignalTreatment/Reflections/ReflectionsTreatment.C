@@ -152,6 +152,7 @@ double GetBkgProbabilityCut(double pT, const std::vector<std::pair<double, doubl
     }
     return 1.0; // Default: accept all if out of range
 }
+
 // Module to fill 2D histograms from TTree data
 void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& jetptMin, const double& jetptMax, std::vector<double>& ptDBinEdges, std::vector<double>& deltaRBinEdges, const std::vector<std::pair<double, double>>& bdtPtCuts) {
     

@@ -346,6 +346,7 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
         fittings.fitTotal[iHisto]->FixParameter(12, sigma2Reflections); // sigma_2
 
         // Apply range limits to the parameters
+        fittings.fitTotal[iHisto]->SetParLimits(0, 0., TMath::Infinity()); // only accepts non-negative background fits
         fittings.fitTotal[iHisto]->SetParLimits(4, 0.95 * m_0_reference, 1.05 * m_0_reference);
         fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 3.0 * sigma_reference);
 
@@ -529,11 +530,13 @@ std::pair<std::array<double, 2>, std::array<double, 2>> calculateSidebandRegions
     } else {
         // Count for how many sigmas is there room inside the left side range
         double leftSidebandRange = (m_0 - startingBackSigma * sigma) - hInvMass->GetBinLowEdge(1);
+        leftSidebandRange = std::max(leftSidebandRange, 0.0); // Ensure non-negative range
         double leftSigmas = leftSidebandRange / sigma;// get the fractional number
         std::cout << leftSigmas << " sigmas fit inside the left side range for the background distribution estimation." << std::endl;
 
         // Count for how many sigmas is there room inside the right side range
         double rightSidebandRange = hInvMass->GetBinLowEdge(hInvMass->GetNbinsX()+1) - (m_0 + startingBackSigma*sigma);
+        rightSidebandRange = std::max(rightSidebandRange, 0.0); // Ensure non-negative range
         double rightSigmas = rightSidebandRange / sigma;// get the fractional number
         std::cout << rightSigmas << " sigmas fit inside the right side range for the background distribution estimation." << std::endl;
 
@@ -604,6 +607,11 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
 
     // Calculate scaling factor
     double alpha = S / (S + Rs - (Bs/B) * R);
+    if (std::isnan(alpha)) {
+        std::cout << "Error: Invalid scaling factor alpha = " << alpha << " for histogram index " << iHisto << ".\n";
+        std::cout << "S = " << S << ", Rs = " << Rs << ", Bs = " << Bs << ", B = " << B << ", R = " << R << ", (S + Rs - (Bs/B) * R) = " << (S + Rs - (Bs/B) * R) << ".\n";
+        alpha = 0.;
+    }
 
     // Reflections correction
     scallingFactors[0] = alpha;
@@ -614,6 +622,7 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
 
     return scallingFactors;
 }
+
 struct SubtractionResult {
     std::vector<TH1D*> histograms;      // 1D mass projection histograms vector
     std::vector<TH1D*> sidebandHist;    // 1D sideband background histograms vector
@@ -728,7 +737,7 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitCont
         h_back_subtracted->Scale(1/0.9545);
         // If histogram isn't empty, store it in the container
         if (h_back_subtracted->GetEntries() != 0) {
-            outputStruct.subtractedHist.push_back(h_back_subtracted);            
+            outputStruct.subtractedHist.push_back(h_back_subtracted);
 
             // Calculating significance
             // Get signal yield by integrating Gaussian in a 2σ window
