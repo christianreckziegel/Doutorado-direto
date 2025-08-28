@@ -133,27 +133,6 @@ Double_t reflectionOnlyFunction(Double_t* x, Double_t* par) {
     Double_t result = A1Reflection * TMath::Exp(-TMath::Power((m - m0_1) / (2 * sigma_1), 2)) + A2Reflection * TMath::Exp(-TMath::Power((m - m0_2) / (2 * sigma_2), 2));
     return result;
 }
-// calculate delta phi such that 0 < delta phi < 2*pi
-double DeltaPhi(double phi1, double phi2) {
-    // Compute the absolute difference between phi1 and phi2
-    double dphi = std::abs(phi1 - phi2); 
-    if (dphi > M_PI) {
-        // subtract 2pi if the difference if bigger than pi
-        dphi = dphi - 2*M_PI;
-    }
-
-    return dphi;
-}
-
-// Get the optimal BDT score cut for the corresponding pT,D of the entry
-double GetBkgProbabilityCut(double pT, const std::vector<std::pair<double, double>>& bdtPtCuts) {
-    for (size_t i = 0; i < bdtPtCuts.size() - 1; ++i) {
-        if (pT >= bdtPtCuts[i].first && pT < bdtPtCuts[i + 1].first) {
-            return bdtPtCuts[i].second;
-        }
-    }
-    return 1.0; // Default: accept all if out of range
-}
 
 // Module to perform fits to histograms
 struct FitContainer {
@@ -173,6 +152,7 @@ struct HistogramGroup {
     std::vector<TH1D*> reflections_1d;
     std::vector<TH1D*> signals_and_reflections_1d;
 };
+
 std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInput, const double& jetptMin, const double& jetptMax, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector,
                                    const std::vector<std::pair<double, double>>& bdtPtCuts, int xbins, double xmin, double xmax) {
     // Create template fits container
@@ -412,7 +392,8 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInput, co
     return fTemplateFitsAndCanvas;
 };
 // Save images to pdf file
-void storeImages(std::vector<TH2D*>& hInvariantMass2D, std::vector<TH1D*>& hInvariantMass1D, const double& jetptMin, const double& jetptMax, TCanvas* cTemplateFits, TCanvas* c1d_fit) {
+void storeImages(std::vector<TH2D*>& hInvariantMass2D, std::vector<TH1D*>& hInvariantMass1D, const double& jetptMin, const double& jetptMax, 
+                 TCanvas* cTemplateFits, TCanvas* c1d_BackgroundFits, TCanvas* c1d_fit, TCanvas* c1d_sideBandSubtracted, TH2D* hDeltaR_vs_PtD) {
     
     int nHistos = hInvariantMass2D.size();
     // Start with a square layout (or close to it)
@@ -451,6 +432,13 @@ void storeImages(std::vector<TH2D*>& hInvariantMass2D, std::vector<TH1D*>& hInva
         hInvariantMass1D[iHisto]->Draw();
     }
 
+    // Final 2D histogram: DeltaR vs PtD
+    TCanvas* cDeltaR_vs_PtD = new TCanvas("cDeltaR_vs_PtD","DeltaR vs PtD");
+    cDeltaR_vs_PtD->SetCanvasSize(1800,1000);
+    cDeltaR_vs_PtD->SetGrid();
+    cDeltaR_vs_PtD->cd();
+    hDeltaR_vs_PtD->Draw("colz");
+
     //
     // Storing images in a single pdf file
     //
@@ -458,16 +446,81 @@ void storeImages(std::vector<TH2D*>& hInvariantMass2D, std::vector<TH1D*>& hInva
     cTemplateFits->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
     cInvariantMass2D->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cInvariantMass1D->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    c1d_fit->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    c1d_BackgroundFits->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    c1d_fit->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    c1d_sideBandSubtracted->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cDeltaR_vs_PtD->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 
     delete cInvariantMass2D;
     delete cInvariantMass1D;
 
 }
 
+// Calculate scalling correction factors
+std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitContainer& fittings,const std::array<double, 2> leftRange, const std::array<double, 2> rightRange, const int signalSigmas) {
+    // Define output array
+    std::array<double, 2> scallingFactors = {0., 0.};
+
+    // Get total fit parameters
+    double m_0 = fittings.fitTotal[iHisto]->GetParameter(4); // Get the value of parameter 'm_0'
+    double signalSigma1 = fittings.fitTotal[iHisto]->GetParameter(5); // Get the value of parameter 'sigma1'
+    double signalSigma2 = fittings.fitTotal[iHisto]->GetParameter(5) / fittings.fitTotal[iHisto]->GetParameter(6); // signalSigma2 = sigma1 / sigmaRatio12
+    double sigma = signalSigma1;
+    
+    // Define area variables
+    double B, Bs, R, Rs, S;
+
+    if (leftRange[0] == 0. && leftRange[1] == 0.) {
+        // Only right sideband used
+
+        // Calculate background regions' areas
+        B = fittings.fitBackgroundOnly[iHisto]->Integral(rightRange[0], rightRange[1]);
+        Bs = fittings.fitBackgroundOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of background in signal region
+
+        // Calculate reflection regions' areas
+        R = fittings.fitReflectionsOnly[iHisto]->Integral(rightRange[0], rightRange[1]);
+        Rs = fittings.fitReflectionsOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of reflections in signal region
+
+        // Calculate signal regions' areas
+        S = fittings.fitSignalOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of signal in signal region
+    } else {
+        // Both sidebands used
+
+        // Calculate background regions' areas
+        B = fittings.fitBackgroundOnly[iHisto]->Integral(leftRange[0], leftRange[1]) + fittings.fitBackgroundOnly[iHisto]->Integral(rightRange[0], rightRange[1]);
+        Bs = fittings.fitBackgroundOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of background in signal region
+
+        // Calculate reflection regions' areas
+        R = fittings.fitReflectionsOnly[iHisto]->Integral(leftRange[0], leftRange[1]) + fittings.fitReflectionsOnly[iHisto]->Integral(rightRange[0], rightRange[1]);
+        Rs = fittings.fitReflectionsOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of reflections in signal region
+
+        // Calculate signal regions' areas
+        S = fittings.fitSignalOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // yield of signal in signal region
+    }
+
+    // Calculate scaling factor
+    double alpha = S / (S + Rs - (Bs/B) * R);
+    if (std::isnan(alpha)) {
+        std::cout << "Error: Invalid scaling factor alpha = " << alpha << " for histogram index " << iHisto << ".\n";
+        std::cout << "S = " << S << ", Rs = " << Rs << ", Bs = " << Bs << ", B = " << B << ", R = " << R << ", (S + Rs - (Bs/B) * R) = " << (S + Rs - (Bs/B) * R) << ".\n";
+        alpha = 0.;
+    }
+    
+
+    // Reflections correction
+    scallingFactors[0] = alpha;
+    // Background correction
+    scallingFactors[1] = Bs/B;
+
+    std::cout << "Scaling factors calculated.\n";
+
+    return scallingFactors;
+}
+
 TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const double& jetptMax, 
                         const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector,
-                        const std::vector<std::pair<double, double>>& bdtPtCuts) {
+                        const std::vector<std::pair<double, double>>& bdtPtCuts,
+                        const int& signalSigmas, const int& startingBackSigma, const int& backgroundSigmas) {
 
     // mass histogram
     int massBins = 50; // default=100 
@@ -580,7 +633,7 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
     }
     // ----- Obtain 1D projections: invariant mass distributions
     std::vector<TH1D*> hInvariantMass1D;
-    for (size_t iHisto = 0; iHisto < hInvariantMass2D.size() - 1; iHisto++) {
+    for (size_t iHisto = 0; iHisto < hInvariantMass2D.size(); iHisto++) {
 
         hInvariantMass1D.push_back(hInvariantMass2D[iHisto]->ProjectionX(Form("h_mass_proj_%zu_%0.f_to_%0.fGeV", iHisto, jetptMin, jetptMax)));
     }
@@ -597,8 +650,11 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
     int nCols = static_cast<int>(std::ceil(std::sqrt(nHistos)));
     int nRows = static_cast<int>(std::ceil(nHistos / static_cast<double>(nCols)));
     c1d_fit->Divide(nCols,nRows); // columns, lines
+    TCanvas* c1d_BackgroundFits = new TCanvas("c1d_BackgroundFits", "Background fits");
+    c1d_BackgroundFits->SetCanvasSize(1800,1000);
+    c1d_BackgroundFits->Divide(nCols,nRows); // columns, lines
     FitContainer fDataFits;
-    for (size_t iHisto = 0; iHisto < hInvariantMass2D.size()-1; iHisto++) {
+    for (size_t iHisto = 0; iHisto < hInvariantMass2D.size(); iHisto++) {
 
         
         c1d_fit->cd(iHisto+1);
@@ -657,8 +713,9 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
         fDataFits.fitTotal[iHisto]->FixParameter(11, sigma1Reflections); // sigma_1
         fDataFits.fitTotal[iHisto]->FixParameter(12, sigma2Reflections); // sigma_2
         // Apply range limits to the parameters
-        fDataFits.fitTotal[iHisto]->SetParLimits(4, 0.95 * m_0_reference, 1.05 * m_0_reference);
-        fDataFits.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 3.0 * sigma_reference);
+        fDataFits.fitTotal[iHisto]->SetParLimits(0, 0., TMath::Infinity()); // only accepts non-negative background fits
+        fDataFits.fitTotal[iHisto]->SetParLimits(4, 0.95 * m_0_reference, 1.05 * m_0_reference); // D0 invariant mass
+        fDataFits.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 3.0 * sigma_reference); // primary gaussian standard deviation
         // Choose line color
         fDataFits.fitTotal[iHisto]->SetLineColor(kBlack);
         // Perform fit with "Q" (quiet) option: no drawing of the fit function
@@ -709,15 +766,190 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
         fDataFits.fitBackgroundOnly[iHisto]->Draw("same");
         fDataFits.fitReflectionsOnly[iHisto]->Draw("same");
 
+        c1d_BackgroundFits->cd(iHisto+1);
+        fDataFits.fitBackgroundOnly[iHisto]->Draw();
+
     }
 
     // ----- Perform side-band subtraction to fitted detector level data
+    std::vector<TH1D*> hsideBandSubtracted;
+    // Creating histograms for collecting data
+    TH1D* tempHist; // temporary histogram for collecting data
+    TH1D* h_sideBand;
+    TH1D* h_signal;
+    TH1D* h_back_subtracted;
+    for (size_t iHisto = 0; iHisto < hInvariantMass2D.size(); iHisto++) {
+        
+        // Get total fit parameters
+        double m_0 = fDataFits.fitTotal[iHisto]->GetParameter(4); // Get the value of parameter 'm_0'
+        double sigma = fDataFits.fitTotal[iHisto]->GetParameter(5); // Get the value of parameter 'sigma1'
+
+        // Obtain signal histogram
+        int lowBin = hInvariantMass2D[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
+        int highBin = hInvariantMass2D[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
+        h_signal = hInvariantMass2D[iHisto]->ProjectionY(Form("h_signal_proj_%zu_%0.f_to_%0.fGeV",iHisto, jetptMin, jetptMax), lowBin, highBin);
+        
+        // if background fit is empty/fails, skip the subtraction
+        double backgroundTotalArea = fDataFits.fitBackgroundOnly[iHisto]->Integral(minMass, maxMass); // Get the total area of the background fit
+        if (backgroundTotalArea == 0) {
+            std::cout << "Background fit empty for histogram " << iHisto << ", skipping side-band subtraction." << std::endl;
+            // Subtracted histogram = original signal histogram
+            h_back_subtracted = (TH1D*)h_signal->Clone(Form("h_back_subtracted_%zu_%0.f_to_%0.fGeV", iHisto, jetptMin, jetptMax));
+        } else {
+            std::array<double, 2> leftRange = {0., 0.}; // remains zero if no sigmas fit inside the left range
+            std::array<double, 2> rightRange = {0., 0.};
+            
+            // Count for how many sigmas is there room inside the left side range
+            double leftSidebandRange = (m_0 - startingBackSigma * sigma) - hInvariantMass1D[iHisto]->GetBinLowEdge(1);
+            leftSidebandRange = std::max(leftSidebandRange, 0.0); // Ensure non-negative range
+            double leftSigmas = leftSidebandRange / sigma;// get the fractional number
+            std::cout << leftSigmas << " sigmas fit inside the left side range for the background distribution estimation." << std::endl;
+
+            // Count for how many sigmas is there room inside the right side range
+            double rightSidebandRange = hInvariantMass1D[iHisto]->GetBinLowEdge(hInvariantMass1D[iHisto]->GetNbinsX()+1) - (m_0 + startingBackSigma*sigma);
+            rightSidebandRange = std::max(rightSidebandRange, 0.0); // Ensure non-negative range
+            double rightSigmas = rightSidebandRange / sigma;// get the fractional number
+            std::cout << rightSigmas << " sigmas fit inside the right side range for the background distribution estimation." << std::endl;
+
+            // Ensure only a maximum of 4 sigmas (backgroundSigmas) are used
+            if (leftSigmas > backgroundSigmas) {
+                leftSigmas = backgroundSigmas;
+            }
+            if (rightSigmas > backgroundSigmas) {
+                rightSigmas = backgroundSigmas;
+            }
+
+            // Calculate left range limits
+            leftRange[0] = m_0 - (startingBackSigma + leftSigmas) * sigma;
+            leftRange[1] = m_0 - startingBackSigma * sigma;
+
+            // Calculate right range limits
+            rightRange[0] = m_0 + startingBackSigma * sigma;
+            rightRange[1] = m_0 + (startingBackSigma + rightSigmas) * sigma;
+
+            // If there is no room for the left side range, use only right side-band
+            if ((leftRange[0] - leftRange[1]) == 0.) {
+                // use only right side-band
+                lowBin = hInvariantMass2D[iHisto]->GetXaxis()->FindBin(rightRange[0]);
+                highBin = hInvariantMass2D[iHisto]->GetXaxis()->FindBin(rightRange[1]);
+                h_sideBand = hInvariantMass2D[iHisto]->ProjectionY(Form("h_sideband_proj_temp_%zu_%0.f_to_%0.fGeV",iHisto, jetptMin, jetptMax), lowBin, highBin); // sum the right sideband
+                double rightSBHistogram = hInvariantMass1D[iHisto]->Integral(lowBin, highBin); // integral of sideband regions of mass histogram
+            } else {
+                // Use both sidebands
+                lowBin = hInvariantMass2D[iHisto]->GetXaxis()->FindBin(leftRange[0]);
+                highBin = hInvariantMass2D[iHisto]->GetXaxis()->FindBin(leftRange[0]);
+                h_sideBand = hInvariantMass2D[iHisto]->ProjectionY(Form("h_sideband_proj_temp_left_%zu_%0.f_to_%0.fGeV",iHisto, jetptMin, jetptMax), lowBin, highBin); // sum the left sideband
+                double leftSBHistogram = hInvariantMass1D[iHisto]->Integral(lowBin, highBin); // integral of sideband regions of mass histogram
+
+                lowBin = hInvariantMass2D[iHisto]->GetXaxis()->FindBin(rightRange[0]);
+                highBin = hInvariantMass2D[iHisto]->GetXaxis()->FindBin(rightRange[1]);
+                h_sideBand->Add(hInvariantMass2D[iHisto]->ProjectionY(Form("h_sideband_proj_temp_%zu_%0.f_to_%0.fGeV",iHisto, jetptMin, jetptMax), lowBin, highBin)); // sum the right sideband
+                double rightSBHistogram = hInvariantMass1D[iHisto]->Integral(lowBin, highBin); // integral of sideband regions of mass histogram
+            }
+            
+            // Calculate scaling factors for sideband subtraction
+            // Calculate scaling factor to apply to the sideband subtraction original method
+            std::array<double, 2> scallingFactors = calculateScalingFactor(iHisto, fDataFits, leftRange, rightRange, signalSigmas);
+            std::cout << "scallingFactors[0] = " << scallingFactors[0] << ", scallingFactors[1] = " << scallingFactors[1] << std::endl;
+            
+            // Scale the sideband histogram by ratio of it in the signal region Bs/(B1+B2)
+            h_sideBand->Scale(scallingFactors[1]);
+
+            // Subtract the sideband histogram from the signal histogram
+            h_back_subtracted = (TH1D*)h_signal->Clone(Form("h_back_subtracted_%zu_%0.f_to_%0.fGeV", iHisto, jetptMin, jetptMax));
+            h_back_subtracted->Add(h_sideBand,-1.0);
+            
+            // Optionally fix the nan entries from the empty projected histograms
+            // Fix NaN values: loop over bins and set NaN to 0
+            // for (int iBin = 1; iBin <= h_back_subtracted->GetNbinsX(); ++iBin) {
+            //     double content = h_back_subtracted->GetBinContent(iBin);
+            //     if (std::isnan(content)) {
+            //         h_back_subtracted->SetBinContent(iBin, 0.0);
+            //         h_back_subtracted->SetBinError(iBin, 0.0);
+            //     }
+            // }
+
+            // Scale by reflections correction
+            h_back_subtracted->Scale(scallingFactors[0]);
+
+            // Account for two sigma only area used for signal region
+            h_back_subtracted->Scale(1/0.9545);
+            
+        }
+        // If histogram isn't empty, store it in the container
+        // if (h_back_subtracted->GetEntries() != 0) {
+        //     hsideBandSubtracted.push_back(h_back_subtracted);
+        // }
+        hsideBandSubtracted.push_back(h_back_subtracted);
+    }
+    // Final adjustments to subtracted histograms
+    for (size_t iHisto = 0; iHisto < hsideBandSubtracted.size(); iHisto++) {
+        
+        // Set negative count bin entries to 0
+        for (int iBin = 1; iBin <= hsideBandSubtracted[iHisto]->GetNbinsX(); iBin++) {
+            if (hsideBandSubtracted[iHisto]->GetBinContent(iBin) < 0) {
+                hsideBandSubtracted[iHisto]->SetBinContent(iBin,0);
+                hsideBandSubtracted[iHisto]->SetBinError(iBin,0);
+            }
+        }
+
+        
+    }
+    // Plot side-band subtracted histograms
+    TCanvas* c1d_sideBandSubtracted = new TCanvas("c1d_sideBandSubtracted", "Side-band subtracted 1D histograms");
+    c1d_sideBandSubtracted->SetCanvasSize(1800,1000);
+    c1d_sideBandSubtracted->Divide(nCols,nRows); // columns, lines
+    for (size_t iHisto = 0; iHisto < hInvariantMass2D.size(); iHisto++) {
+        c1d_sideBandSubtracted->cd(iHisto+1);        
+        hsideBandSubtracted[iHisto]->SetLineColor(kRed+1);
+        hsideBandSubtracted[iHisto]->SetLineWidth(2);
+        hsideBandSubtracted[iHisto]->SetTitle(Form("Side-band subtracted histogram for %.1f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c}", ptDBinEdges_detector[iHisto], ptDBinEdges_detector[iHisto + 1]));
+        hsideBandSubtracted[iHisto]->GetXaxis()->SetTitle("#Delta R");
+        hsideBandSubtracted[iHisto]->GetYaxis()->SetTitle("Counts");
+        hsideBandSubtracted[iHisto]->Draw();
+    }
 
     // ----- Create 2D distribution of DeltaR vs. pT,D0
-    TH2D* hDeltaR_vs_PtD;
+    int nPtBins = ptDBinEdges_detector.size() - 1;
+    int nDeltaRBins = deltaRBinEdges_detector.size() - 1;
+    TH2D* hDeltaR_vs_PtD = new TH2D(Form("hDeltaR_vs_PtD_%0.f_to_%0.fGeV", jetptMin, jetptMax), "#DeltaR vs #it{p}_{T,D^{0}};#DeltaR;#it{p}_{T,D^{0}} (GeV/#it{c})",
+                                  nDeltaRBins, deltaRBinEdges_detector.data(),  // X: ΔR
+                                  nPtBins, ptDBinEdges_detector.data()); // Y: pT,D);
+    for (size_t iHisto = 0; iHisto < hsideBandSubtracted.size(); ++iHisto) {
+        TH1D* h1D = hsideBandSubtracted[iHisto];
+        
+        for (int iBin = 1; iBin <= h1D->GetNbinsX(); ++iBin) {
+            double deltaR_center = h1D->GetBinCenter(iBin);
+            double ptD_center = 0.5*(ptDBinEdges_detector[iHisto] + ptDBinEdges_detector[iHisto+1]);
+            double content = h1D->GetBinContent(iBin);
+            double contentError = h1D->GetBinError(iBin);
+            // if (hsideBandSubtracted[iHisto]->GetEntries() == 0) {
+            //     std::cout << "Histo with no entries: content = " << content << ", contentError = " << contentError << std::endl;
+            //     content = 0;
+            //     contentError = 0;
+            // } else if (content < 0) {
+            //     std::cout << "Histo with negative entries: content = " << content << ", contentError = " << contentError << std::endl;
+            //     content = 0;
+            //     contentError = 0;
+            // } else if (std::isnan(content) || std::isnan(contentError)) {
+            //     std::cout << "Histo with nan entries: content = " << content << ", contentError = " << contentError << std::endl;
+            // }
+            
+
+            // Find the corresponding bin numbers in the 2D histogram
+            int xBin = hDeltaR_vs_PtD->GetXaxis()->FindBin(deltaR_center);
+            int yBin = hDeltaR_vs_PtD->GetYaxis()->FindBin(ptD_center);
+
+            hDeltaR_vs_PtD->SetBinContent(xBin, yBin, content);
+            hDeltaR_vs_PtD->SetBinError(xBin, yBin, contentError);
+        }
+    }
+
+    
+    
 
     // Store images
-    storeImages(hInvariantMass2D, hInvariantMass1D, jetptMin, jetptMax, fTemplateFitsAndCanvas.second, c1d_fit);
+    storeImages(hInvariantMass2D, hInvariantMass1D, jetptMin, jetptMax, fTemplateFitsAndCanvas.second, c1d_BackgroundFits, c1d_fit, c1d_sideBandSubtracted, hDeltaR_vs_PtD);
 
     // Clean vector of pointers
     for (auto hist : hInvariantMass2D) {
@@ -733,23 +965,65 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
     return hDeltaR_vs_PtD;
 }
 
-TH3D* create3DBackgroundSubtracted(const std::vector<TH2D*>& outputHistograms) {
-    //
+TH3D* create3DBackgroundSubtracted(const std::vector<TH2D*>& outputHistograms, const std::vector<double>& ptjetBinEdges_detector ,const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector) {
+    int nDeltaRBins = deltaRBinEdges_detector.size() - 1;
+    int nPtDBins   = ptDBinEdges_detector.size() - 1;
+    int nPtJetBins = ptjetBinEdges_detector.size() - 1;
 
-    TH3D* hBackgroundSubtracted;
+    TH3D* hBackgroundSubtracted = new TH3D("hBackgroundSubtracted",
+                        "Background-subtracted 3D histogram;p_{T,jet} (GeV/c);#DeltaR;p_{T,D} (GeV/c)",
+                        nPtJetBins, ptjetBinEdges_detector.data(),   // X axis → pT,jet
+                        nDeltaRBins, deltaRBinEdges_detector.data(), // Y axis → ΔR
+                        nPtDBins, ptDBinEdges_detector.data());     // Z axis → pT,D
+    for (size_t iPtJet = 0; iPtJet < outputHistograms.size(); ++iPtJet) {
+        TH2D* h2D = outputHistograms[iPtJet];
+
+        double ptJetCenter = 0.5 * (ptjetBinEdges_detector[iPtJet] + ptjetBinEdges_detector[iPtJet + 1]);
+
+        for (int iX = 1; iX <= h2D->GetNbinsX(); ++iX) {       // ΔR bins
+            double deltaR_center = h2D->GetXaxis()->GetBinCenter(iX);
+
+            for (int iY = 1; iY <= h2D->GetNbinsY(); ++iY) {   // pT,D bins
+                double ptD_center = h2D->GetYaxis()->GetBinCenter(iY);
+                double content    = h2D->GetBinContent(iX, iY);
+                double error      = h2D->GetBinError(iX, iY);
+
+                // Fill the 3D histogram
+                int binX3D = hBackgroundSubtracted->GetXaxis()->FindBin(ptJetCenter);
+                int binY3D = hBackgroundSubtracted->GetYaxis()->FindBin(deltaR_center);
+                int binZ3D = hBackgroundSubtracted->GetZaxis()->FindBin(ptD_center);
+                hBackgroundSubtracted->SetBinContent(binX3D, binY3D, binZ3D, content);
+                hBackgroundSubtracted->SetBinError(binX3D, binY3D, binZ3D, error);
+
+            }
+        }
+    }
 
     return hBackgroundSubtracted;
 }
 
-TH3D* SidebandClosure(TFile* fClosureInput, const std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+TH3D* SidebandClosure(TFile* fClosureInput, std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector, const std::vector<std::pair<double, double>>& bdtPtCuts) {
 
+    // Hardcoded sideband subtraction parameters
+    int signalSigmas = 2; // Number of sigmas for signal distribution
+    int startingBackSigma = 4; // beginning of background distribution
+    int backgroundSigmas = 4; // (maximum) range of background distribution after its starting point
     // One TH2D for each pT,jet range computed
     std::vector<TH2D*> outputHistograms;
+
+    // Testing range of pT,jet bins
+    //ptjetBinEdges_detector = {15., 30.};
+
     for (size_t iPtJetRange = 0; iPtJetRange < ptjetBinEdges_detector.size() - 1; iPtJetRange++) {
-        TH2D* hDeltaR_vs_PtD = AnalyzeJetPtRange(fClosureInput, ptjetBinEdges_detector[iPtJetRange], ptjetBinEdges_detector[iPtJetRange + 1], deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts);
+        TH2D* hDeltaR_vs_PtD = AnalyzeJetPtRange(fClosureInput, ptjetBinEdges_detector[iPtJetRange], ptjetBinEdges_detector[iPtJetRange + 1], deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts,
+                                                 signalSigmas, startingBackSigma, backgroundSigmas);
         outputHistograms.push_back(hDeltaR_vs_PtD);
     }
 
-    TH3D* hBackgroundSubtracted = create3DBackgroundSubtracted(outputHistograms);
+    TH3D* hBackgroundSubtracted = create3DBackgroundSubtracted(outputHistograms, ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector);
+    TCanvas* cBackgroundSubtracted = new TCanvas("cBackgroundSubtracted", "Background-subtracted 3D histogram");
+    cBackgroundSubtracted->SetCanvasSize(1800, 1000);
+    hBackgroundSubtracted->Draw("colz");
+
     return hBackgroundSubtracted;
 }

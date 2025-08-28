@@ -10,7 +10,11 @@
  * 
 **/
 
+#include "commonFunctions.h"
 #include "sidebandClosure.h"
+#include "efficiencyClosure.h"
+#include "unfoldingClosure.h"
+
 using namespace std;
 
 // Already defined in sidebandClosure header file: calculate delta phi such that 0 < delta phi < 2*pi
@@ -372,6 +376,127 @@ std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
     return std::vector<double>(vec->GetMatrixArray(), vec->GetMatrixArray() + vec->GetNoElements());
 }
 
+TH2D* CompareClosureTest(TFile* fClosureInputMatched, std::vector<TH2D*>& hUnfKinCorrected, const BinningStruct& binningStruct) {
+    // 1 ----- Build particle level distribution the same way as the detector level was built
+    TH2D* hInputParticle = new TH2D("hInputParticle", "Particle level prompt D^{0} jets distribution; pT,jet (GeV); #DeltaR", 
+                        binningStruct.ptjetBinEdges_particle.size() - 1, binningStruct.ptjetBinEdges_particle.data(), 
+                        binningStruct.deltaRBinEdges_particle.size() - 1, binningStruct.deltaRBinEdges_particle.data());
+    hInputParticle->Sumw2();
+    // Defining cuts
+    const double jetRadius = 0.4;
+    const double MCPetaCut = 0.9 - jetRadius; // on particle level jet
+    const double MCDetaCut = 0.9 - jetRadius; // on detector level jet
+    const double MCPyCut = 0.8; // on particle level D0
+    const double MCDyCut = 0.8; // on detector level D0
+    const double MCPDeltaRcut = binningStruct.deltaRBinEdges_particle[binningStruct.deltaRBinEdges_particle.size() - 1]; // on particle level delta R
+    const double MCDDeltaRcut = binningStruct.deltaRBinEdges_detector[binningStruct.deltaRBinEdges_detector.size() - 1]; // on detector level delta R
+    const double jetptMin = binningStruct.ptjetBinEdges_particle[0]; // on both levels jet
+    const double jetptMax = binningStruct.ptjetBinEdges_particle[binningStruct.ptjetBinEdges_particle.size() - 1]; // on both levels jet
+    const double MCPHfPtMincut = binningStruct.ptDBinEdges_particle[0]; // on particle level D0
+    const double MCDHfPtMincut = binningStruct.ptDBinEdges_detector[0]; // on detector level D0
+    const double MCPHfPtMaxcut = binningStruct.ptDBinEdges_particle[binningStruct.ptDBinEdges_particle.size() - 1]; // on particle level D0
+    const double MCDHfPtMaxcut = binningStruct.ptDBinEdges_detector[binningStruct.ptDBinEdges_detector.size() - 1]; // on detector level D0
+    TTree* tree = (TTree*)fClosureInputMatched->Get("InputTree");
+    // Check for correct access
+    if (!tree) {
+        cout << "Error opening correction data tree.\n";
+    }
+    // defining variables for accessing particle level data on TTree
+    float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
+    float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
+    bool MCPhfprompt;
+    // defining variables for accessing detector level data on TTree
+    float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
+    float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
+    bool MCDhfprompt;
+    // defining ML score variables for accessing the TTree
+    float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
+    // particle level branches
+    tree->SetBranchAddress("fMcJetHfDist",&MCPaxisDistance);
+    tree->SetBranchAddress("fMcJetPt",&MCPjetPt);
+    tree->SetBranchAddress("fMcJetEta",&MCPjetEta);
+    tree->SetBranchAddress("fMcJetPhi",&MCPjetPhi);
+    tree->SetBranchAddress("fMcHfPt",&MCPhfPt);
+    tree->SetBranchAddress("fMcHfEta",&MCPhfEta);
+    tree->SetBranchAddress("fMcHfPhi",&MCPhfPhi);
+    MCPhfMass = 1.86483; // D0 rest mass in GeV/c^2
+    tree->SetBranchAddress("fMcHfY",&MCPhfY);
+    tree->SetBranchAddress("fMcHfPrompt",&MCPhfprompt);
+    // detector level branches
+    tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance);
+    tree->SetBranchAddress("fJetPt",&MCDjetPt);
+    tree->SetBranchAddress("fJetEta",&MCDjetEta);
+    tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
+    tree->SetBranchAddress("fHfPt",&MCDhfPt);
+    tree->SetBranchAddress("fHfEta",&MCDhfEta);
+    tree->SetBranchAddress("fHfPhi",&MCDhfPhi);
+    tree->SetBranchAddress("fHfMass",&MCDhfMass);
+    tree->SetBranchAddress("fHfY",&MCDhfY);
+    tree->SetBranchAddress("fHfPrompt",&MCDhfprompt);
+    tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
+    tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
+    tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+    int MCDhfMatchedFrom, MCDhfSelectedAs;
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
+    int nEntries = tree->GetEntries();
+    for (int entry = 0; entry < nEntries; ++entry) {
+        tree->GetEntry(entry);
+
+        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+
+        // Apply prompt (including reflections) selection (i.e., only c → D0)
+        if (!MCDhfprompt) {
+            continue;
+        }
+
+        // calculating delta R
+        double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
+
+        bool genLevelRange = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= binningStruct.deltaRBinEdges_particle[0]) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut));
+        
+        if (genLevelRange) {
+            // Fill input distribution for particle level
+            hInputParticle->Fill(MCPjetPt, MCPDeltaR);
+            
+        }
+    }
+    // 2 ----- Plot input particle level distribution against unfolded and kinematically corrected distributions
+    TCanvas* cClosureTest = new TCanvas("cClosureTest","Second closure test", 1800, 1000);
+    cClosureTest->cd();
+    TLegend* lUnfoldedIter = new TLegend(0.6,0.57,0.7,0.77);
+    std::vector<TH1D*> hUnfoldedProj(hUnfKinCorrected.size());
+    int secondBin = 2;
+    int lastButOneBin = hUnfKinCorrected[0]->GetXaxis()->GetNbins() - 1; // penultimate bin
+    for (size_t iIter = 0; iIter < hUnfKinCorrected.size(); iIter++) {
+        // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
+        hUnfoldedProj[iIter] = hUnfKinCorrected[iIter]->ProjectionY(Form("hProjIter_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
+        hUnfoldedProj[iIter]->SetLineColor(kBlack + iIter);
+        lUnfoldedIter->AddEntry(hUnfoldedProj[iIter],Form("Iteration %zu", iIter+1), "le");
+        if (iIter == 0) {
+            hUnfoldedProj[iIter]->SetTitle("Closure test 2: background subtraction+efficiency+unfolding");
+            hUnfoldedProj[iIter]->Draw();
+        } else {
+            hUnfoldedProj[iIter]->Draw("same");
+        }
+        
+    }
+    TH1D* hInputParticleProj = hInputParticle->ProjectionY("hInputParticleProj", secondBin, lastButOneBin);
+    hInputParticleProj->SetLineColor(kRed);
+    hInputParticleProj->SetLineStyle(2);
+    hInputParticleProj->Draw("same");
+    lUnfoldedIter->AddEntry(hInputParticleProj, "Input particle level", "le");
+    lUnfoldedIter->Draw();
+    double reportingJetPtMin = hUnfKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
+    double reportingJetPtMax = hUnfKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+    TLatex* latex = new TLatex();
+    latex->SetNDC(); // Set the coordinates to be normalized device coordinates
+    latex->SetTextSize(0.03);
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+
+    return hInputParticle;
+}
+
 // 2 - Sideband subtraction + efficiency correction + unfolding closure test
 void SecondClosureTest(){
     // Execution time calculation
@@ -407,6 +532,15 @@ void SecondClosureTest(){
     std::vector<double> deltaRBinEdges_particle = LoadBinning(fEfficiency, "axes/deltaRBinEdges_particle");
     std::vector<double> ptDBinEdges_particle = LoadBinning(fEfficiency, "axes/ptDBinEdges_particle");
 
+    // Create struct to hold all binning distributions
+    BinningStruct binningStruct;
+    binningStruct.ptjetBinEdges_particle = ptjetBinEdges_particle;
+    binningStruct.deltaRBinEdges_particle = deltaRBinEdges_particle;
+    binningStruct.ptDBinEdges_particle = ptDBinEdges_particle;
+    binningStruct.ptjetBinEdges_detector = ptjetBinEdges_detector;
+    binningStruct.deltaRBinEdges_detector = deltaRBinEdges_detector;
+    binningStruct.ptDBinEdges_detector = ptDBinEdges_detector;
+
     // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
     //std::vector<std::pair<double, double>> bdtPtCuts = {
     //    {1, 0.03}, {2, 0.03}, {3, 0.05}, {4, 0.05}, {5, 0.08}, {6, 0.15}, {8, 0.22}, {12, 0.35}, {16, 0.47}, {24, 0.47}
@@ -421,7 +555,8 @@ void SecondClosureTest(){
     TFile* fSimulatedMCMatched = new TFile("../SimulatedData/Hyperloop_output/Train_runs/410603_Match/AO2D_mergedDFs.root","read");
     TFile* fData = new TFile("../ExperimentalData/Hyperloop_output/HF_LHC23_pass4_Thin_small_2P3PDstar_DATA_newMLModel/AnalysisResults.root","read");
     TFile* fFeedDown = new TFile(Form("../3-Feed-Down/outputFeedDown_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
-    TFile* fClosureInput = new TFile("mc_closure_input.root","read");
+    TFile* fClosureInputMatched = new TFile("mc_closure_input_matched_data.root","read");
+    TFile* fClosureInputNonMatched = new TFile("mc_closure_input_non-matched_data.root","read");
     if (!fSimulatedMCMatched || fSimulatedMCMatched->IsZombie()) {
         std::cerr << "Error: Unable to open O2 MC matched ROOT file." << std::endl;
     }
@@ -432,14 +567,20 @@ void SecondClosureTest(){
         std::cerr << "Error: Unable to open AnalysisResults.root data ROOT file." << std::endl;
     }
 
-    // Perform side-band subtraction
-    TH3D* hBackgroundSubtracted = SidebandClosure(fClosureInput, ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts);
+    // ----1: Perform side-band subtraction
+    TH3D* hBackgroundSubtracted = SidebandClosure(fClosureInputMatched, ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts);
+    //TH3D* hBackgroundSubtracted;
 
-    // Perform efficiency correction
+    // ----2: Perform efficiency correction
+    std::pair<std::vector<TH1D*>, TH2D*> effOutputs = EfficiencyClosure(fClosureInputNonMatched, fClosureInputMatched, hBackgroundSubtracted, binningStruct, bdtPtCuts);
+    std::vector<TH1D*> hSelEff_run3style = effOutputs.first;
+    TH2D* hEfficiencyCorrected = effOutputs.second;
 
-    // Perform unfolding
+    // ----3: Perform unfolding
+    std::vector<TH2D*> hUnfKinCorrected = UnfoldingClosure(fClosureInputMatched, hSelEff_run3style, hEfficiencyCorrected, binningStruct, bdtPtCuts);
 
-    
+    // ----4: Compare input (MC particle level) with output (background subtracted, efficiency corrected, unfolded) distributions
+    TH2D* inputMCP = CompareClosureTest(fClosureInputMatched, hUnfKinCorrected, binningStruct);
 
     time(&end); // end instant of program execution
     
