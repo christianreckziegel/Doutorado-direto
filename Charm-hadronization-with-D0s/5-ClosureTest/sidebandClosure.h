@@ -9,6 +9,29 @@
 
 using namespace std;
 
+// Check if histogram should be erased before storing
+bool eraseHistogram(const std::vector<bool>& workingFits, size_t& histoIndex) {
+    bool doEraseHistogram = false;
+
+    // was it stored as sucessfull fit?
+    if (workingFits[histoIndex]) {
+
+        // are upper indices all true?
+        for (size_t iHisto = histoIndex; iHisto < workingFits.size(); iHisto++) {
+            if (!workingFits[iHisto]) {
+                doEraseHistogram = true;
+                break;
+            }
+            
+        }
+        
+    } else {
+        doEraseHistogram = true;
+    }
+    
+    return doEraseHistogram;
+}
+
 // Custom pure signal fit function
 Double_t pureSignalFunction(Double_t* x, Double_t* par) {
 
@@ -141,6 +164,7 @@ struct FitContainer {
     std::vector<TF1*> fitReflectionsOnly;       // reflection only fits
     std::vector<TF1*> fitSignalsAndReflections; // 
     std::vector<TF1*> fitTotal;                 // total fits
+    std::vector<bool> workingFits;              // working fits (in order to only include the successful contributions)
 };
 // Histograms containers for each case
 struct HistogramGroup {
@@ -153,7 +177,7 @@ struct HistogramGroup {
     std::vector<TH1D*> signals_and_reflections_1d;
 };
 
-std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInput, const double& jetptMin, const double& jetptMax, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector,
+std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonMatched, const double& jetptMin, const double& jetptMax, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector,
                                    const std::vector<std::pair<double, double>>& bdtPtCuts, int xbins, double xmin, double xmax) {
     // Create template fits container
     FitContainer fTemplateFits;
@@ -210,7 +234,7 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInput, co
     const double yCut = 0.8; // on detector level D0
     const double DeltaRcut = deltaRBinEdges_detector[deltaRBinEdges_detector.size() - 1]; // on particle level delta R
     // Accessing detector level data TTree
-    TTree* tree = (TTree*)fClosureInput->Get("CorrectionTree");
+    TTree* tree = (TTree*)fClosureInputNonMatched->Get("CorrectionTree/O2mcdjetdisttable");
     // Assuming histograms and tree data correspond in some way
     if (!tree) {
         cout << "Error opening tree.\n";
@@ -345,7 +369,17 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInput, co
         // Initialize parameters from previous fits
         combinedFit->SetParameters(fTemplateFits.fitSignalOnly[iInterval]->GetParameter(0), fTemplateFits.fitSignalOnly[iInterval]->GetParameter(1), fTemplateFits.fitSignalOnly[iInterval]->GetParameter(2), fTemplateFits.fitSignalOnly[iInterval]->GetParameter(3), fTemplateFits.fitSignalOnly[iInterval]->GetParameter(4), 
                                       fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(0), fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(1), fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(2), fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(3), fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(4), fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(5));
-
+        combinedFit->FixParameter(0,fTemplateFits.fitSignalOnly[iInterval]->GetParameter(0));
+        combinedFit->FixParameter(1,fTemplateFits.fitSignalOnly[iInterval]->GetParameter(1));
+        combinedFit->FixParameter(2,fTemplateFits.fitSignalOnly[iInterval]->GetParameter(2));
+        combinedFit->FixParameter(3,fTemplateFits.fitSignalOnly[iInterval]->GetParameter(3));
+        combinedFit->FixParameter(4,fTemplateFits.fitSignalOnly[iInterval]->GetParameter(4));
+        combinedFit->FixParameter(5,fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(0));
+        combinedFit->FixParameter(6,fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(1));
+        combinedFit->FixParameter(7,fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(2));
+        combinedFit->FixParameter(8,fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(3));
+        combinedFit->FixParameter(9,fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(4));
+        combinedFit->FixParameter(10,fTemplateFits.fitReflectionsOnly[iInterval]->GetParameter(5));
         histogramTemplates.signals_and_reflections_1d[iInterval]->Fit(combinedFit, "RQ");
         fTemplateFits.fitSignalsAndReflections.push_back(combinedFit);
         //fTemplateFits.fitSignalsAndReflections[iInterval]->Print("V");
@@ -517,7 +551,7 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
     return scallingFactors;
 }
 
-TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const double& jetptMax, 
+TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, const double& jetptMax, 
                         const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector,
                         const std::vector<std::pair<double, double>>& bdtPtCuts,
                         const int& signalSigmas, const int& startingBackSigma, const int& backgroundSigmas) {
@@ -564,13 +598,13 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
     // defining variables for accessing detector level data on TTree
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
-    bool MCDhfprompt;
+    bool MCDhfprompt, MCDhfmatch;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
     // variables for reflection contribution selection
     int MCDhfMatchedFrom, MCDhfSelectedAs;
     // Accessing TTree
-    TTree* tree = (TTree*)fClosureInput->Get("InputTree");
+    TTree* tree = (TTree*)fClosureInputNonMatched->Get("InputTree/O2mcdjetdisttable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening correction data tree.\n";
@@ -586,6 +620,7 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
     tree->SetBranchAddress("fHfMass",&MCDhfMass);
     tree->SetBranchAddress("fHfY",&MCDhfY);
     tree->SetBranchAddress("fHfPrompt",&MCDhfprompt);
+    tree->SetBranchAddress("fHfMatch",&MCDhfmatch);
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
@@ -639,7 +674,7 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
     }
     
     // ----- Obtain template fits from MC particle level data
-    std::pair<FitContainer, TCanvas*> fTemplateFitsAndCanvas = calculateFitTemplates(fClosureInput, jetptMin, jetptMax, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts, massBins, minMass, maxMass);
+    std::pair<FitContainer, TCanvas*> fTemplateFitsAndCanvas = calculateFitTemplates(fClosureInputNonMatched, jetptMin, jetptMax, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts, massBins, minMass, maxMass);
     FitContainer fTemplateFits = fTemplateFitsAndCanvas.first;
 
     // ----- Fit detector level data
@@ -721,6 +756,23 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
         // Perform fit with "Q" (quiet) option: no drawing of the fit function
         hInvariantMass1D[iHisto]->Fit(fDataFits.fitTotal[iHisto], "Q");
 
+        // Check if signal gaussian acomodates the literature D0 rest mass
+        double primaryMean = fDataFits.fitTotal[iHisto]->GetParameter(4);
+        double primarySigma = fDataFits.fitTotal[iHisto]->GetParameter(5);
+        double D0LiteratureMass = 1.86484; // GeV/c²
+        if ((D0LiteratureMass < (primaryMean - 2*primarySigma)) || (D0LiteratureMass > (primaryMean + 2*primarySigma))) { // fit failed: PDG mass outside of signal region
+            // if literature mass is outside, clear histogram as it should be excluded
+            //histograms[iHisto]->Reset();
+            hInvariantMass1D[iHisto]->SetTitle(TString(hInvariantMass1D[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+            //histograms2d[iHisto]->Reset("ICES");
+            //histograms2d[iHisto]->Reset();
+            hInvariantMass2D[iHisto]->SetTitle(TString(hInvariantMass2D[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+
+            fDataFits.workingFits.push_back(false);
+        } else { // fit worked: PDG mass inside of signal region
+            fDataFits.workingFits.push_back(true);
+        }
+
         // Getting total parameter values
         double a_par = fDataFits.fitTotal[iHisto]->GetParameter(0); // Get the value of parameter 'a'
         double b_par = fDataFits.fitTotal[iHisto]->GetParameter(1); // Get the value of parameter 'b'
@@ -765,6 +817,15 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInput, const double& jetptMin, const doub
         fDataFits.fitSignalOnly[iHisto]->Draw("same");
         fDataFits.fitBackgroundOnly[iHisto]->Draw("same");
         fDataFits.fitReflectionsOnly[iHisto]->Draw("same");
+        // Also draw fit quality
+        TLatex* latex = new TLatex();
+        latex->SetNDC();
+        latex->SetTextSize(0.04);
+        latex->SetTextAlign(31); // align right
+        latex->DrawLatex(0.85,0.62,Form("%.1f < #it{p}_{T,jet} < %.1f GeV/c", jetptMin, jetptMax));
+        double chi2red = fDataFits.fitTotal[iHisto]->GetChisquare();
+        int ndf = fDataFits.fitTotal[iHisto]->GetNDF();
+        latex->DrawLatex(0.88,0.72,Form("#Chi^{2}_red =  %.2f/%.i = %.2f ", chi2red, ndf, chi2red / ndf));
 
         c1d_BackgroundFits->cd(iHisto+1);
         fDataFits.fitBackgroundOnly[iHisto]->Draw();
@@ -1002,7 +1063,7 @@ TH3D* create3DBackgroundSubtracted(const std::vector<TH2D*>& outputHistograms, c
     return hBackgroundSubtracted;
 }
 
-TH3D* SidebandClosure(TFile* fClosureInput, std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+TH3D* SidebandClosure(TFile* fClosureInputNonMatched, std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector, const std::vector<std::pair<double, double>>& bdtPtCuts) {
 
     // Hardcoded sideband subtraction parameters
     int signalSigmas = 2; // Number of sigmas for signal distribution
@@ -1012,10 +1073,10 @@ TH3D* SidebandClosure(TFile* fClosureInput, std::vector<double>& ptjetBinEdges_d
     std::vector<TH2D*> outputHistograms;
 
     // Testing range of pT,jet bins
-    //ptjetBinEdges_detector = {15., 30.};
+    //ptjetBinEdges_detector = {30., 50.};
 
     for (size_t iPtJetRange = 0; iPtJetRange < ptjetBinEdges_detector.size() - 1; iPtJetRange++) {
-        TH2D* hDeltaR_vs_PtD = AnalyzeJetPtRange(fClosureInput, ptjetBinEdges_detector[iPtJetRange], ptjetBinEdges_detector[iPtJetRange + 1], deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts,
+        TH2D* hDeltaR_vs_PtD = AnalyzeJetPtRange(fClosureInputNonMatched, ptjetBinEdges_detector[iPtJetRange], ptjetBinEdges_detector[iPtJetRange + 1], deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts,
                                                  signalSigmas, startingBackSigma, backgroundSigmas);
         outputHistograms.push_back(hDeltaR_vs_PtD);
     }
