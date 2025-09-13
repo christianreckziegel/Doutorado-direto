@@ -257,10 +257,11 @@ void fillHistograms(TFile* fDist, const std::vector<TH2D*>& histograms, double j
 
 // Module to perform fits to histograms
 struct FitContainer {
-    std::vector<TF1*> fitBackgroundOnly;      // background only fits
-    std::vector<TF1*> fitSignalOnly;      // background only fits
-    std::vector<TF1*> fitReflectionsOnly;      // background only fits
-    std::vector<TF1*> fitTotal;      // background only fits
+    std::vector<TF1*> fitBackgroundOnly;        // background only fits
+    std::vector<TF1*> fitSignalOnly;            // background only fits
+    std::vector<TF1*> fitReflectionsOnly;       // background only fits
+    std::vector<TF1*> fitTotal;                 // background only fits
+    std::vector<bool> workingFits;              // list of working fits (PDG mass inside of signal range)
 };
 FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histograms2d, double minMass, double maxMass) {
     
@@ -356,11 +357,35 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
         // Perform fit with "Q" (quiet) option: no drawing of the fit function
         histograms[iHisto]->Fit(fittings.fitTotal[iHisto], "Q");
 
+        // Check if signal gaussian acomodates the literature D0 rest mass
+        double primaryMean = fittings.fitTotal[iHisto]->GetParameter(4);
+        double primarySigma = fittings.fitTotal[iHisto]->GetParameter(5);
+        double D0LiteratureMass = 1.86484; // GeV/c²
+        if ((D0LiteratureMass < (primaryMean - 2*primarySigma)) || (D0LiteratureMass > (primaryMean + 2*primarySigma))) { // fit failed: PDG mass outside of signal region
+            // if literature mass is outside, clear histogram as it should be excluded
+            //histograms[iHisto]->Reset();
+            histograms[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+            //histograms2d[iHisto]->Reset("ICES");
+            //histograms2d[iHisto]->Reset();
+            histograms2d[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+
+            fittings.workingFits.push_back(false);
+        } else { // fit worked: PDG mass inside of signal region
+            fittings.workingFits.push_back(true);
+        }
+        
+
         // Print the fit results
         //fittings.fitTotal[iHisto]->Print("V");
 
         //std::cout << "Fit " << iHisto << " performed.\n";
     }
+    std::cout << "Number of fits performed: " << fittings.workingFits.size() << std::endl;
+    for (size_t iFit = 0; iFit < fittings.workingFits.size(); iFit++) {
+        std::cout << "Fit number " << iFit << " is: " << fittings.workingFits[iFit] << std::endl;
+    }
+    
+
 
     // Perform background only fit to each histogram
     int numberOfFits = fittings.fitTotal.size();
@@ -623,6 +648,28 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
     return scallingFactors;
 }
 
+// Check if histogram should be erased before storing
+bool eraseHistogram(const std::vector<bool>& workingFits, size_t& histoIndex) {
+    bool doEraseHistogram = false;
+
+    // was it stored as sucessfull fit?
+    if (workingFits[histoIndex]) {
+
+        // are upper indices all true?
+        for (size_t iHisto = histoIndex; iHisto < workingFits.size(); iHisto++) {
+            if (!workingFits[iHisto]) {
+                doEraseHistogram = true;
+                break;
+            }
+            
+        }
+        
+    } else {
+        doEraseHistogram = true;
+    }
+    
+    return doEraseHistogram;
+}
 struct SubtractionResult {
     std::vector<TH1D*> histograms;      // 1D mass projection histograms vector
     std::vector<TH1D*> sidebandHist;    // 1D sideband background histograms vector
@@ -645,7 +692,7 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitCont
 
     // Calculating scaling parameter
     for (size_t iHisto = 0; iHisto < histograms2d.size(); ++iHisto) {
-
+        std::cout << "\nPerforming side-band subtraction for fit number " << iHisto << std::endl;
         // Get total fit parameters
         double m_0 = fittings.fitTotal[iHisto]->GetParameter(4); // Get the value of parameter 'm_0'
         double signalSigma1 = fittings.fitTotal[iHisto]->GetParameter(5); // Get the value of parameter 'sigma1'
@@ -736,7 +783,8 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitCont
         // Account for two sigma only area used for signal region
         h_back_subtracted->Scale(1/0.9545);
         // If histogram isn't empty, store it in the container
-        if (h_back_subtracted->GetEntries() != 0) {
+        bool isHistoEmpty = (h_back_subtracted->GetEntries() != 0) ? true : false;
+        if (true) {
             outputStruct.subtractedHist.push_back(h_back_subtracted);
 
             // Calculating significance
@@ -767,20 +815,31 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitCont
     // Final adjustments to subtracted histograms
     for (size_t iHisto = 0; iHisto < outputStruct.subtractedHist.size(); iHisto++) {
         
-        // Set negative count bin entries to 0
-        for (int iBin = 1; iBin <= outputStruct.subtractedHist[iHisto]->GetNbinsX(); iBin++) {
-            if (outputStruct.subtractedHist[iHisto]->GetBinContent(iBin) < 0) {
-                outputStruct.subtractedHist[iHisto]->SetBinContent(iBin,0);
-                outputStruct.subtractedHist[iHisto]->SetBinError(iBin,0);
-            }
-        }
+        // Check if histogram should be erased before storing based on fit performed
+        bool eraseHist = eraseHistogram(fittings.workingFits, iHisto);
 
+        if (eraseHist) {
+            outputStruct.subtractedHist[iHisto]->Reset("ICES");
+        } else {
+            //
+            // Set negative count bin entries to 0
+            for (int iBin = 1; iBin <= outputStruct.subtractedHist[iHisto]->GetNbinsX(); iBin++) {
+                if (outputStruct.subtractedHist[iHisto]->GetBinContent(iBin) < 0) {
+                    outputStruct.subtractedHist[iHisto]->SetBinContent(iBin,0);
+                    outputStruct.subtractedHist[iHisto]->SetBinError(iBin,0);
+                }
+            }
+
+            
+        }
+        
         // Obtain summed histogram for all pT,D bins after sideband subtraction
         if (iHisto == 0) {
             outputStruct.hSubtracted_allPtSummed = (TH1D*)outputStruct.subtractedHist[iHisto]->Clone("hSubtracted_allPtSummed");
         } else {
             outputStruct.hSubtracted_allPtSummed->Add(outputStruct.subtractedHist[iHisto]);
         }
+        
     }
 
     
@@ -883,7 +942,7 @@ TCanvas* plotMCnet_template_mass(std::vector<TH1D*> originalHistograms, const Fi
 }
 
 void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2D*>& histograms2d, const FitContainer& fittings, double jetptMin, double jetptMax) {
-    
+    std::cout << "Plotting histograms..." << std::endl;
     // creating 1D mass projection histograms
     TH1D* tempHist;
     std::vector<TH1D*> histograms;
@@ -1030,8 +1089,9 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
     legend->AddEntry(outputStruct.sidebandHist[0],"Sideband", "lpe");
     legend->AddEntry(outputStruct.signalHist[0],"Signal", "lpe");
     legend->AddEntry(outputStruct.subtractedHist[0],"Signal (minus background)", "lpe");
-
+    std::cout << "Starting subtracted histograms plotting..." << std::endl;
     for (size_t iHisto = 0; iHisto < outputStruct.subtractedHist.size(); iHisto++) {
+        std::cout << "Plotting side-band histogram number " << iHisto << std::endl;
         cSideBand->cd(iHisto+1);
         //outputStruct.sidebandHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.sidebandHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
@@ -1052,7 +1112,7 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
         outputStruct.signalHist[iHisto]->SetLineColor(kViolet);
         outputStruct.signalHist[iHisto]->Draw();
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T, ch. jet} < %.0f GeV/#it{c}",jetptMin,jetptMax));
-
+        std::cout << "Plotting subtracted histogram number " << iHisto << std::endl;
         cSubtracted->cd(iHisto+1);
         //outputStruct.subtractedHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         outputStruct.subtractedHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
@@ -1072,6 +1132,11 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
         latex->DrawLatex(statBoxPos-0.35, 0.5, Form("%.0f < p_{T, ch. jet} < %.0f GeV/#it{c}",jetptMin,jetptMax));
     }
     
+    TCanvas* cTesting = new TCanvas("cTesting","cTesting");
+    cTesting->cd();
+    //outputStruct.subtractedHist[8]->Draw();
+    std::cout << "Subtracted hist numer 8 entries = " << outputStruct.subtractedHist[8]->GetEntries();
+
     TCanvas* cAllPt = new TCanvas("cAllPt","All pT,D final deltaR distribution");
     cAllPt->SetCanvasSize(1800,1000);
     cAllPt->Divide(1,2);
@@ -1107,11 +1172,11 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
     //
     // Storing in a single pdf file
     //
-    c1d_fit->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf(",jetptMin,jetptMax));
-    c_2d->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
+    c1d_fit->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf(",jetptMin,jetptMax));
+    c_2d->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
     //cMCnet_template_mass->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
-    cSigPlusBack->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
-    cAllPt->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf)",jetptMin,jetptMax));
+    cSigPlusBack->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
+    cAllPt->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf)",jetptMin,jetptMax));
 
     std::cout << "Histograms and fits plotted and stored to png and pdf files.\n";
 }
@@ -1355,8 +1420,8 @@ void BackgroundSubtraction_with_reflections() {
         std::cerr << "Error: Unable to open the first ROOT reflections file." << std::endl;
     }
     // Load pTjet bin edges
-    std::vector<double> ptjetBinEdges = LoadBinning(fReflectionsMC, "axes/ptjetBinEdges");
-    //std::vector<double> ptjetBinEdges = {15., 30.};
+    //std::vector<double> ptjetBinEdges = LoadBinning(fReflectionsMC, "axes/ptjetBinEdges");
+    std::vector<double> ptjetBinEdges = {30., 50.};
     // Load ΔR bin edges
     std::vector<double> deltaRBinEdges = LoadBinning(fReflectionsMC, "axes/deltaRBinEdges");
     // Load pTD bin edges
