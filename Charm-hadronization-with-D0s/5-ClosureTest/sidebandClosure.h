@@ -9,7 +9,74 @@
 
 using namespace std;
 
-// Check if histogram should be erased before storing
+//_________________________________Template for on-the-run chosen model (policy-based strategy)________________________________________________
+struct BackgroundPolicy {
+    static double eval(double* x, double* par) {
+        Double_t m = x[0];
+        Double_t a = par[0];
+        Double_t b = par[1];
+
+        // Defining the custom function
+        Double_t result = a * TMath::Power(m, b);
+        return result;
+    }
+};
+
+struct SignalPolicy {
+    static double eval(double* x, double* par) {
+        Double_t m = x[0];
+        Double_t A1Signal = par[2];                                         // Free parameter
+        Double_t A1toA2MCSignalRatio = par[3];                              // Fixed parameter
+        Double_t A2Signal = A1Signal / A1toA2MCSignalRatio;                 // Constrained to primary/secondary integral obtained from MC data fit
+        Double_t m0 = par[4];                                               // Free parameter
+        Double_t sigma1 = par[5];                                           // Free parameter
+        Double_t Sigma1toSigma2MCSignalRatio = par[6];                      // Fixed parameter
+        Double_t sigma2 = sigma1 / Sigma1toSigma2MCSignalRatio;             // Constrained to primary/secondary width obtained from MC data fit
+
+        // Defining the custom function
+        Double_t result = A1Signal * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma1), 2)) + A2Signal * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma2), 2));
+        return result;
+    }
+};
+
+struct ReflectionPolicy {
+    static double eval(double* x, double* par) {
+        // m0 and sigma values fixed from fits obtained from MC data fits
+        Double_t m = x[0];
+        Double_t A1SignalToA1ReflectionMCRatio = par[7];                    // Fixed parameter
+        // Extract A1Signal from the parameter array (same index as in `signalFunction`)
+        Double_t A1Signal = par[2];
+        Double_t A1Reflection = A1Signal / A1SignalToA1ReflectionMCRatio;   // Constrained to signal/reflection integral obtained from MC data fits
+        Double_t A1toA2MCReflectionsRatio = par[8];                         // Fixed parameter
+        Double_t A2Reflection = A1Reflection / A1toA2MCReflectionsRatio;    // Constrained to primary/secondary integral obtained from MC data fit
+        Double_t m0_1 = par[9];                                             // Fixed parameter
+        Double_t m0_2 = par[10];                                            // Fixed parameter
+        Double_t sigma_1 = par[11];                                         // Fixed parameter
+        Double_t sigma_2 = par[12];                                         // Fixed parameter
+
+        // Defining the custom function
+        Double_t result = A1Reflection * TMath::Exp(-TMath::Power((m - m0_1) / (2 * sigma_1), 2)) + A2Reflection * TMath::Exp(-TMath::Power((m - m0_2) / (2 * sigma_2), 2));
+        return result;
+    }
+};
+// template for combinations of policies
+template <typename... Policies>
+struct FitModel {
+    static double eval(double* x, double* par) {
+        return (Policies::eval(x, par) + ...); // fold expression in C++17
+    }
+};
+// ROOT TF1 expects a regular function pointer
+template <typename Model>
+double fitWrapper(double* x, double* par) {
+    return Model::eval(x, par);
+}
+// Compile time polymorphism via policy-based design for fit models
+using FullModel = FitModel<SignalPolicy, ReflectionPolicy, BackgroundPolicy>;   // Signal + Reflection + Background
+using SigRefModel = FitModel<SignalPolicy, ReflectionPolicy>;                   // Signal + Reflection only
+//_________________________________________________________________________________
+
+// Check if histogram should be erased before storing (why? So that only the successful fits are accounted for the total summed DeltaR distributionsy)
 bool eraseHistogram(const std::vector<bool>& workingFits, size_t& histoIndex) {
     bool doEraseHistogram = false;
 
@@ -32,6 +99,7 @@ bool eraseHistogram(const std::vector<bool>& workingFits, size_t& histoIndex) {
     return doEraseHistogram;
 }
 
+//_________________________________Fit models________________________________________________
 // Custom pure signal fit function
 Double_t pureSignalFunction(Double_t* x, Double_t* par) {
 
@@ -111,13 +179,13 @@ Double_t customFitFunction(Double_t* x, Double_t* par) {
     Double_t m = x[0];
     
     // Background component
-    Double_t background = backgroundFunction(x, par); 
+    Double_t background = backgroundFunction(x, par); // 2 free parameters
 
     // Signal component
-    Double_t signalComponent = signalFunction(x, par);  // Signal function uses signal parameters
+    Double_t signalComponent = signalFunction(x, par);  // Signal function uses signal parameters: 3 free parameters + 2 fixed parameters
     
     // Reflection component
-    Double_t reflectionComponent = reflectionFunction(x, par);  // Reflection function uses reflection parameters
+    Double_t reflectionComponent = reflectionFunction(x, par);  // Reflection function uses reflection parameters: 7 fixed parameters (one of them already used in signal function)
 
     // Total fit: sum of signal and reflection components
     Double_t totalFit = background + signalComponent + reflectionComponent;
@@ -156,6 +224,8 @@ Double_t reflectionOnlyFunction(Double_t* x, Double_t* par) {
     Double_t result = A1Reflection * TMath::Exp(-TMath::Power((m - m0_1) / (2 * sigma_1), 2)) + A2Reflection * TMath::Exp(-TMath::Power((m - m0_2) / (2 * sigma_2), 2));
     return result;
 }
+//_________________________________________________________________________________
+
 
 // Module to perform fits to histograms
 struct FitContainer {
@@ -324,12 +394,13 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonM
         sigma1 = histogramTemplates.signals_1d[iInterval]->GetRMS() / 2; // First Gaussian narrower
         sigma2 = histogramTemplates.signals_1d[iInterval]->GetRMS();    // Second Gaussian wider
         signalFit->SetParameters(C1, C2, m0, sigma1, sigma2);
-        signalFit->SetParName(0, "C1");
-        signalFit->SetParName(1, "C2");
-        signalFit->SetParName(2, "m0");
-        signalFit->SetParName(3, "sigma1");
-        signalFit->SetParName(4, "sigma2");
-        //signalFit->SetParLimits(3, 0.5 * sigma1, 2.0 * sigma1); // Example constraint for sigma1
+        signalFit->SetParName(0, "C1_signal");
+        signalFit->SetParName(1, "C2_signal");
+        signalFit->SetParName(2, "m0_signal");
+        signalFit->SetParName(3, "sigma1_signal");
+        signalFit->SetParName(4, "sigma2_signal");
+        signalFit->SetParLimits(0, 0., TMath::Infinity()); // Example constraint for sigma1
+        signalFit->SetParLimits(1, 0., TMath::Infinity()); // Example constraint for sigma1
 
         histogramTemplates.signals_1d[iInterval]->Fit(signalFit, "RQ"); // "Q" option performs quiet fit without drawing the fit function
         fTemplateFits.fitSignalOnly.push_back(signalFit);
@@ -351,7 +422,15 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonM
         m0_2 = histogramTemplates.reflections_1d[iInterval]->GetMean() + histogramTemplates.reflections_1d[iInterval]->GetRMS() / 2; // Offset from mean
         sigma1 = histogramTemplates.reflections_1d[iInterval]->GetRMS() / 2;  // Narrower
         sigma2 = histogramTemplates.reflections_1d[iInterval]->GetRMS();      // Wider
+        reflectionsFit->SetParName(0, "A1_reflections");
+        reflectionsFit->SetParName(1, "A2_reflections");
+        reflectionsFit->SetParName(2, "m0_1_reflections");
+        reflectionsFit->SetParName(3, "m0_2_reflections");
+        reflectionsFit->SetParName(4, "Sigma1_reflections");
+        reflectionsFit->SetParName(5, "Sigma2_reflections");
         reflectionsFit->SetParameters(C1, C2, m0_1, m0_2, sigma1, sigma2);
+        reflectionsFit->SetParLimits(0, 0., TMath::Infinity());
+        reflectionsFit->SetParLimits(1, 0., TMath::Infinity());
 
         histogramTemplates.reflections_1d[iInterval]->Fit(reflectionsFit, "RQ");
         fTemplateFits.fitReflectionsOnly.push_back(reflectionsFit);
@@ -365,6 +444,19 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonM
 
         // Obtain 1D mass histogram projection
         histogramTemplates.signals_and_reflections_1d.push_back( histogramTemplates.signals_and_reflections[iInterval]->ProjectionX(Form("histMass_signals_and_reflections_1d_%zu_%.0f_to_%.0fGeV", iInterval+1, jetptMin, jetptMax), 1, -1) );
+
+        // Set parameter names
+        combinedFit->SetParName(0, "A1_signal");
+        combinedFit->SetParName(1, "A2_signal");
+        combinedFit->SetParName(2, "m0_signal");
+        combinedFit->SetParName(3, "Sigma1_signal");
+        combinedFit->SetParName(4, "Sigma2_signal");
+        combinedFit->SetParName(5, "A1_reflections");
+        combinedFit->SetParName(6, "A2_reflections");
+        combinedFit->SetParName(7, "m0_1_reflections");
+        combinedFit->SetParName(8, "m0_2_reflections");
+        combinedFit->SetParName(9, "Sigma1_reflections");
+        combinedFit->SetParName(10, "Sigma2_reflections");
 
         // Initialize parameters from previous fits
         combinedFit->SetParameters(fTemplateFits.fitSignalOnly[iInterval]->GetParameter(0), fTemplateFits.fitSignalOnly[iInterval]->GetParameter(1), fTemplateFits.fitSignalOnly[iInterval]->GetParameter(2), fTemplateFits.fitSignalOnly[iInterval]->GetParameter(3), fTemplateFits.fitSignalOnly[iInterval]->GetParameter(4), 
@@ -564,6 +656,11 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
     double m_0_reference = 1.86484; // D0 mass in GeV/c^2
     double sigma_reference = 0.012;
 
+    // Change binning to low statistics range [30,50] GeV/c
+    if (jetptMin >= 30.) {
+        massBins = 25;
+    }
+
     // ----- Create and fill invariant mass distributions with detector level data
     std::vector<TH2D*> hInvariantMass2D;
     for (size_t i = 0; i < ptDBinEdges_detector.size() - 1; ++i) {
@@ -720,7 +817,9 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
 
         // ----Perform fits----
         // Create the fit function, enforce constraints on some parameters, set initial parameter values and performing fit
-        fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), customFitFunction, minMass, maxMass, 13)); // 12 parameters = 8 fixed + 5 free
+        fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<SigRefModel>, minMass, maxMass, 13));
+        //fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<FullModel>, minMass, maxMass, 13));
+        //fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), customFitFunction, minMass, maxMass, 13)); // 13 parameters = 8 fixed + 5 free
         // Set initial values and fix parameters
         Double_t params[13] = {200000, -10.0, 1000, 1.5, m_0_reference, 0.02, 1.2, 2.0, 1.3, 1.83, 1.85, 0.02, 0.03};
         fDataFits.fitTotal[iHisto]->SetParameters(params);
@@ -825,7 +924,7 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
         latex->DrawLatex(0.85,0.62,Form("%.1f < #it{p}_{T,jet} < %.1f GeV/c", jetptMin, jetptMax));
         double chi2red = fDataFits.fitTotal[iHisto]->GetChisquare();
         int ndf = fDataFits.fitTotal[iHisto]->GetNDF();
-        latex->DrawLatex(0.88,0.72,Form("#Chi^{2}_red =  %.2f/%.i = %.2f ", chi2red, ndf, chi2red / ndf));
+        latex->DrawLatex(0.88,0.72,Form("#Chi^{2}/DOF =  %.2f/%.i = %.2f ", chi2red, ndf, chi2red / ndf));
 
         c1d_BackgroundFits->cd(iHisto+1);
         fDataFits.fitBackgroundOnly[iHisto]->Draw();
@@ -1063,7 +1162,9 @@ TH3D* create3DBackgroundSubtracted(const std::vector<TH2D*>& outputHistograms, c
     return hBackgroundSubtracted;
 }
 
-TH3D* SidebandClosure(TFile* fClosureInputNonMatched, std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+TH3D* SidebandClosure(TFile* fClosureInputNonMatched, 
+                     std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector,
+                     const std::vector<std::pair<double, double>>& bdtPtCuts) {
 
     // Hardcoded sideband subtraction parameters
     int signalSigmas = 2; // Number of sigmas for signal distribution
@@ -1076,6 +1177,7 @@ TH3D* SidebandClosure(TFile* fClosureInputNonMatched, std::vector<double>& ptjet
     //ptjetBinEdges_detector = {30., 50.};
 
     for (size_t iPtJetRange = 0; iPtJetRange < ptjetBinEdges_detector.size() - 1; iPtJetRange++) {
+        std::cout << std::endl << std::endl << "Processing pT,jet range: " << ptjetBinEdges_detector[iPtJetRange] << " - " << ptjetBinEdges_detector[iPtJetRange + 1] << " GeV/c" << std::endl;
         TH2D* hDeltaR_vs_PtD = AnalyzeJetPtRange(fClosureInputNonMatched, ptjetBinEdges_detector[iPtJetRange], ptjetBinEdges_detector[iPtJetRange + 1], deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts,
                                                  signalSigmas, startingBackSigma, backgroundSigmas);
         outputHistograms.push_back(hDeltaR_vs_PtD);

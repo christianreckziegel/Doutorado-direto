@@ -376,7 +376,7 @@ std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
     return std::vector<double>(vec->GetMatrixArray(), vec->GetMatrixArray() + vec->GetNoElements());
 }
 
-TH2D* CompareClosureTest(TFile* fClosureInputMatched, std::vector<TH2D*>& hUnfKinCorrected, const BinningStruct& binningStruct) {
+TH2D* CompareClosureTest(TFile* fClosureInputNonMatched, std::vector<TH2D*>& hUnfKinCorrected, const BinningStruct& binningStruct) {
     // 1 ----- Build particle level distribution the same way as the detector level was built
     TH2D* hInputParticle = new TH2D("hInputParticle", "Particle level prompt D^{0} jets distribution; pT,jet (GeV); #DeltaR", 
                         binningStruct.ptjetBinEdges_particle.size() - 1, binningStruct.ptjetBinEdges_particle.data(), 
@@ -396,7 +396,7 @@ TH2D* CompareClosureTest(TFile* fClosureInputMatched, std::vector<TH2D*>& hUnfKi
     const double MCDHfPtMincut = binningStruct.ptDBinEdges_detector[0]; // on detector level D0
     const double MCPHfPtMaxcut = binningStruct.ptDBinEdges_particle[binningStruct.ptDBinEdges_particle.size() - 1]; // on particle level D0
     const double MCDHfPtMaxcut = binningStruct.ptDBinEdges_detector[binningStruct.ptDBinEdges_detector.size() - 1]; // on detector level D0
-    TTree* tree = (TTree*)fClosureInputMatched->Get("InputTree");
+    TTree* tree = (TTree*)fClosureInputNonMatched->Get("InputTree/O2mcpjetdisttable");
     // Check for correct access
     if (!tree) {
         cout << "Error opening correction data tree.\n";
@@ -404,49 +404,27 @@ TH2D* CompareClosureTest(TFile* fClosureInputMatched, std::vector<TH2D*>& hUnfKi
     // defining variables for accessing particle level data on TTree
     float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
     float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
-    bool MCPhfprompt;
-    // defining variables for accessing detector level data on TTree
-    float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
-    float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
-    bool MCDhfprompt;
-    // defining ML score variables for accessing the TTree
-    float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
+    float MCPjetNconst;
+    bool MCPhfprompt, MCPhfmatch;
     // particle level branches
     tree->SetBranchAddress("fMcJetHfDist",&MCPaxisDistance);
     tree->SetBranchAddress("fMcJetPt",&MCPjetPt);
     tree->SetBranchAddress("fMcJetEta",&MCPjetEta);
     tree->SetBranchAddress("fMcJetPhi",&MCPjetPhi);
+    tree->SetBranchAddress("fMcJetNConst",&MCPjetNconst);
     tree->SetBranchAddress("fMcHfPt",&MCPhfPt);
     tree->SetBranchAddress("fMcHfEta",&MCPhfEta);
     tree->SetBranchAddress("fMcHfPhi",&MCPhfPhi);
     MCPhfMass = 1.86483; // D0 rest mass in GeV/c^2
     tree->SetBranchAddress("fMcHfY",&MCPhfY);
     tree->SetBranchAddress("fMcHfPrompt",&MCPhfprompt);
-    // detector level branches
-    tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance);
-    tree->SetBranchAddress("fJetPt",&MCDjetPt);
-    tree->SetBranchAddress("fJetEta",&MCDjetEta);
-    tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
-    tree->SetBranchAddress("fHfPt",&MCDhfPt);
-    tree->SetBranchAddress("fHfEta",&MCDhfEta);
-    tree->SetBranchAddress("fHfPhi",&MCDhfPhi);
-    tree->SetBranchAddress("fHfMass",&MCDhfMass);
-    tree->SetBranchAddress("fHfY",&MCDhfY);
-    tree->SetBranchAddress("fHfPrompt",&MCDhfprompt);
-    tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
-    tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
-    tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
-    int MCDhfMatchedFrom, MCDhfSelectedAs;
-    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
-    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
+    tree->SetBranchAddress("fMcHfMatch",&MCPhfmatch);
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
-        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
-
         // Apply prompt (including reflections) selection (i.e., only c → D0)
-        if (!MCDhfprompt) {
+        if (!MCPhfprompt) {
             continue;
         }
 
@@ -492,7 +470,49 @@ TH2D* CompareClosureTest(TFile* fClosureInputMatched, std::vector<TH2D*>& hUnfKi
     TLatex* latex = new TLatex();
     latex->SetNDC(); // Set the coordinates to be normalized device coordinates
     latex->SetTextSize(0.03);
-    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));    
+
+    // 3 ----- Plot same last distributions, but normalized
+    TCanvas* cClosureTestNorm = new TCanvas("cClosureTestNorm","Second closure test", 1800, 1000);
+    cClosureTestNorm->cd();
+    TLegend* lUnfoldedIterNorm = new TLegend(0.6,0.57,0.7,0.77);
+    std::vector<TH1D*> hUnfoldedProjNorm(hUnfKinCorrected.size());
+    secondBin = 2;
+    lastButOneBin = hUnfKinCorrected[0]->GetXaxis()->GetNbins() - 1; // penultimate bin
+    for (size_t iIter = 0; iIter < hUnfKinCorrected.size(); iIter++) {
+        // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
+        hUnfoldedProjNorm[iIter] = hUnfKinCorrected[iIter]->ProjectionY(Form("hProjIterNorm_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
+        hUnfoldedProjNorm[iIter]->Scale(1. / hUnfoldedProjNorm[iIter]->GetEntries());
+        hUnfoldedProjNorm[iIter]->SetLineColor(kBlack + iIter);
+        lUnfoldedIterNorm->AddEntry(hUnfoldedProjNorm[iIter],Form("Iteration %zu", iIter+1), "le");
+        if (iIter == 0) {
+            hUnfoldedProjNorm[iIter]->SetTitle("Closure test 2: background subtraction+efficiency+unfolding (normalized)");
+            hUnfoldedProjNorm[iIter]->Draw();
+        } else {
+            hUnfoldedProjNorm[iIter]->Draw("same");
+        }
+        
+    }
+    TH1D* hInputParticleProjNorm = (TH1D*)hInputParticleProj->Clone("hInputParticleProjNorm");
+    hInputParticleProjNorm->Scale(1. / hInputParticleProjNorm->GetEntries());
+    hInputParticleProjNorm->SetLineColor(kRed);
+    hInputParticleProjNorm->SetLineStyle(2);
+    hInputParticleProjNorm->Draw("same");
+    lUnfoldedIterNorm->AddEntry(hInputParticleProjNorm, "Input particle level", "le");
+    lUnfoldedIterNorm->Draw();
+    reportingJetPtMin = hUnfKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
+    reportingJetPtMax = hUnfKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+    TLatex* latexNorm = new TLatex();
+    latexNorm->SetNDC(); // Set the coordinates to be normalized device coordinates
+    latexNorm->SetTextSize(0.03);
+    latexNorm->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+
+    //
+    // Storing images
+    //
+    TString imagePath = "../Images/5-ClosureTest/Second/";
+    cClosureTest->Print(imagePath + Form("ClosureTest2_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cClosureTestNorm->Print(imagePath + Form("ClosureTest2_normalized_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
 
     return hInputParticle;
 }
@@ -568,7 +588,7 @@ void SecondClosureTest(){
     }
 
     // ----1: Perform side-band subtraction
-    TH3D* hBackgroundSubtracted = SidebandClosure(fClosureInputMatched, ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts);
+    TH3D* hBackgroundSubtracted = SidebandClosure(fClosureInputNonMatched, ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts);
     //TH3D* hBackgroundSubtracted;
 
     // ----2: Perform efficiency correction
@@ -580,7 +600,7 @@ void SecondClosureTest(){
     std::vector<TH2D*> hUnfKinCorrected = UnfoldingClosure(fClosureInputMatched, hSelEff_run3style, hEfficiencyCorrected, binningStruct, bdtPtCuts);
 
     // ----4: Compare input (MC particle level) with output (background subtracted, efficiency corrected, unfolded) distributions
-    TH2D* inputMCP = CompareClosureTest(fClosureInputMatched, hUnfKinCorrected, binningStruct);
+    TH2D* inputMCP = CompareClosureTest(fClosureInputNonMatched, hUnfKinCorrected, binningStruct);
 
     time(&end); // end instant of program execution
     
