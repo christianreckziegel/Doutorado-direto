@@ -12,15 +12,14 @@ struct UnfoldData {
     // Step 2: apply efficiency (pT,D dependent) correction
     std::pair<TH1D*, TH1D*> hSelectionEfficiency;                           // first = prompt D0s, second = non-prompt D0s
 
-    // Step 3: background subtracted, efficiency corrected, B fed-down 2D distribution (pT,jet vs DeltaR)
+    // Step 3: input (background subtracted, efficiency corrected, B fed-down) 2D distribution (pT,jet vs DeltaR) with corrections applied to be unfolded
     TH2D* hBFedDownData;
 
-    TH2D* hEfficiencyCorrectedInput;
+    TH2D* hCorrectedInput;
 
     // Step 4: bayesian unfolding
     std::vector<TH2D*> hKineEffParticle = {nullptr, nullptr, nullptr};      // particle level (addition): [0] = numerator, [1] = denominator, [2] = efficiency
     std::vector<TH2D*> hKineEffDetector = {nullptr, nullptr, nullptr};      // detector level (removal): [0] = numerator, [1] = denominator, [2] = efficiency
-    TH2D* hBFedDownDataKinCorrected = nullptr;                            // 2D histogram with detector level kinematic efficiency correction
     RooUnfoldResponse* response;                                             // response matrix for folding
     std::vector<RooUnfoldBayes*> unfold;                                     // unfolding objects, there are iterationNumber unfolding objects
     TH2D* hMeasuredTemplate = nullptr;                                      // template for measured data (jet pT vs DeltaR), used for hUnfolded binning
@@ -173,11 +172,11 @@ void removeOutsideData(UnfoldData& dataContainer) {
 
     // Copy background subtracted, efficiency corrected, fed-down subtracted 2D histogram
     //dataContainer.hEfficiencyCorrected = (TH2D*)dataContainer.hEfficiencyCorrected->Clone("hEfficiencyCorrectedUnfoldingInput");
-    dataContainer.hEfficiencyCorrectedInput->SetTitle("Fed-down with #varepsilon_{kin}^{detector} correction;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}");
+    dataContainer.hCorrectedInput->SetTitle("Fed-down with #varepsilon_{kin}^{detector} correction;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}");
 
     // Apply kinematic efficiency correction
-    dataContainer.hEfficiencyCorrectedInput->Sumw2();
-    dataContainer.hEfficiencyCorrectedInput->Multiply(dataContainer.hKineEffDetector[2]);
+    dataContainer.hCorrectedInput->Sumw2();
+    dataContainer.hCorrectedInput->Multiply(dataContainer.hKineEffDetector[2]);
 
     std::cout << "Detector level kinematic efficiency applied (removal)." << std::endl;
 }
@@ -201,7 +200,7 @@ TH2D* addOutsideData(TH2D* hKineEffParticle, TH2D* hUnfolded, int& iterationNumb
 std::vector<TH2D*> performUnfolding(UnfoldData& dataContainer, TH2D* hEfficiencyCorrected, int& iterationNumber) {
     
     // Obtain input distribution
-    dataContainer.hEfficiencyCorrectedInput = (TH2D*)hEfficiencyCorrected->Clone("hEfficiencyCorrectedUnfoldingInput");
+    dataContainer.hCorrectedInput = (TH2D*)hEfficiencyCorrected->Clone("hUnfoldingInput");
     // Correct distribution with detector level kinematic efficiency (remove entries)
     removeOutsideData(dataContainer);
 
@@ -212,7 +211,7 @@ std::vector<TH2D*> performUnfolding(UnfoldData& dataContainer, TH2D* hEfficiency
 
     // Unfold in multiple iterations
     for (int iIter = 1; iIter <= iterationNumber; iIter++) {
-        dataContainer.unfold[iIter - 1] = new RooUnfoldBayes(dataContainer.response, dataContainer.hEfficiencyCorrectedInput, iIter);
+        dataContainer.unfold[iIter - 1] = new RooUnfoldBayes(dataContainer.response, dataContainer.hCorrectedInput, iIter);
         dataContainer.hUnfolded[iIter - 1] = (TH2D*) dataContainer.unfold[iIter - 1]->Hreco(RooUnfold::kCovariance); // kCovariance = 2 = Errors from the square root of of the covariance matrix given by the unfolding
         dataContainer.hUnfolded[iIter - 1]->SetTitle(Form("Immediately unfolded 2D histogram with %d iterations;p_{T,jet}^{gen} (GeV/#it{c});#DeltaR^{gen}", iIter));
         dataContainer.hUnfolded[iIter - 1]->SetName(Form("hUnfolded_iter%d", iIter));
@@ -227,6 +226,68 @@ std::vector<TH2D*> performUnfolding(UnfoldData& dataContainer, TH2D* hEfficiency
     return dataContainer.hUnfoldedKinCorrected;
 }
 
+std::vector<TH1D*> convergenceTest(const std::vector<TH2D*>& hUnfKinCorrected) {
+    // To be implemented if needed
+    std::vector<TH1D*> hConvergenceTest;
+
+    // Compute ratios between successive iterations
+    for (size_t iHisto = 1; iHisto < hUnfKinCorrected.size(); iHisto++) {
+
+        // Project 2D histograms to 1D (along X axis)
+        TH1D* hCurrent = hUnfKinCorrected[iHisto]->ProjectionY(Form("projCurrent_%zu", iHisto));
+        TH1D* hPrevious = hUnfKinCorrected[iHisto-1]->ProjectionY(Form("projPrevious_%zu", iHisto-1));
+
+        // Clone the current histogram to hold the ratio
+        TH1D* hRatio = (TH1D*)hCurrent->Clone(Form("ratioIter_%zu", iHisto));
+        hRatio->SetTitle(Form("Iteration %zu / %zu ratio", iHisto, iHisto-1));
+        
+        // Divide by the previous iteration
+        hRatio->Divide(hPrevious);
+        
+        // Optional: style
+        hRatio->SetLineColor(kBlack + iHisto);
+        hRatio->SetMarkerStyle(20);
+        
+        hConvergenceTest.push_back(hRatio);
+    }
+
+    // Quantitative check using RMS deviation
+    std::vector<double> rmsValues;
+    for (size_t iHisto = 0; iHisto < hConvergenceTest.size(); iHisto++) {
+        TH1D* hRatio = hConvergenceTest[iHisto];
+        double rms = 0;
+        int nBins = hRatio->GetNbinsX();
+        for (int iBin = 1; iBin <= nBins; iBin++) {
+            double val = hRatio->GetBinContent(iBin) - 1.0; // deviation from 1
+            rms += val * val;
+        }
+        rms = sqrt(rms / nBins);
+        rmsValues.push_back(rms);
+        std::cout << "Iteration " << iHisto+1 << "/" << iHisto << " RMS deviation from 1: " << rms << std::endl;
+    }
+
+    // Plot
+    TCanvas* cRatio = new TCanvas("cRatioUnfoldingConvergence", "Unfolding Convergence Ratios", 1200, 800);
+    cRatio->cd();
+
+    for (size_t iHisto = 0; iHisto < hConvergenceTest.size(); iHisto++) {
+        if (iHisto == 0) {
+            hConvergenceTest[iHisto]->Draw("E");      // draw the first ratio
+        } else {
+            hConvergenceTest[iHisto]->Draw("E SAME");        // draw others on the same canvas
+        }
+    }
+
+    TLegend* legend = new TLegend(0.7, 0.7, 0.9, 0.9);
+    for (size_t iHisto = 0; iHisto < hConvergenceTest.size(); iHisto++) {
+        legend->AddEntry(hConvergenceTest[iHisto], Form("Iteration %zu / %zu's RMS: %.3f", iHisto+1, iHisto, rmsValues[iHisto]), "l");
+    }
+    legend->Draw();
+
+    return hConvergenceTest;
+
+}
+
 std::vector<TH2D*> UnfoldingClosure(TFile* fClosureInputMatched, std::vector<TH1D*>& hSelEff_run3style, TH2D* hEfficiencyCorrected, const BinningStruct& binningStruct, const std::vector<std::pair<double, double>>& bdtPtCuts) {
 
     int iterationNumber = 8;
@@ -236,6 +297,9 @@ std::vector<TH2D*> UnfoldingClosure(TFile* fClosureInputMatched, std::vector<TH1
 
     // Unfold with "iterationNumber" iterations
     std::vector<TH2D*> hUnfKinCorrected = performUnfolding(dataContainer, hEfficiencyCorrected, iterationNumber);
+
+    //
+    std::vector<TH1D*> hConvergenceTest = convergenceTest(hUnfKinCorrected);
 
     return hUnfKinCorrected;
 }

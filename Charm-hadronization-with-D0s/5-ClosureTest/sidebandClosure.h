@@ -8,7 +8,13 @@
 
 
 using namespace std;
-
+// Define the enum class with descriptive names
+enum class FitModelType {
+    Full,           // Signal + Reflections + Background
+    SignalReflectionsOnly,     // Signal + Reflections only
+    SignalOnly,     // Only Signal
+    ReflectionsOnly         // Only Reflections
+};
 //_________________________________Template for on-the-run chosen model (policy-based strategy)________________________________________________
 struct BackgroundPolicy {
     static double eval(double* x, double* par) {
@@ -21,7 +27,6 @@ struct BackgroundPolicy {
         return result;
     }
 };
-
 struct SignalPolicy {
     static double eval(double* x, double* par) {
         Double_t m = x[0];
@@ -38,7 +43,6 @@ struct SignalPolicy {
         return result;
     }
 };
-
 struct ReflectionPolicy {
     static double eval(double* x, double* par) {
         // m0 and sigma values fixed from fits obtained from MC data fits
@@ -291,8 +295,10 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonM
         }
         // pure reflections histograms
         histogramTemplates.reflections[i]->Sumw2();
+        histogramTemplates.reflections[i]->SetLineColor(kGreen+1);
         // pure signals histograms
         histogramTemplates.signals[i]->Sumw2();
+        histogramTemplates.signals[i]->SetLineColor(kBlue+1);
         // signals+reflections histograms: calculate ratios
         histogramTemplates.signals_and_reflections[i]->Sumw2();
     }
@@ -480,11 +486,15 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonM
     // Plot templates histograms and fits
     // Create a canvas with a pad for each pT,D interval
     TCanvas* cTemplateFits = new TCanvas("cTemplateFits",Form("Template histograms and fits %.0f < pT,jet < %0.f GeV/c", jetptMin, jetptMax));
+    TCanvas* cTemplateFitsSignal = new TCanvas("cTemplateFitsSignal",Form("Template signal histograms and fits %.0f < pT,jet < %0.f GeV/c", jetptMin, jetptMax));
+    TCanvas* cTemplateFitsReflections = new TCanvas("cTemplateFitsReflections",Form("Template reflections histograms and fits %.0f < pT,jet < %0.f GeV/c", jetptMin, jetptMax));
     int nHistos = histogramTemplates.signals_and_reflections_1d.size();
     // Start with a square layout (or close to it)
     int nCols = static_cast<int>(std::ceil(std::sqrt(nHistos)));
     int nRows = static_cast<int>(std::ceil(nHistos / static_cast<double>(nCols)));
     cTemplateFits->Divide(nCols,nRows);
+    cTemplateFitsSignal->Divide(nCols,nRows);
+    cTemplateFitsReflections->Divide(nCols,nRows);
     for (size_t iInterval = 0; iInterval < ptDBinEdges_detector.size() - 1; iInterval++) {
         cTemplateFits->cd(iInterval + 1);
         // Draw the 1D histograms
@@ -513,6 +523,29 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonM
         legend->AddEntry(fTemplateFits.fitSignalOnly[iInterval], "Signal Fit", "l");
         legend->AddEntry(fTemplateFits.fitReflectionsOnly[iInterval], "Reflections Fit", "l");
         legend->Draw();
+
+        // Signal only canvas
+        cTemplateFitsSignal->cd(iInterval + 1);
+        // Draw the 1D histograms
+        histogramTemplates.signals_1d[iInterval]->SetMarkerStyle(kDot); //kFullDotMedium
+        histogramTemplates.signals_1d[iInterval]->GetYaxis()->SetTitle("counts");
+        histogramTemplates.signals_1d[iInterval]->SetTitle(Form("%.1f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c}", ptDBinEdges_detector[iInterval], ptDBinEdges_detector[iInterval + 1]));
+        histogramTemplates.signals_1d[iInterval]->Draw();
+        // Draw the signal fit
+        fTemplateFits.fitSignalOnly[iInterval]->SetLineColor(kBlue);
+        fTemplateFits.fitSignalOnly[iInterval]->SetLineWidth(2);
+        fTemplateFits.fitSignalOnly[iInterval]->Draw("same");
+        // Reflections only canvas
+        cTemplateFitsReflections->cd(iInterval + 1);
+        // Draw the 1D histograms
+        histogramTemplates.reflections_1d[iInterval]->SetMarkerStyle(kDot); //kFullDotMedium
+        histogramTemplates.reflections_1d[iInterval]->GetYaxis()->SetTitle("counts");
+        histogramTemplates.reflections_1d[iInterval]->SetTitle(Form("%.1f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c}", ptDBinEdges_detector[iInterval], ptDBinEdges_detector[iInterval + 1]));
+        histogramTemplates.reflections_1d[iInterval]->Draw();
+        // Draw the signal fit
+        fTemplateFits.fitReflectionsOnly[iInterval]->SetLineColor(kGreen);
+        fTemplateFits.fitReflectionsOnly[iInterval]->SetLineWidth(2);
+        fTemplateFits.fitReflectionsOnly[iInterval]->Draw("same");
     }
     std::pair<FitContainer, TCanvas*> fTemplateFitsAndCanvas = std::make_pair(fTemplateFits, cTemplateFits);
     return fTemplateFitsAndCanvas;
@@ -646,7 +679,8 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
 TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, const double& jetptMax, 
                         const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector,
                         const std::vector<std::pair<double, double>>& bdtPtCuts,
-                        const int& signalSigmas, const int& startingBackSigma, const int& backgroundSigmas) {
+                        const int& signalSigmas, const int& startingBackSigma, const int& backgroundSigmas,
+                        const FitModelType& modelToUse) {
 
     // mass histogram
     int massBins = 50; // default=100 
@@ -658,7 +692,7 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
 
     // Change binning to low statistics range [30,50] GeV/c
     if (jetptMin >= 30.) {
-        massBins = 25;
+        massBins = 20;
     }
 
     // ----- Create and fill invariant mass distributions with detector level data
@@ -817,8 +851,11 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
 
         // ----Perform fits----
         // Create the fit function, enforce constraints on some parameters, set initial parameter values and performing fit
-        fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<SigRefModel>, minMass, maxMass, 13));
-        //fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<FullModel>, minMass, maxMass, 13));
+        if (modelToUse == FitModelType::Full) {
+            fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<FullModel>, minMass, maxMass, 13));
+        } else if (modelToUse == FitModelType::SignalReflectionsOnly) {
+            fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<SigRefModel>, minMass, maxMass, 13));
+        }
         //fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), customFitFunction, minMass, maxMass, 13)); // 13 parameters = 8 fixed + 5 free
         // Set initial values and fix parameters
         Double_t params[13] = {200000, -10.0, 1000, 1.5, m_0_reference, 0.02, 1.2, 2.0, 1.3, 1.83, 1.85, 0.02, 0.03};
@@ -914,7 +951,9 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
         hInvariantMass1D[iHisto]->Draw();
         fDataFits.fitTotal[iHisto]->Draw("same");
         fDataFits.fitSignalOnly[iHisto]->Draw("same");
-        fDataFits.fitBackgroundOnly[iHisto]->Draw("same");
+        if (modelToUse == FitModelType::Full) {
+            fDataFits.fitBackgroundOnly[iHisto]->Draw("same");
+        }
         fDataFits.fitReflectionsOnly[iHisto]->Draw("same");
         // Also draw fit quality
         TLatex* latex = new TLatex();
@@ -1046,13 +1085,30 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
     for (size_t iHisto = 0; iHisto < hsideBandSubtracted.size(); iHisto++) {
         
         // Set negative count bin entries to 0
-        for (int iBin = 1; iBin <= hsideBandSubtracted[iHisto]->GetNbinsX(); iBin++) {
-            if (hsideBandSubtracted[iHisto]->GetBinContent(iBin) < 0) {
-                hsideBandSubtracted[iHisto]->SetBinContent(iBin,0);
-                hsideBandSubtracted[iHisto]->SetBinError(iBin,0);
-            }
-        }
+        // for (int iBin = 1; iBin <= hsideBandSubtracted[iHisto]->GetNbinsX(); iBin++) {
+        //     if (hsideBandSubtracted[iHisto]->GetBinContent(iBin) < 0) {
+        //         hsideBandSubtracted[iHisto]->SetBinContent(iBin,0);
+        //         hsideBandSubtracted[iHisto]->SetBinError(iBin,0);
+        //     }
+        // }
 
+        // Check if histogram should be erased before storing based on fit performed
+        bool eraseHist = eraseHistogram(fDataFits.workingFits, iHisto);
+
+        if (eraseHist) {
+            hsideBandSubtracted[iHisto]->Reset("ICES");
+        } else {
+            //
+            // Set negative count bin entries to 0
+            for (int iBin = 1; iBin <= hsideBandSubtracted[iHisto]->GetNbinsX(); iBin++) {
+                if (hsideBandSubtracted[iHisto]->GetBinContent(iBin) < 0) {
+                    hsideBandSubtracted[iHisto]->SetBinContent(iBin,0);
+                    hsideBandSubtracted[iHisto]->SetBinError(iBin,0);
+                }
+            }
+
+            
+        }
         
     }
     // Plot side-band subtracted histograms
@@ -1164,7 +1220,8 @@ TH3D* create3DBackgroundSubtracted(const std::vector<TH2D*>& outputHistograms, c
 
 TH3D* SidebandClosure(TFile* fClosureInputNonMatched, 
                      std::vector<double>& ptjetBinEdges_detector, const std::vector<double>& deltaRBinEdges_detector, const std::vector<double>& ptDBinEdges_detector,
-                     const std::vector<std::pair<double, double>>& bdtPtCuts) {
+                     const std::vector<std::pair<double, double>>& bdtPtCuts,
+                     const FitModelType& modelToUse) {
 
     // Hardcoded sideband subtraction parameters
     int signalSigmas = 2; // Number of sigmas for signal distribution
@@ -1174,12 +1231,13 @@ TH3D* SidebandClosure(TFile* fClosureInputNonMatched,
     std::vector<TH2D*> outputHistograms;
 
     // Testing range of pT,jet bins
-    //ptjetBinEdges_detector = {30., 50.};
+    ptjetBinEdges_detector = {30., 50.};
 
     for (size_t iPtJetRange = 0; iPtJetRange < ptjetBinEdges_detector.size() - 1; iPtJetRange++) {
         std::cout << std::endl << std::endl << "Processing pT,jet range: " << ptjetBinEdges_detector[iPtJetRange] << " - " << ptjetBinEdges_detector[iPtJetRange + 1] << " GeV/c" << std::endl;
         TH2D* hDeltaR_vs_PtD = AnalyzeJetPtRange(fClosureInputNonMatched, ptjetBinEdges_detector[iPtJetRange], ptjetBinEdges_detector[iPtJetRange + 1], deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts,
-                                                 signalSigmas, startingBackSigma, backgroundSigmas);
+                                                 signalSigmas, startingBackSigma, backgroundSigmas,
+                                                 modelToUse);
         outputHistograms.push_back(hDeltaR_vs_PtD);
     }
 

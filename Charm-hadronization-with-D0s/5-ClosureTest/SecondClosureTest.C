@@ -588,7 +588,9 @@ void SecondClosureTest(){
     }
 
     // ----1: Perform side-band subtraction
-    TH3D* hBackgroundSubtracted = SidebandClosure(fClosureInputNonMatched, ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts);
+    // Example: selecting a model
+    FitModelType modelToUse = FitModelType::SignalReflectionsOnly;
+    TH3D* hBackgroundSubtracted = SidebandClosure(fClosureInputNonMatched, ptjetBinEdges_detector, deltaRBinEdges_detector, ptDBinEdges_detector, bdtPtCuts, modelToUse);
     //TH3D* hBackgroundSubtracted;
 
     // ----2: Perform efficiency correction
