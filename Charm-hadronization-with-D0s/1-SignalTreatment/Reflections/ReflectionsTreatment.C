@@ -26,6 +26,11 @@ struct FitsGroup {
     std::vector<TF1*> signals;
     std::vector<TF1*> reflections;
     std::vector<TF1*> signals_and_reflections;
+
+    // Individual components
+    std::vector<std::pair<TF1*,TF1*>> individualSignals;
+    std::vector<std::pair<TF1*,TF1*>> individualReflections;
+    std::vector<std::pair<TF1*,TF1*>> individualSignals_and_reflections;
 };
 struct AnalysisData {
 
@@ -47,7 +52,19 @@ double DeltaPhi(double phi1, double phi2) {
     return dphi;
 }
 //-----------------------------------------------------------------------------Fit functions---------------------------------------------------------------------------------------------------------
-// Custom pure signal fit function
+// Custom single gaussian fit function
+Double_t singleGaussianFunction(Double_t* x, Double_t* par) {
+
+    Double_t m = x[0];
+    Double_t C_1 = par[0];
+    Double_t m0 = par[1]; // constrain: same mean value parameter for both single gaussians
+    Double_t sigma_1 = par[2];
+
+    // Defining the custom function
+    Double_t result = C_1 * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma_1), 2));
+    return result;
+}
+// Custom pure signal fit function: signal components (amplitude,mean,sigma) = (0,2,3) and (1,2,4)
 Double_t pureSignalFunction(Double_t* x, Double_t* par) {
 
     Double_t m = x[0];
@@ -61,16 +78,16 @@ Double_t pureSignalFunction(Double_t* x, Double_t* par) {
     Double_t result = C_1 * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma_1), 2)) + C_2 * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma_2), 2));
     return result;
 }
-// Custom pure reflections fit function
+// Custom pure reflections fit function: reflection components (amplitude,mean,sigma) = (0,2,4) and (1,3,5)
 Double_t pureReclectionsFunction(Double_t* x, Double_t* par) {
 
     Double_t m = x[0];
-    Double_t C_1 = par[0];
-    Double_t C_2 = par[1];
-    Double_t m0_1 = par[2];
-    Double_t m0_2 = par[3];
-    Double_t sigma_1 = par[4];
-    Double_t sigma_2 = par[5];
+    Double_t C_1 = par[0];      // total parameter index: 5
+    Double_t C_2 = par[1];      // total parameter index: 6
+    Double_t m0_1 = par[2];     // total parameter index: 7
+    Double_t m0_2 = par[3];     // total parameter index: 8
+    Double_t sigma_1 = par[4];  // total parameter index: 9
+    Double_t sigma_2 = par[5];  // total parameter index: 10
 
     // Defining the custom function
     Double_t result = C_1 * TMath::Exp(-TMath::Power((m - m0_1) / (2 * sigma_1), 2)) + C_2 * TMath::Exp(-TMath::Power((m - m0_2) / (2 * sigma_2), 2));
@@ -78,6 +95,11 @@ Double_t pureReclectionsFunction(Double_t* x, Double_t* par) {
 }
 // Custom signal and reflections fit function
 Double_t signalAndReflectionsFunction(Double_t* x, Double_t* par) {
+    // Gaussian components (amplitude,mean,sigma):
+    // signal primary: (0,2,3)
+    // signal secondary: (1,2,4)
+    // reflection primary: reflection(0,2,4) =  total(5,7,9)
+    // reflection secondary: reflection(1,3,5) =  total(6,8,10)
     
     return pureSignalFunction(x,par) + pureReclectionsFunction(x,&par[5]);
 }
@@ -322,11 +344,20 @@ FitsGroup performFits(HistogramGroup& histograms, std::vector<double>& ptDBinEdg
         signalFit->SetParName(2, "m0");
         signalFit->SetParName(3, "sigma1");
         signalFit->SetParName(4, "sigma2");
+        signalFit->SetParLimits(0, 0., TMath::Infinity());
+        signalFit->SetParLimits(1, 0., TMath::Infinity());
         //signalFit->SetParLimits(3, 0.5 * sigma1, 2.0 * sigma1); // Example constraint for sigma1
 
         histograms.signals_1d[iInterval]->Fit(signalFit, "RQ"); // "Q" option performs quiet fit without drawing the fit function
         fits.signals.push_back(signalFit);
         //fits.signals[iInterval]->Print("V");
+
+        // Also create and store individual components
+        TF1* fSignalPrimary = new TF1(Form("signalPrimaryFit_%zu", iInterval), singleGaussianFunction, xmin, xmax, 3);
+        fSignalPrimary->SetParameters(fits.signals[iInterval]->GetParameter(0), fits.signals[iInterval]->GetParameter(2), fits.signals[iInterval]->GetParameter(3)); // Amplitude, mean, sigma
+        TF1* fSignalSecondary = new TF1(Form("signalSecondaryFit_%zu", iInterval), singleGaussianFunction, xmin, xmax, 3);
+        fSignalSecondary->SetParameters(fits.signals[iInterval]->GetParameter(1), fits.signals[iInterval]->GetParameter(2), fits.signals[iInterval]->GetParameter(4)); // Amplitude, mean, sigma
+        fits.individualSignals.push_back(std::make_pair(fSignalPrimary,fSignalSecondary));
     }
 
     // Reflections fits
@@ -345,11 +376,26 @@ FitsGroup performFits(HistogramGroup& histograms, std::vector<double>& ptDBinEdg
         sigma1 = histograms.reflections_1d[iInterval]->GetRMS() / 2;  // Narrower
         sigma2 = histograms.reflections_1d[iInterval]->GetRMS();      // Wider
         reflectionsFit->SetParameters(C1, C2, m0_1, m0_2, sigma1, sigma2);
+        reflectionsFit->SetParName(0, "C1");
+        reflectionsFit->SetParName(1, "C2");
+        reflectionsFit->SetParName(2, "m0_1");
+        reflectionsFit->SetParName(3, "m0_2");
+        reflectionsFit->SetParName(4, "sigma1");
+        reflectionsFit->SetParName(5, "sigma2");
+        reflectionsFit->SetParLimits(0, 0., TMath::Infinity());
+        reflectionsFit->SetParLimits(1, 0., TMath::Infinity());
 
         histograms.reflections_1d[iInterval]->Fit(reflectionsFit, "RQ");
         fits.reflections.push_back(reflectionsFit);
         fits.reflections[iInterval]->Print("V");
         std::cout << "A1/A2 = " << fits.reflections[iInterval]->GetParameter(0) / fits.reflections[iInterval]->GetParameter(1) << std::endl;
+
+        // Also create and store individual components
+        TF1* fReflectionPrimary = new TF1(Form("reflectionPrimaryFit_%zu", iInterval), singleGaussianFunction, xmin, xmax, 3);
+        fReflectionPrimary->SetParameters(fits.reflections[iInterval]->GetParameter(0), fits.reflections[iInterval]->GetParameter(2), fits.reflections[iInterval]->GetParameter(4)); // Amplitude, mean, sigma
+        TF1* fReflectionSecondary = new TF1(Form("reflectionSecondaryFit_%zu", iInterval), singleGaussianFunction, xmin, xmax, 3);
+        fReflectionSecondary->SetParameters(fits.reflections[iInterval]->GetParameter(1), fits.reflections[iInterval]->GetParameter(3), fits.reflections[iInterval]->GetParameter(5)); // Amplitude, mean, sigma
+        fits.individualReflections.push_back(std::make_pair(fReflectionPrimary,fReflectionSecondary));
     }
 
     // Combined fits: true signal + reflections
@@ -362,7 +408,17 @@ FitsGroup performFits(HistogramGroup& histograms, std::vector<double>& ptDBinEdg
         // Initialize parameters from previous fits
         combinedFit->SetParameters(fits.signals[iInterval]->GetParameter(0), fits.signals[iInterval]->GetParameter(1), fits.signals[iInterval]->GetParameter(2), fits.signals[iInterval]->GetParameter(3), fits.signals[iInterval]->GetParameter(4), 
                                       fits.reflections[iInterval]->GetParameter(0), fits.reflections[iInterval]->GetParameter(1), fits.reflections[iInterval]->GetParameter(2), fits.reflections[iInterval]->GetParameter(3), fits.reflections[iInterval]->GetParameter(4), fits.reflections[iInterval]->GetParameter(5));
-
+        combinedFit->FixParameter(0,fits.signals[iInterval]->GetParameter(0));
+        combinedFit->FixParameter(1,fits.signals[iInterval]->GetParameter(1));
+        combinedFit->FixParameter(2,fits.signals[iInterval]->GetParameter(2));
+        combinedFit->FixParameter(3,fits.signals[iInterval]->GetParameter(3));
+        combinedFit->FixParameter(4,fits.signals[iInterval]->GetParameter(4));
+        combinedFit->FixParameter(5,fits.reflections[iInterval]->GetParameter(0));
+        combinedFit->FixParameter(6,fits.reflections[iInterval]->GetParameter(1));
+        combinedFit->FixParameter(7,fits.reflections[iInterval]->GetParameter(2));
+        combinedFit->FixParameter(8,fits.reflections[iInterval]->GetParameter(3));
+        combinedFit->FixParameter(9,fits.reflections[iInterval]->GetParameter(4));
+        combinedFit->FixParameter(10,fits.reflections[iInterval]->GetParameter(5));
         histograms.signals_and_reflections_1d[iInterval]->Fit(combinedFit, "RQ");
         fits.signals_and_reflections.push_back(combinedFit);
         //fits.signals_and_reflections[iInterval]->Print("V");
@@ -425,6 +481,12 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fits, const dou
         tempHist->Draw();
         fits.signals[iHist]->SetLineColor(8); // pastel green
         fits.signals[iHist]->Draw("same");
+        fits.individualSignals[iHist].first->SetLineColor(8);
+        fits.individualSignals[iHist].second->SetLineColor(8);
+        fits.individualSignals[iHist].first->SetLineStyle(kDashed);
+        fits.individualSignals[iHist].second->SetLineStyle(kDashed);
+        fits.individualSignals[iHist].first->Draw("same");
+        fits.individualSignals[iHist].second->Draw("same");
         //fittings[iHist]->Draw("same");
         //int backgroundHist = histograms.size() + iHist;
         //fittings[backgroundHist]->Draw("same");
@@ -460,6 +522,12 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fits, const dou
         degOfFreedom = fits.reflections[iHist]->GetNDF();
         fits.reflections[iHist]->SetLineColor(46); // pastel red
         fits.reflections[iHist]->Draw("same");
+        fits.individualReflections[iHist].first->SetLineColor(46);
+        fits.individualReflections[iHist].first->SetLineStyle(kDashed);
+        fits.individualReflections[iHist].first->Draw("same");
+        fits.individualReflections[iHist].second->SetLineColor(46);
+        fits.individualReflections[iHist].second->SetLineStyle(kDashed);
+        fits.individualReflections[iHist].second->Draw("same");
         latex->DrawLatex(statBoxPos-0.87, 0.40,"MC derived data:"); // Derived data from LHC24d3a (MC)
         latex->DrawLatex(statBoxPos-0.87, 0.35,"JE_HF_LHC24g5_All_D0"); // Derived data from LHC24d3a (MC)
         latex->DrawLatex(statBoxPos-0.87, 0.30, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
@@ -496,6 +564,27 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fits, const dou
 
     }
 
+    // Draw individual gaussian contributions with total fit for each plot
+    TCanvas* cIndividualGaussians = new TCanvas("cIndividualGaussians","Individual gaussians with total fit");
+    cIndividualGaussians->Divide(nCols,nRows);
+    // Loop over pT,D intervals/histograms
+    for (size_t iHist = 0; iHist < histograms.signals_and_reflections.size(); iHist++) {
+        tempHist = histograms.signals_and_reflections[iHist]->ProjectionX(Form("h_mass_signals_and_reflections_proj_%zu", iHist));
+        gStyle->SetOptStat(0); // Turn off the default stats box
+        tempHist->SetMarkerStyle(kDot);
+        tempHist->SetMarkerColor(kBlack);
+        tempHist->SetLineColor(kBlack); // kGray
+        tempHist->GetYaxis()->SetTitle("counts");
+        cIndividualGaussians->cd(iHist+1);
+        tempHist->Draw();
+
+        fits.individualSignals[iHist].first->Draw("same");
+        fits.individualSignals[iHist].second->Draw("same");
+        fits.individualReflections[iHist].first->Draw("same");
+        fits.individualReflections[iHist].second->Draw("same");
+        fits.signals_and_reflections[iHist]->Draw("same");
+    }
+
     //
     // Storing images
     //
@@ -516,9 +605,9 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fits, const dou
     //
     // Storing in a single pdf file
     //
-    cSignals->Print(Form("reflections_fits_%s.pdf(",jetPtRange.Data()));
-    cReflections->Print(Form("reflections_fits_%s.pdf",jetPtRange.Data()));
-    cSignalsAndReflections->Print(Form("reflections_fits_%s.pdf)",jetPtRange.Data()));
+    cSignals->Print(Form(imagePath + "reflections_fits_%s.pdf(",jetPtRange.Data()));
+    cReflections->Print(Form(imagePath + "reflections_fits_%s.pdf",jetPtRange.Data()));
+    cSignalsAndReflections->Print(Form(imagePath + "reflections_fits_%s.pdf)",jetPtRange.Data()));
     
     std::cout << "Histograms plotted." << std::endl;
 }
@@ -652,7 +741,8 @@ void ReflectionsTreatment() {
     time(&start); // initial instant of program execution
     
     // pT,jet cuts
-    std::vector<double> ptjetBinEdges = {5., 7., 15., 30., 50.};
+    std::vector<double> ptjetBinEdges = {5., 7., 10., 15., 30., 50.}; // default = {5., 7., 15., 30., 50.}
+    //std::vector<double> ptjetBinEdges = {7., 10.}; // default = {5., 7., 15., 30., 50.}
     for (size_t iJetPt = 0; iJetPt < ptjetBinEdges.size() - 1; iJetPt++) {
         
         // Apply side-band method to each pT,jet bin
