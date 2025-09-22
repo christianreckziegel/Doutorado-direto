@@ -1231,7 +1231,7 @@ TH3D* SidebandClosure(TFile* fClosureInputNonMatched,
     std::vector<TH2D*> outputHistograms;
 
     // Testing range of pT,jet bins
-    ptjetBinEdges_detector = {30., 50.};
+    //ptjetBinEdges_detector = {30., 50.};
 
     for (size_t iPtJetRange = 0; iPtJetRange < ptjetBinEdges_detector.size() - 1; iPtJetRange++) {
         std::cout << std::endl << std::endl << "Processing pT,jet range: " << ptjetBinEdges_detector[iPtJetRange] << " - " << ptjetBinEdges_detector[iPtJetRange + 1] << " GeV/c" << std::endl;

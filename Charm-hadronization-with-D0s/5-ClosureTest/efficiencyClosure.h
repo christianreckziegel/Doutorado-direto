@@ -925,7 +925,7 @@ TH2D* performEfficiencyCorrection(TH3D* hBackgroundSubtracted, EfficiencyData& h
                 double eff = histStruct.hSelectionEfficiency.first->GetBinContent(effBin);
 
                 // Avoid divide by zero or nonsense values
-                if (eff > 0) {
+                if (eff > 0) { // eff > 0
                     double correction = 1. / eff;
                     histStruct.hEfficiencyCorrected.first->SetBinContent(xBin, yBin, zBin, content * correction);
                     histStruct.hEfficiencyCorrected.first->SetBinError(xBin, yBin, zBin, error * correction);
@@ -955,7 +955,7 @@ TH2D* performEfficiencyCorrection(TH3D* hBackgroundSubtracted, EfficiencyData& h
     return hEfficiencyCorrected;
 }
 
-std::pair<std::vector<TH1D*>, TH2D*> EfficiencyClosure(TFile* fClosureInputNonMatched, TFile* fClosureInputMatched, TH3D* hBackgroundSubtracted, const BinningStruct& binningStruct, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+EfficiencyData EfficiencyClosure(TFile* fClosureInputNonMatched, TFile* fClosureInputMatched, TH3D* hBackgroundSubtracted, const BinningStruct& binningStruct, const std::vector<std::pair<double, double>>& bdtPtCuts) {
 
     // Calculate run 2 style efficiency (to be used in run 3 style calculation): inclusive, prompt-only, non-prompt only
     //std::vector<TH1D*> hSelEff_run2style = calculateSelectionEfficiencyRun2Matched(fClosureInputMatched, binningStruct, bdtPtCuts);
@@ -972,5 +972,5 @@ std::pair<std::vector<TH1D*>, TH2D*> EfficiencyClosure(TFile* fClosureInputNonMa
     
     std::pair<std::vector<TH1D*>, TH2D*> effOutputs = std::make_pair(hSelEff_run3style, hEfficiencyCorrected);
 
-    return effOutputs;
+    return histStruct;
 }

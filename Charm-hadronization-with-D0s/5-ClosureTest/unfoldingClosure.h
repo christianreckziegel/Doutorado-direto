@@ -288,7 +288,7 @@ std::vector<TH1D*> convergenceTest(const std::vector<TH2D*>& hUnfKinCorrected) {
 
 }
 
-std::vector<TH2D*> UnfoldingClosure(TFile* fClosureInputMatched, std::vector<TH1D*>& hSelEff_run3style, TH2D* hEfficiencyCorrected, const BinningStruct& binningStruct, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+UnfoldData UnfoldingClosure(TFile* fClosureInputMatched, std::vector<TH1D*>& hSelEff_run3style, TH2D* hEfficiencyCorrected, const BinningStruct& binningStruct, const std::vector<std::pair<double, double>>& bdtPtCuts) {
 
     int iterationNumber = 8;
 
@@ -301,5 +301,5 @@ std::vector<TH2D*> UnfoldingClosure(TFile* fClosureInputMatched, std::vector<TH1
     //
     std::vector<TH1D*> hConvergenceTest = convergenceTest(hUnfKinCorrected);
 
-    return hUnfKinCorrected;
+    return dataContainer;
 }
