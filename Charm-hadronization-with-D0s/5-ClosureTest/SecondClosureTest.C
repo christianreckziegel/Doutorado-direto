@@ -173,7 +173,8 @@ TH2D* CompareClosureTest(TFile* fClosureInputNonMatched, std::vector<TH2D*>& hUn
     for (size_t iIter = 0; iIter < hUnfKinCorrected.size(); iIter++) {
         // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
         hUnfoldedProjNorm[iIter] = hUnfKinCorrected[iIter]->ProjectionY(Form("hProjIterNorm_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
-        hUnfoldedProjNorm[iIter]->Scale(1. / hUnfoldedProjNorm[iIter]->GetEntries());
+        hUnfoldedProjNorm[iIter]->Scale(1. / hUnfoldedProjNorm[iIter]->Integral());
+        std::cout << "Unfolded iteration " << iIter << " integral is " << hUnfoldedProjNorm[iIter]->Integral() << std::endl;
         hUnfoldedProjNorm[iIter]->SetLineColor(kBlack + iIter);
         lUnfoldedIterNorm->AddEntry(hUnfoldedProjNorm[iIter],Form("Iteration %zu", iIter+1), "le");
         if (iIter == 0) {
@@ -185,7 +186,8 @@ TH2D* CompareClosureTest(TFile* fClosureInputNonMatched, std::vector<TH2D*>& hUn
         
     }
     TH1D* hInputParticleProjNorm = (TH1D*)hInputParticleProj->Clone("hInputParticleProjNorm");
-    hInputParticleProjNorm->Scale(1. / hInputParticleProjNorm->GetEntries());
+    hInputParticleProjNorm->Scale(1. / hInputParticleProjNorm->Integral());
+    std::cout << "Input particle level distribution integral is " << hInputParticleProjNorm->Integral() << std::endl;
     hInputParticleProjNorm->SetLineColor(kRed);
     hInputParticleProjNorm->SetLineStyle(2);
     hInputParticleProjNorm->Draw("same");
