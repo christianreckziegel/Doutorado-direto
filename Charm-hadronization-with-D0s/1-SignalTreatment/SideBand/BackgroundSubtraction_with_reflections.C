@@ -121,7 +121,7 @@ std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
 
 //__________________________________________________________________________________________________________________________
 // Module to create TH2D histograms including interest variable: UNIFORM bin sizes
-std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int xbins, double xmin, double xmax, int ybins, double ymin, double ymax) {
+std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int xbins, double xmin, double xmax, int ybins, double ymin, double ymax, double jetptMin) {
     std::vector<TH2D*> histograms;
     for (size_t i = 0; i < ptDBinEdges.size() - 1; ++i) {
         histograms.push_back(new TH2D(Form("histMass%zu",i+1), Form("%.0f < #it{p}_{T, D^{0}} < %.0f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",ptDBinEdges[i],ptDBinEdges[i+1]), xbins, xmin, xmax, ybins, ymin, ymax));
@@ -150,7 +150,12 @@ std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int 
 }
 // Overloading function
 // Module to create TH2D histograms including interest variable: VARIABLE bin sizes
-std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int xbins, double xmin, double xmax, const std::vector<double>& yBinEdges) {
+std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int xbins, double xmin, double xmax, const std::vector<double>& yBinEdges, const double& jetptMin) {
+    // Change binning to low statistics range [30,50] GeV/c
+    if (jetptMin >= 30.) {
+        xbins = 25;
+    }
+    
     std::vector<TH2D*> histograms;
     for (size_t i = 0; i < ptDBinEdges.size() - 1; ++i) {
         // So that the title adapts to fractional binning title
@@ -670,6 +675,7 @@ bool eraseHistogram(const std::vector<bool>& workingFits, size_t& histoIndex) {
     
     return doEraseHistogram;
 }
+
 struct SubtractionResult {
     std::vector<TH1D*> histograms;      // 1D mass projection histograms vector
     std::vector<TH1D*> sidebandHist;    // 1D sideband background histograms vector
@@ -1269,7 +1275,7 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     // Create multiple histograms
     std::vector<TH2D*> histograms2d = createHistograms(ptDBinEdges,                                 // the pT,D edges will determine the number of mass histograms
                                                      massBins, minMass, maxMass,                  // mass histograms binning
-                                                     deltaRBinEdges);                             // deltaR histograms with asymmetrical bin widths
+                                                     deltaRBinEdges, jetptMin);                             // deltaR histograms with asymmetrical bin widths
                                                      //deltaRbins, minDeltaR, maxDeltaR);         // deltaR histograms
     
     // bin sizes
@@ -1420,8 +1426,8 @@ void BackgroundSubtraction_with_reflections() {
         std::cerr << "Error: Unable to open the first ROOT reflections file." << std::endl;
     }
     // Load pTjet bin edges
-    //std::vector<double> ptjetBinEdges = LoadBinning(fReflectionsMC, "axes/ptjetBinEdges");
-    std::vector<double> ptjetBinEdges = {30., 50.};
+    std::vector<double> ptjetBinEdges = LoadBinning(fReflectionsMC, "axes/ptjetBinEdges");
+    //std::vector<double> ptjetBinEdges = {30., 50.};
     // Load ΔR bin edges
     std::vector<double> deltaRBinEdges = LoadBinning(fReflectionsMC, "axes/deltaRBinEdges");
     // Load pTD bin edges
