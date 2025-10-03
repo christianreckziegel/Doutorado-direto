@@ -16,7 +16,76 @@ double DeltaPhi(double phi1, double phi2) {
 
     return dphi;
 }
+// Define the enum class with descriptive names
+enum class FitModelType {
+    Full,           // Signal + Reflections + Background
+    SignalReflectionsOnly,     // Signal + Reflections only
+    SignalOnly,     // Only Signal
+    ReflectionsOnly         // Only Reflections
+};
+//_________________________________Template for on-the-run chosen model (policy-based strategy)________________________________________________
+struct BackgroundPolicy {
+    static double eval(double* x, double* par) {
+        Double_t m = x[0];
+        Double_t a = par[0];
+        Double_t b = par[1];
 
+        // Defining the custom function
+        Double_t result = a * TMath::Power(m, b);
+        return result;
+    }
+};
+struct SignalPolicy {
+    static double eval(double* x, double* par) {
+        Double_t m = x[0];
+        Double_t A1Signal = par[2];                                         // Free parameter
+        Double_t A1toA2MCSignalRatio = par[3];                              // Fixed parameter
+        Double_t A2Signal = A1Signal / A1toA2MCSignalRatio;                 // Constrained to primary/secondary integral obtained from MC data fit
+        Double_t m0 = par[4];                                               // Free parameter
+        Double_t sigma1 = par[5];                                           // Free parameter
+        Double_t Sigma1toSigma2MCSignalRatio = par[6];                      // Fixed parameter
+        Double_t sigma2 = sigma1 / Sigma1toSigma2MCSignalRatio;             // Constrained to primary/secondary width obtained from MC data fit
+
+        // Defining the custom function
+        Double_t result = A1Signal * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma1), 2)) + A2Signal * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma2), 2));
+        return result;
+    }
+};
+struct ReflectionPolicy {
+    static double eval(double* x, double* par) {
+        // m0 and sigma values fixed from fits obtained from MC data fits
+        Double_t m = x[0];
+        Double_t A1SignalToA1ReflectionMCRatio = par[7];                    // Fixed parameter
+        // Extract A1Signal from the parameter array (same index as in `signalFunction`)
+        Double_t A1Signal = par[2];
+        Double_t A1Reflection = A1Signal / A1SignalToA1ReflectionMCRatio;   // Constrained to signal/reflection integral obtained from MC data fits
+        Double_t A1toA2MCReflectionsRatio = par[8];                         // Fixed parameter
+        Double_t A2Reflection = A1Reflection / A1toA2MCReflectionsRatio;    // Constrained to primary/secondary integral obtained from MC data fit
+        Double_t m0_1 = par[9];                                             // Fixed parameter
+        Double_t m0_2 = par[10];                                            // Fixed parameter
+        Double_t sigma_1 = par[11];                                         // Fixed parameter
+        Double_t sigma_2 = par[12];                                         // Fixed parameter
+
+        // Defining the custom function
+        Double_t result = A1Reflection * TMath::Exp(-TMath::Power((m - m0_1) / (2 * sigma_1), 2)) + A2Reflection * TMath::Exp(-TMath::Power((m - m0_2) / (2 * sigma_2), 2));
+        return result;
+    }
+};
+// template for combinations of policies
+template <typename... Policies>
+struct FitModel {
+    static double eval(double* x, double* par) {
+        return (Policies::eval(x, par) + ...); // fold expression in C++17
+    }
+};
+// ROOT TF1 expects a regular function pointer
+template <typename Model>
+double fitWrapper(double* x, double* par) {
+    return Model::eval(x, par);
+}
+// Compile time polymorphism via policy-based design for fit models
+using FullModel = FitModel<SignalPolicy, ReflectionPolicy, BackgroundPolicy>;   // Signal + Reflection + Background
+using SigRefModel = FitModel<SignalPolicy, ReflectionPolicy>;                   // Signal + Reflection only
 //__________________________________________________________________________________________________________________________
 // Fit functions
 // Custom fit functions for full fit, background, signal, and reflection components
@@ -268,7 +337,7 @@ struct FitContainer {
     std::vector<TF1*> fitTotal;                 // background only fits
     std::vector<bool> workingFits;              // list of working fits (PDG mass inside of signal range)
 };
-FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histograms2d, double minMass, double maxMass) {
+FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histograms2d, double& minMass, double& maxMass, const FitModelType& modelToUse, const double& jetptMin, const double& jetptMax) {
     
     double m_0_reference = 1.86484; // D0 mass in GeV/c^2
     double sigma_reference = 0.012;
@@ -320,7 +389,13 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
         // ----Perform fits----
 
         // Create the fit function, enforce constraints on some parameters, set initial parameter values and performing fit
-        fittings.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu", iHisto + 1), customFitFunction, minMass, maxMass, 13)); // 12 parameters = 8 fixed + 5 free
+        //fittings.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu", iHisto + 1), customFitFunction, minMass, maxMass, 13)); // 12 parameters = 8 fixed + 5 free
+        // Create the fit function, enforce constraints on some parameters, set initial parameter values and performing fit
+        if (modelToUse == FitModelType::Full) {
+            fittings.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<FullModel>, minMass, maxMass, 13));
+        } else if (modelToUse == FitModelType::SignalReflectionsOnly) {
+            fittings.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<SigRefModel>, minMass, maxMass, 13));
+        }
 
         // Set initial values and fix parameters
         Double_t params[13] = {200000, -10.0, 1000, 1.5, m_0_reference, 0.02, 1.2, 2.0, 1.3, 1.83, 1.85, 0.02, 0.03};
@@ -387,7 +462,7 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
     }
     std::cout << "Number of fits performed: " << fittings.workingFits.size() << std::endl;
     for (size_t iFit = 0; iFit < fittings.workingFits.size(); iFit++) {
-        std::cout << "Fit number " << iFit << " is: " << fittings.workingFits[iFit] << std::endl;
+        std::cout << "Fit number " << iFit << " works: " << (fittings.workingFits[iFit] ? "true" : "false") << std::endl;
     }
     
 
@@ -594,7 +669,7 @@ std::pair<std::array<double, 2>, std::array<double, 2>> calculateSidebandRegions
     return std::make_pair(leftRange, rightRange);
 }
 // Calculate scalling correction factors
-std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitContainer& fittings,const std::array<double, 2> leftRange, const std::array<double, 2> rightRange, const int signalSigmas) {
+std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitContainer& fittings,const std::array<double, 2> leftRange, const std::array<double, 2> rightRange, const double signalSigmas) {
     // Define output array
     std::array<double, 2> scallingFactors = {0., 0.};
 
@@ -685,7 +760,7 @@ struct SubtractionResult {
     TH1D* hSignificance;    // final significance distribution for all pT,D summed
     std::vector<std::pair<double, double>> signal_background_values; // vector of signal and background values for each pT,D bin
 };
-SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitContainer& fittings, int signalSigmas, int startingBackSigma, int backgroundSigmas, std::vector<double>& ptDBinEdges){
+SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitContainer& fittings, double signalSigmas, int startingBackSigma, int backgroundSigmas, std::vector<double>& ptDBinEdges){
     
     // Creating histograms for collecting data
     TH1D* tempHist; // temporary histogram for collecting data
@@ -787,7 +862,8 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitCont
         h_back_subtracted->Scale(scallingFactors[0]);
 
         // Account for two sigma only area used for signal region
-        h_back_subtracted->Scale(1/0.9545);
+        double coverage = TMath::Erf(signalSigmas / sqrt(2)); // coverage of a Gaussian in a +/- signalSigmas window
+        h_back_subtracted->Scale(1 / coverage);
         // If histogram isn't empty, store it in the container
         bool isHistoEmpty = (h_back_subtracted->GetEntries() != 0) ? true : false;
         if (true) {
@@ -1141,7 +1217,7 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
     TCanvas* cTesting = new TCanvas("cTesting","cTesting");
     cTesting->cd();
     //outputStruct.subtractedHist[8]->Draw();
-    std::cout << "Subtracted hist numer 8 entries = " << outputStruct.subtractedHist[8]->GetEntries();
+    std::cout << "Subtracted hist number 8 entries = " << outputStruct.subtractedHist[8]->GetEntries() << std::endl;
 
     TCanvas* cAllPt = new TCanvas("cAllPt","All pT,D final deltaR distribution");
     cAllPt->SetCanvasSize(1800,1000);
@@ -1285,10 +1361,11 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     fillHistograms(fDist, histograms2d, jetptMin, jetptMax, ptDBinEdges, deltaRBinEdges, bdtPtCuts);
 
     // Perform fits
-    FitContainer fittings = performFit(fReflectionsMC, histograms2d, minMass, maxMass);
+    FitModelType modelToUse = FitModelType::Full; // options: Full, SignalReflectionsOnly, SignalOnly, ReflectionsOnly
+    FitContainer fittings = performFit(fReflectionsMC, histograms2d, minMass, maxMass, modelToUse, jetptMin, jetptMax);
 
     // signal/side-band region parameters
-    int signalSigmas = 2; // 2
+    double signalSigmas = 2; // 2
     int startingBackSigma = 4; // 4
     int backgroundSigmas = 4; // 4
     cout << "Signal: |m - m_0| < " << signalSigmas << "sigmas" << endl;
