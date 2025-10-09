@@ -245,7 +245,7 @@ std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int 
 std::vector<TH2D*> createHistograms(const std::vector<double>& ptDBinEdges, int xbins, double xmin, double xmax, const std::vector<double>& yBinEdges, const double& jetptMin) {
     // Change binning to low statistics range [30,50] GeV/c
     if (jetptMin >= 30.) {
-        xbins = 25;
+        xbins = xbins / 2;
     }
     
     std::vector<TH2D*> histograms;
@@ -1383,7 +1383,33 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     int massBins = 50; // default=100 
     double minMass = 1.72; // use from 1.72, used to use 1.67
     double maxMass = 2.06; // old = 2.1, new = 2.05 + 0.01
-
+    double mass_per_bins = (maxMass - minMass) / massBins;
+    double deltaMass = (maxMass - minMass) / 5;
+    int massIntervalOption = 5;
+    if (massIntervalOption == 1) { // middle range: | --- |
+        minMass = minMass + deltaMass;
+        maxMass = maxMass - deltaMass;
+        massBins = static_cast<int>((maxMass - minMass) / mass_per_bins); // 50 bins
+    } else if (massIntervalOption == 2) { // use full range: |-----|
+        // everything remains the same
+        //minMass = minMass;
+        //maxMass = maxMass;
+        //massBins = massBins;
+    } else if (massIntervalOption == 3) { // minor range: |  -  |
+        minMass = minMass + 2 * deltaMass;
+        maxMass = maxMass - 2 * deltaMass;
+        massBins = static_cast<int>((maxMass - minMass) / mass_per_bins); // 50 bins
+    } else if (massIntervalOption == 4) { // left delocated range: |---  |
+        minMass = minMass; // remains the same
+        maxMass = maxMass - deltaMass;
+        massBins = static_cast<int>((maxMass - minMass) / mass_per_bins); // 50 bins
+    } else if (massIntervalOption == 5) { // right delocated range: |  ---|
+        minMass = minMass + deltaMass;
+        //maxMass = maxMass; // remains the same
+        massBins = static_cast<int>((maxMass - minMass) / mass_per_bins); // 50 bins
+    }
+    
+    
     // Opening data file
     TFile* fDist = new TFile("../../ExperimentalData/Hyperloop_output/HF_LHC23_pass4_Thin_small_2P3PDstar_DATA/AO2D.root","read");
     if (!fDist || fDist->IsZombie()) {
@@ -1419,8 +1445,8 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
 
     // signal/side-band region parameters
     double signalSigmas = 2; // 2
-    int startingBackSigma = 4; // 4
-    int backgroundSigmas = 4; // 4
+    int startingBackSigma = 2; // position = 4
+    int backgroundSigmas = 4; // delta = 4
     cout << "Signal: |m - m_0| < " << signalSigmas << "sigmas" << endl;
     cout << "Left side-band: " << -(startingBackSigma+backgroundSigmas) << "sigmas << |m - m_0| << " << -startingBackSigma << "sigmas\n";
     cout << "Right side-band: " << startingBackSigma << "sigmas << |m - m_0| << " << (startingBackSigma+backgroundSigmas) << "sigmas\n";
