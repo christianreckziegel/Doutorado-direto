@@ -8,15 +8,16 @@
 
 
 using namespace std;
+
 // Define the enum class with descriptive names
 enum class FitModelType {
-    Full,           // Signal + Reflections + Background
+    Full,           // Signal + Reflections + power law Background
     SignalReflectionsOnly,     // Signal + Reflections only
     SignalOnly,     // Only Signal
     ReflectionsOnly         // Only Reflections
 };
 //_________________________________Template for on-the-run chosen model (policy-based strategy)________________________________________________
-struct BackgroundPolicy {
+struct PowerLawBackgroundPolicy {
     static double eval(double* x, double* par) {
         Double_t m = x[0];
         Double_t a = par[0];
@@ -76,8 +77,9 @@ double fitWrapper(double* x, double* par) {
     return Model::eval(x, par);
 }
 // Compile time polymorphism via policy-based design for fit models
-using FullModel = FitModel<SignalPolicy, ReflectionPolicy, BackgroundPolicy>;   // Signal + Reflection + Background
-using SigRefModel = FitModel<SignalPolicy, ReflectionPolicy>;                   // Signal + Reflection only
+using FullModel = FitModel<SignalPolicy, ReflectionPolicy, PowerLawBackgroundPolicy>;   // Signal + Reflection + Background
+using SigRefModel = FitModel<SignalPolicy, ReflectionPolicy>;                           // Signal + Reflection only
+using SignalOnlyModel = FitModel<SignalPolicy>;                                         // Signal only
 //_________________________________________________________________________________
 
 // Check if histogram should be erased before storing (why? So that only the successful fits are accounted for the total summed DeltaR distributionsy)
@@ -318,7 +320,7 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonM
     // defining variables for accessing the TTree
     float axisDistance, jetPt, jetEta, jetPhi;
     float hfPt, hfEta, hfPhi, hfMass, hfY, hfMlScore0;
-    int hfMatchedFrom, hfSelectedAs, jetNConst;
+    int notEnumhfMatchedFrom, notEnumhfSelectedAs, jetNConst;
     tree->SetBranchAddress("fJetHfDist",&axisDistance);
     tree->SetBranchAddress("fJetPt",&jetPt);
     tree->SetBranchAddress("fJetEta",&jetEta);
@@ -330,17 +332,16 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonM
     tree->SetBranchAddress("fHfMass",&hfMass);
     tree->SetBranchAddress("fHfY",&hfY);
     tree->SetBranchAddress("fHfMlScore0",&hfMlScore0);
-    tree->SetBranchAddress("fHfMatchedFrom",&hfMatchedFrom);
-    tree->SetBranchAddress("fHfSelectedAs",&hfSelectedAs);
+    tree->SetBranchAddress("fHfMatchedFrom",&notEnumhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&notEnumhfSelectedAs);
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
-        // correct selection BIT shift info: Checks whether BIT(i) is set, regardless of other bits
-        /*if (hfSelectedAs & BIT(0)) { // CandidateSelFlag == BIT(0) -> selected as D0
-            hfSelectedAs = 1;
-        } else if (hfSelectedAs & BIT(1)) { // CandidateSelFlag == BIT(1) -> selected as D0bar
-            hfSelectedAs = -1;
-        }*/
+
+        // Convert to enum class for type-safe comparison
+        D0Species hfMatchedFrom = intToD0Species(notEnumhfMatchedFrom);
+        D0Species hfSelectedAs = intToD0Species(notEnumhfSelectedAs);
+
         // calculating delta R
         double deltaR = sqrt(pow(jetEta-hfEta,2) + pow(DeltaPhi(jetPhi,hfPhi),2));
         // Fill each histogram with their respective pT intervals
@@ -350,7 +351,7 @@ std::pair<FitContainer, TCanvas*> calculateFitTemplates(TFile* fClosureInputNonM
             for (size_t iEdge = 0; iEdge < ptDBinEdges_detector.size() - 1 && !filled; iEdge++) {
                 if ((hfPt >= ptDBinEdges_detector[iEdge]) && (hfPt < ptDBinEdges_detector[iEdge + 1])) {
                     // D0 = +1, D0bar = -1, neither = 0
-                    if ((hfMatchedFrom != 0) && (hfSelectedAs != 0)) {
+                    if ((hfMatchedFrom != D0Species::NEITHER) && (hfSelectedAs != D0Species::NEITHER)) {
                         if (hfMatchedFrom == hfSelectedAs) {
                             // Get the threshold for this pT range
                             double maxBkgProb = GetBkgProbabilityCut(hfPt, bdtPtCuts);
@@ -772,8 +773,14 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
         // calculating delta R
         double MCDdeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
         
+        bool recoJetPtRange = (MCDjetPt >= MCDjetptMin) && (MCDjetPt < MCDjetptMax);
+        //bool recoHfPtRange = (MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut);
+        bool recoDeltaRRange = (MCDdeltaR >= deltaRBinEdges_detector[0]) && (MCDdeltaR < MCDDeltaRcut);
+        bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && recoJetPtRange && recoDeltaRRange; // currently used
+
         // Fill each histogram with their respective pT intervals
-        if ((abs(MCDhfEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= MCDjetptMin) && (MCDjetPt < MCDjetptMax)) && ((MCDdeltaR >= deltaRBinEdges_detector[0]) && (MCDdeltaR < MCDDeltaRcut))) {
+        if (recoLevelRange) {
+        //if ((abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= MCDjetptMin) && (MCDjetPt < MCDjetptMax)) && ((MCDdeltaR >= deltaRBinEdges_detector[0]) && (MCDdeltaR < MCDDeltaRcut))) {
             
             bool filled = false;
             // Loop through pT,D bin edges to find the appropriate histogram and fill it
@@ -788,15 +795,75 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
                     }
                     filled = true; // Exit the loop once the correct histogram is found (alternative: break)
                 }
-                
+            }
+        }
+    }
+    bool useAllEffData = false;
+    if (useAllEffData) {
+        tree = (TTree*)fClosureInputNonMatched->Get("CorrectionTree/O2mcdjetdisttable");
+        // Check for correct access
+        if (!tree) {
+            cout << "Error opening correction data tree.\n";
+        }
+        // detector level branches
+        tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance);
+        tree->SetBranchAddress("fJetPt",&MCDjetPt);
+        tree->SetBranchAddress("fJetEta",&MCDjetEta);
+        tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
+        tree->SetBranchAddress("fHfPt",&MCDhfPt);
+        tree->SetBranchAddress("fHfEta",&MCDhfEta);
+        tree->SetBranchAddress("fHfPhi",&MCDhfPhi);
+        tree->SetBranchAddress("fHfMass",&MCDhfMass);
+        tree->SetBranchAddress("fHfY",&MCDhfY);
+        tree->SetBranchAddress("fHfPrompt",&MCDhfprompt);
+        tree->SetBranchAddress("fHfMatch",&MCDhfmatch);
+        tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
+        tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
+        tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+        tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+        tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
+        int nEntries = tree->GetEntries();
+        for (int entry = 0; entry < nEntries; ++entry) {
+            tree->GetEntry(entry);
+
+            bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+
+            // Apply prompt (real+reflections) selection
+            if (!MCDhfprompt) {
+                continue;
             }
             
-        }
 
-        
-        
-        
+            // calculating delta R
+            double MCDdeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
+            
+            bool recoJetPtRange = (MCDjetPt >= MCDjetptMin) && (MCDjetPt < MCDjetptMax);
+            //bool recoHfPtRange = (MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut);
+            bool recoDeltaRRange = (MCDdeltaR >= deltaRBinEdges_detector[0]) && (MCDdeltaR < MCDDeltaRcut);
+            bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && recoJetPtRange && recoDeltaRRange; // currently used
+
+            // Fill each histogram with their respective pT intervals
+            if (recoLevelRange) {
+            //if ((abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= MCDjetptMin) && (MCDjetPt < MCDjetptMax)) && ((MCDdeltaR >= deltaRBinEdges_detector[0]) && (MCDdeltaR < MCDDeltaRcut))) {
+                
+                bool filled = false;
+                // Loop through pT,D bin edges to find the appropriate histogram and fill it
+                for (size_t iEdge = 0; iEdge < ptDBinEdges_detector.size() - 1 && !filled; iEdge++) {
+                    if ((MCDhfPt >= ptDBinEdges_detector[iEdge]) && (MCDhfPt < ptDBinEdges_detector[iEdge + 1])) {
+                        // Get the threshold for this pT range
+                        double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, bdtPtCuts);
+
+                        // Fill histogram only if the cut is passed
+                        if (MCDhfMlScore0 < maxBkgProb) {
+                            hInvariantMass2D[iEdge]->Fill(MCDhfMass, MCDdeltaR);
+                        }
+                        filled = true; // Exit the loop once the correct histogram is found (alternative: break)
+                    }
+                }
+            }
+        }
     }
+    
     // ----- Obtain 1D projections: invariant mass distributions
     std::vector<TH1D*> hInvariantMass1D;
     for (size_t iHisto = 0; iHisto < hInvariantMass2D.size(); iHisto++) {
@@ -852,10 +919,16 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
         // ----Perform fits----
         // Create the fit function, enforce constraints on some parameters, set initial parameter values and performing fit
         if (modelToUse == FitModelType::Full) {
+            // Signal + Reflections + Background
             fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<FullModel>, minMass, maxMass, 13));
         } else if (modelToUse == FitModelType::SignalReflectionsOnly) {
+            // Signal + Reflections only (no background)
             fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<SigRefModel>, minMass, maxMass, 13));
+        } else if (modelToUse == FitModelType::SignalOnly) {
+            // Signal only (no reflections, no background)
+            fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<SignalOnlyModel>, minMass, maxMass, 13));
         }
+        
         //fDataFits.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), customFitFunction, minMass, maxMass, 13)); // 13 parameters = 8 fixed + 5 free
         // Set initial values and fix parameters
         Double_t params[13] = {200000, -10.0, 1000, 1.5, m_0_reference, 0.02, 1.2, 2.0, 1.3, 1.83, 1.85, 0.02, 0.03};
@@ -891,6 +964,7 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
         fDataFits.fitTotal[iHisto]->SetLineColor(kBlack);
         // Perform fit with "Q" (quiet) option: no drawing of the fit function
         hInvariantMass1D[iHisto]->Fit(fDataFits.fitTotal[iHisto], "Q");
+        
 
         // Check if signal gaussian acomodates the literature D0 rest mass
         double primaryMean = fDataFits.fitTotal[iHisto]->GetParameter(4);
@@ -990,10 +1064,27 @@ TH2D* AnalyzeJetPtRange(TFile* fClosureInputNonMatched, const double& jetptMin, 
         
         // if background fit is empty/fails, skip the subtraction
         double backgroundTotalArea = fDataFits.fitBackgroundOnly[iHisto]->Integral(minMass, maxMass); // Get the total area of the background fit
-        if (backgroundTotalArea == 0) {
+        if ((modelToUse == FitModelType::SignalReflectionsOnly) || (modelToUse == FitModelType::SignalOnly)) { // previously backgroundTotalArea == 0
             std::cout << "Background fit empty for histogram " << iHisto << ", skipping side-band subtraction." << std::endl;
             // Subtracted histogram = original signal histogram
             h_back_subtracted = (TH1D*)h_signal->Clone(Form("h_back_subtracted_%zu_%0.f_to_%0.fGeV", iHisto, jetptMin, jetptMax));
+
+            // Calculate fit areas under signal region for scaling factors
+            double Rs = fDataFits.fitReflectionsOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma); // Reflections component in signal region area
+            double S = fDataFits.fitSignalOnly[iHisto]->Integral(m_0 - signalSigmas * sigma, m_0 + signalSigmas * sigma); // Signal component in signal region area
+            if (std::isnan(S)) {
+                std::cout << "Warning: Signal area S is NaN for histogram " << iHisto << ". Setting S to 0." << std::endl;
+                S = 0.0;
+            } else if (std::isnan(Rs)) {
+                std::cout << "Warning: Reflections area Rs is NaN for histogram " << iHisto << std::endl;
+            } else {
+                std::cout << "Signal area S = " << S << ", Reflections area Rs = " << Rs << " for histogram " << iHisto << std::endl;
+            }
+            //h_back_subtracted->Scale(S / (S + Rs)); // Scale by S/(S+Rs) to remove reflections
+
+            // Account for two sigma only area used for signal region
+            h_back_subtracted->Scale(1/0.9545);
+
         } else {
             std::array<double, 2> leftRange = {0., 0.}; // remains zero if no sigmas fit inside the left range
             std::array<double, 2> rightRange = {0., 0.};

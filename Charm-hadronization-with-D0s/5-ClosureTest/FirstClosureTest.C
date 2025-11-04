@@ -342,7 +342,7 @@ void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMi
     //
     // Storing images
     //
-    TString imagePath = "../Images/5-ClosureTest/First";
+    TString imagePath = "../Images/5-ClosureTest/First/";
     cFirstClosureTest->Update();
     cFirstClosureTest->SaveAs(imagePath + "ClosureTest1_unfolding.png");    
     

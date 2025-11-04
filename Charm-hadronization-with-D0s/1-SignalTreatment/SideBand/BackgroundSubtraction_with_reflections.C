@@ -420,7 +420,7 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
             fittings.fitTotal[iHisto]->SetParLimits(0, 0., TMath::Infinity()); // only accepts non-negative background fits
         } else if (modelToUse == FitModelType::FullPoly2) { // 13 parameters = 8 fixed + 6 free
             fittings.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<FullModelPoly2>, minMass, maxMass, 14));
-            fittings.fitTotal[iHisto]->SetParName(13, "Background C (m^2 term)");
+            fittings.fitTotal[iHisto]->SetParName(13, "Background C (m^2 term)");  // Free
         } else if (modelToUse == FitModelType::SignalReflectionsOnly) {
             fittings.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<SigRefModel>, minMass, maxMass, 13));
         }
@@ -430,12 +430,12 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
         fittings.fitTotal[iHisto]->SetParameters(params);
 
         // Set parameter names
-        fittings.fitTotal[iHisto]->SetParName(0, "Background A");
-        fittings.fitTotal[iHisto]->SetParName(1, "Background B");
-        fittings.fitTotal[iHisto]->SetParName(2, "A1 Signal");
+        fittings.fitTotal[iHisto]->SetParName(0, "Background A"); // Free
+        fittings.fitTotal[iHisto]->SetParName(1, "Background B"); // Free
+        fittings.fitTotal[iHisto]->SetParName(2, "A1 Signal"); // Free
         fittings.fitTotal[iHisto]->SetParName(3, "A1/A2 Signal Ratio");
-        fittings.fitTotal[iHisto]->SetParName(4, "Signal Mean m0");
-        fittings.fitTotal[iHisto]->SetParName(5, "Signal Width Sigma1");
+        fittings.fitTotal[iHisto]->SetParName(4, "Signal Mean m0"); // Free
+        fittings.fitTotal[iHisto]->SetParName(5, "Signal Width Sigma1"); // Free
         fittings.fitTotal[iHisto]->SetParName(6, "Sigma Ratio (Sig1/Sig2)");
         fittings.fitTotal[iHisto]->SetParName(7, "A1Signal/A1Reflection Ratio");
         fittings.fitTotal[iHisto]->SetParName(8, "A1/A2 Reflection Ratio");
@@ -456,6 +456,7 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
 
         // Apply range limits to the parameters
         //fittings.fitTotal[iHisto]->SetParLimits(0, 0., TMath::Infinity()); // only accepts non-negative background fits
+        fittings.fitTotal[iHisto]->SetParLimits(2, 0., TMath::Infinity()); // only accepts non-negative primary gaussian amplitude
         fittings.fitTotal[iHisto]->SetParLimits(4, 0.95 * m_0_reference, 1.05 * m_0_reference);
         fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 3.0 * sigma_reference);
 
@@ -774,7 +775,9 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
     // Reflections correction
     scallingFactors[0] = alpha;
     // Background correction
-    scallingFactors[1] = Bs/B;
+    scallingFactors[1] = Bs / B;
+    // std::cout << "alpha (signal + reflections correction) = " << scallingFactors[0] << std::endl;
+    // std::cout << "Bs / B (background fit area ratios) = " << scallingFactors[1] << std::endl;
 
     std::cout << "Scaling factors calculated.\n";
 
@@ -812,6 +815,7 @@ struct SubtractionResult {
     TH1D* hSubtracted_allPtSummed;      // final deltaR distribution for all pT,D summed
     TH1D* hSignificance;    // final significance distribution for all pT,D summed
     std::vector<std::pair<double, double>> signal_background_values; // vector of signal and background values for each pT,D bin
+    std::vector<std::array<double, 2>> scallingFactorsArrays; // alpha and beta scaling factors for each pT,D bin
 };
 SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitContainer& fittings, double signalSigmas, int startingBackSigma, int backgroundSigmas, std::vector<double>& ptDBinEdges){
     
@@ -842,6 +846,7 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitCont
 
         // Calculate scaling factor to apply to the sideband subtraction original method
         std::array<double, 2> scallingFactors = calculateScalingFactor(iHisto, fittings, sidebandRanges.first, sidebandRanges.second, signalSigmas);
+        outputStruct.scallingFactorsArrays.push_back(scallingFactors);
 
         // Create signal histogram
         int lowBin = histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
@@ -880,6 +885,8 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitCont
             highBin = histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[1]);
             h_sideBand = histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_left_%zu",iHisto), lowBin, highBin); // sum the left sideband
             double leftSBHistogram = outputStruct.histograms[iHisto]->Integral(lowBin, highBin); // integral of sideband regions of mass histogram
+            std::cout << "Sideband integral (only left) = " << h_sideBand->Integral() << std::endl;
+            std::cout << "leftSBHistogram = " << leftSBHistogram << std::endl;
 
             lowBin = histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
             highBin = histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
@@ -904,11 +911,14 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitCont
         }
         
         // Scale the sideband histogram by ratio of it in the signal region Bs/(B1+B2)
+        std::cout << "Sideband integral (before beta scaling) = " << h_sideBand->Integral() << std::endl;
         h_sideBand->Scale(scallingFactors[1]);
+        std::cout << "Sideband integral (after beta scaling) = " << h_sideBand->Integral() << std::endl;
         outputStruct.sidebandHist.push_back(h_sideBand);
 
         // Subtract background histogram from signal histogram
         h_back_subtracted = (TH1D*)h_signal->Clone(Form("h_back_subtracted_%zu",iHisto));
+        std::cout << "Before subtraction: Signal integral = " << h_signal->Integral() << ", Sideband integral = " << h_sideBand->Integral() << std::endl;
         h_back_subtracted->Add(h_sideBand,-1.0);
 
         // Scale by reflections correction
@@ -929,7 +939,12 @@ SubtractionResult SideBand(const std::vector<TH2D*>& histograms2d, const FitCont
             //fittings.fitSignalOnly[iHisto]->Print("V");
             double S = fittings.fitSignalOnly[iHisto]->Integral(mean_signalOnly - 2*sigma1_signalOnly, mean_signalOnly + 2*sigma1_signalOnly);
             double B = fittings.fitBackgroundOnly[iHisto]->Integral(mean_signalOnly - 2*sigma1_signalOnly, mean_signalOnly + 2*sigma1_signalOnly);
-            double significance = S / sqrt(S+B); // Binomial-like Approximation: when S is comparable to B, consider both signal and background fluctuations
+            double significance = 0.;
+            if (!std::isnan(S)) {
+                significance = S / sqrt(S+B); // Binomial-like Approximation: when S is comparable to B, consider both signal and background fluctuations
+            }
+            
+            std::cout << "For histogram index " << iHisto << ": S = " << S << ", B = " << B << "\t Significance = " << significance << std::endl;
             // Store signal and background values for each pT,D bin
             outputStruct.signal_background_values.push_back(std::make_pair(S, B));
             // Storing significance in the output struct object
@@ -1076,7 +1091,7 @@ TCanvas* plotMCnet_template_mass(std::vector<TH1D*> originalHistograms, const Fi
     return cMCnetFormat;
 }
 
-void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2D*>& histograms2d, const FitContainer& fittings, double jetptMin, double jetptMax) {
+void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2D*>& histograms2d, const FitContainer& fittings, double jetptMin, double jetptMax, const std::vector<double>& ptDBinEdges) {
     std::cout << "Plotting histograms..." << std::endl;
     // creating 1D mass projection histograms
     TH1D* tempHist;
@@ -1267,10 +1282,10 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
         latex->DrawLatex(statBoxPos-0.35, 0.5, Form("%.0f < p_{T, ch. jet} < %.0f GeV/#it{c}",jetptMin,jetptMax));
     }
     
-    TCanvas* cTesting = new TCanvas("cTesting","cTesting");
-    cTesting->cd();
+    // TCanvas* cTesting = new TCanvas("cTesting","cTesting");
+    // cTesting->cd();
     //outputStruct.subtractedHist[8]->Draw();
-    std::cout << "Subtracted hist number 8 entries = " << outputStruct.subtractedHist[8]->GetEntries() << std::endl;
+    //std::cout << "Subtracted hist number 8 entries = " << outputStruct.subtractedHist[8]->GetEntries() << std::endl;
 
     TCanvas* cAllPt = new TCanvas("cAllPt","All pT,D final deltaR distribution");
     cAllPt->SetCanvasSize(1800,1000);
@@ -1286,8 +1301,54 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
     latex->DrawLatex(statBoxPos-0.35, 0.5, Form("%.0f < p_{T, ch. jet} < %.0f GeV/#it{c}",jetptMin,jetptMax));
     cAllPt->cd(2);
     outputStruct.hSignificance->Draw();
+    if (outputStruct.hSignificance->Integral() != 0) {
+        std::cout << "Significance histogram entries: " << outputStruct.hSignificance->GetEntries() << std::endl;
+        for (size_t iBin = 0; iBin < outputStruct.hSignificance->GetNbinsX(); iBin++) {
+            double significance = outputStruct.hSignificance->GetBinContent(iBin+1);
+            if (significance != 0) {
+                std::cout << "Significance bin " << iBin+1 << ": " << significance << std::endl;
+            }
+        }
+        
+    } else {
+        std::cout << "Significance histogram is empty." << std::endl;
+    }
+    
     latex->DrawLatex(statBoxPos-0.35, 0.5, "Obtained through signal and background fits");
     latex->DrawLatex(statBoxPos-0.35, 0.6, "Calculation region: |m_{inv} - m_{D^{0}}| < 2#sigma");
+
+    // 
+    // Plot scaling factors
+    //
+    TCanvas* cscallingFactorsArrays = new TCanvas("cscallingFactorsArrays", "Scaling Factors Arrays", 1800, 1000);
+    cscallingFactorsArrays->cd();
+    // Fill two histograms with the scaling factors
+    int nBins = ptDBinEdges.size();
+    TH1D* hAlpha = new TH1D("hAlpha", "Scaling factors;p_{T,D^{0}} (GeV/c); s.f.", ptDBinEdges.size()-1, ptDBinEdges.data());
+    TH1D* hBeta = new TH1D("hBeta", "Scaling factor;p_{T,D^{0}} (GeV/c); s.f.", ptDBinEdges.size()-1, ptDBinEdges.data());
+    for (int iBin = 0; iBin < nBins; ++iBin) {
+        hAlpha->SetBinContent(iBin + 1, outputStruct.scallingFactorsArrays[iBin][0]); // alpha
+        hBeta->SetBinContent(iBin + 1, outputStruct.scallingFactorsArrays[iBin][1]); // beta
+    }
+    hBeta->SetMarkerStyle(kFullCircle);
+    hBeta->SetMarkerColor(kBlue+1);
+    hBeta->SetLineColor(kBlue+1);
+    hBeta->SetLineWidth(2);
+    hAlpha->SetMarkerStyle(kFullCircle);
+    hAlpha->SetMarkerColor(kRed+1);
+    hAlpha->SetLineColor(kRed+1);
+    hAlpha->SetLineWidth(2);
+    if (hAlpha->GetBinContent(hAlpha->GetMaximumBin()) > hBeta->GetBinContent(hBeta->GetMaximumBin())) {
+        hAlpha->Draw();
+        hBeta->Draw("same");
+    } else {
+        hBeta->Draw();
+        hAlpha->Draw("same");
+    }
+    TLegend* lScalingFactors = new TLegend(0.1,0.3,0.18,0.4);
+    lScalingFactors->AddEntry(hAlpha,"#alpha","l");
+    lScalingFactors->AddEntry(hBeta,"#beta","l");
+    lScalingFactors->Draw();
 
     //
     // Storing images
@@ -1311,7 +1372,8 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
     c_2d->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
     //cMCnet_template_mass->Print(Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
     cSigPlusBack->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
-    cAllPt->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf)",jetptMin,jetptMax));
+    cAllPt->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
+    cscallingFactorsArrays->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf)",jetptMin,jetptMax));
 
     std::cout << "Histograms and fits plotted and stored to png and pdf files.\n";
 }
@@ -1365,7 +1427,7 @@ void SaveData(SubtractionResult& outputStruct, double jetptMin, double jetptMax,
 }
 
 void JetPtIterator(const double jetptMin, const double jetptMax, const std::vector<double>& ptjetBinEdges) {
-
+    std::cout << "============================================= " << jetptMin << " GeV/c < pT,jet < " << jetptMax << " GeV/c =============================================" << std::endl;
     // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
     std::vector<std::pair<double, double>> bdtPtCuts = {
         {1, 0.03}, {2, 0.03}, {3, 0.05}, {4, 0.05}, {5, 0.08}, {6, 0.15}, {8, 0.22}, {12, 0.35}, {16, 0.47}, {24, 0.47}
@@ -1380,12 +1442,12 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     double sigmaInitial = 0.012;
 
     // mass histogram
-    int massBins = 50; // default=100 
-    double minMass = 1.72; // use from 1.72, used to use 1.67
-    double maxMass = 2.06; // old = 2.1, new = 2.05 + 0.01
+    int massBins = 50; // default=50 
+    double minMass = 1.72; // default = 1.72, due to D0->KPiPi contribution on left tail
+    double maxMass = 2.06; // default = 2.06
     double mass_per_bins = (maxMass - minMass) / massBins;
-    double deltaMass = (maxMass - minMass) / 5;
-    int massIntervalOption = 5;
+    double deltaMass = (maxMass - minMass) / 10;
+    int massIntervalOption = 2; // default = 2
     if (massIntervalOption == 1) { // middle range: | --- |
         minMass = minMass + deltaMass;
         maxMass = maxMass - deltaMass;
@@ -1444,9 +1506,9 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     FitContainer fittings = performFit(fReflectionsMC, histograms2d, minMass, maxMass, modelToUse, jetptMin, jetptMax);
 
     // signal/side-band region parameters
-    double signalSigmas = 2; // 2
-    int startingBackSigma = 2; // position = 4
-    int backgroundSigmas = 4; // delta = 4
+    double signalSigmas = 2; // default delta = 2
+    int startingBackSigma = 4; // default position = 4
+    int backgroundSigmas = 4; // default delta = 4
     cout << "Signal: |m - m_0| < " << signalSigmas << "sigmas" << endl;
     cout << "Left side-band: " << -(startingBackSigma+backgroundSigmas) << "sigmas << |m - m_0| << " << -startingBackSigma << "sigmas\n";
     cout << "Right side-band: " << startingBackSigma << "sigmas << |m - m_0| << " << (startingBackSigma+backgroundSigmas) << "sigmas\n";
@@ -1455,7 +1517,7 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     SubtractionResult outputStruct = SideBand(histograms2d, fittings, signalSigmas, startingBackSigma, backgroundSigmas, ptDBinEdges);
     
     // Plot histograms
-    PlotHistograms(outputStruct, histograms2d, fittings, jetptMin, jetptMax);
+    PlotHistograms(outputStruct, histograms2d, fittings, jetptMin, jetptMax, ptDBinEdges);
 
     // Storing final histograms to output file
     SaveData(outputStruct,jetptMin,jetptMax, deltaRBinEdges, ptjetBinEdges, ptDBinEdges);
@@ -1583,7 +1645,7 @@ void BackgroundSubtraction_with_reflections() {
     }
     // Load pTjet bin edges
     std::vector<double> ptjetBinEdges = LoadBinning(fReflectionsMC, "axes/ptjetBinEdges");
-    //std::vector<double> ptjetBinEdges = {30., 50.};
+    //std::vector<double> ptjetBinEdges = {10., 15.};
     // Load ΔR bin edges
     std::vector<double> deltaRBinEdges = LoadBinning(fReflectionsMC, "axes/deltaRBinEdges");
     // Load pTD bin edges

@@ -1,5 +1,5 @@
 /*
- * .h file containing common functions used in the closure tests
+ * .h file containing common utilities and functions used in the closure tests
  * 
  * 
  * 
@@ -8,6 +8,22 @@
 
 
 using namespace std;
+
+// (Matched from) / (selected as)...:D0 = +1, D0bar = -1, neither = 0
+enum class D0Species : int {
+    D0BAR = -1,
+    NEITHER = 0,
+    D0 = +1
+};
+// Conversion function
+D0Species intToD0Species(int value) {
+    switch(value) {
+        case -1: return D0Species::D0BAR;
+        case 0:  return D0Species::NEITHER;
+        case 1:  return D0Species::D0;
+        default: return D0Species::NEITHER; // Handle unexpected values
+    }
+}
 
 // calculate delta phi such that 0 < delta phi < 2*pi
 double DeltaPhi(double phi1, double phi2) {

@@ -398,20 +398,14 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, TFile* fEffRun2Style, Eff
         double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
         double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
 
-        //bool genLevelRange = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut));
-        //bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut));
-        //including underflow and overflow
         bool genJetPtRange = (MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax);
         bool genHfPtRange = (MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut);
         bool genDeltaRRange = (MCPDeltaR >= deltaRBinEdges_particle[0]) && (MCPDeltaR < MCPDeltaRcut);
         bool genLevelRange = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPDeltaR >= 0.) && (MCPDeltaR < MCPDeltaRcut)); // currently used
-        bool recoJetPtRange = (MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax);
-        bool recoHfPtRange = (MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut);
-        bool recoDeltaRRange = (MCPDeltaR >= deltaRBinEdges_detector[0]) && (MCPDeltaR < MCPDeltaRcut);
+        bool recoJetPtRange = (MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax);
+        bool recoHfPtRange = (MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut);
+        bool recoDeltaRRange = (MCDDeltaR >= deltaRBinEdges_detector[0]) && (MCDDeltaR < MCDDeltaRcut);
         bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDDeltaR >= 0.) && (MCDDeltaR < MCDDeltaRcut)); // currently used
-        
-        // Perform the underflow and overflow handling while filling the response matrix
-        bool doUnderOverFlow = false;
 
         // Get the threshold for this pT range: TODO - do NOT erase this, BDT cuts will be included in next hyperloop wagon
         double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, bdtPtCuts);
@@ -564,7 +558,6 @@ void fillNonMatchedHistograms(TFile* fSimulatedMCNonMatched, EfficiencyData& his
     tree->SetBranchAddress("fMcHfPrompt",&hfprompt);
     tree->SetBranchAddress("fMcHfMatch",&hfmatch);
 
-
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
@@ -601,7 +594,7 @@ void fillNonMatchedHistograms(TFile* fSimulatedMCNonMatched, EfficiencyData& his
     }
     // defining ML score variables for accessing the TTree
     float hfmlscore0, hfmlscore1, hfmlscore2;
-    int jetnconst_int;
+    int jetnconst_int, hfMatchedFrom, hfSelectedAs;
     tree->SetBranchAddress("fJetHfDist",&axisDistance);
     tree->SetBranchAddress("fJetPt",&jetPt);
     tree->SetBranchAddress("fJetEta",&jetEta);
@@ -617,13 +610,16 @@ void fillNonMatchedHistograms(TFile* fSimulatedMCNonMatched, EfficiencyData& his
     tree->SetBranchAddress("fHfMlScore0",&hfmlscore0);
     tree->SetBranchAddress("fHfMlScore1",&hfmlscore1);
     tree->SetBranchAddress("fHfMlScore2",&hfmlscore2);
+    tree->SetBranchAddress("fHfMatchedFrom",&hfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&hfSelectedAs);
 
     nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
         // only compute matched detector level candidates, but compute all particle level ones
-        if (!hfmatch) {
+        bool isReflection = (hfMatchedFrom != hfSelectedAs) ? true : false;
+        if (!hfmatch || isReflection) {
             continue;
         }
         
@@ -1095,6 +1091,15 @@ void PlotHistograms(const EfficiencyData& histStruct, double jetptMin, double je
     cCorrectedData->cd(3);
     histStruct.hEfficiencyCorrected.second->ProjectionY("hEfficiencyCorrectedProjectionDeltaRPrompt")->Draw();
 
+    TCanvas* cCorrectedData2DOnly = new TCanvas("cCorrectedData2DOnly","Background subtracted, efficiency corrected 2D data");
+    cCorrectedData2DOnly->cd();
+    histStruct.hEfficiencyCorrected.second->Draw("colz");
+    TCanvas* cCorrectedData1DOnly = new TCanvas("cCorrectedData1DOnly","Background subtracted, efficiency corrected 1D data");
+    cCorrectedData1DOnly->cd();
+    //histStruct.hEfficiencyCorrected.second->SetMarkerStyle(kCircle);
+    histStruct.hEfficiencyCorrected.second->ProjectionY("hEfficiencyCorrectedProjectionDeltaRPrompt")->Draw();
+
+
     //
     // Storing images
     //
@@ -1144,6 +1149,12 @@ void PlotHistograms(const EfficiencyData& histStruct, double jetptMin, double je
     cCorrectedData->Update();
     cCorrectedData->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cCorrectedData->SaveAs(imagePath + "Efficiency_run3style_corrected_data.png");
+    cCorrectedData2DOnly->Update();
+    cCorrectedData2DOnly->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cCorrectedData2DOnly->SaveAs(imagePath + "Efficiency_run3style_corrected_data_2d_only.png");
+    cCorrectedData1DOnly->Update();
+    cCorrectedData1DOnly->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cCorrectedData1DOnly->SaveAs(imagePath + "Efficiency_run3style_corrected_data_1d_only.png");
 
     //
     // Storing in a single pdf file
@@ -1156,6 +1167,8 @@ void PlotHistograms(const EfficiencyData& histStruct, double jetptMin, double je
     cPtCorrectionComparison->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cSelectionEfficiency->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cCorrectedData->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    // in separate .pdf files
+    cKEffAll->Print(imagePath + "Efficiency_run3style_kinematic_efficiency.pdf");
 
     std::cout << "Histograms plotted.\n";
 

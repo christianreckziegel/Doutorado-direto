@@ -185,7 +185,7 @@ void fillHistograms(TFile* fSimulated, const EfficiencyData& histStruct, double&
     }
     // defining ML score variables for accessing the TTree
     float hfMlScore0, hfMlScore1, hfMlScore2;
-    int jetnconst_int;
+    int jetnconst_int, hfMatchedFrom, hfSelectedAs;
     tree->SetBranchAddress("fJetHfDist",&axisDistance);
     tree->SetBranchAddress("fJetPt",&jetPt);
     tree->SetBranchAddress("fJetEta",&jetEta);
@@ -201,13 +201,16 @@ void fillHistograms(TFile* fSimulated, const EfficiencyData& histStruct, double&
     tree->SetBranchAddress("fHfMlScore0",&hfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&hfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&hfMlScore2);
+    tree->SetBranchAddress("fHfMatchedFrom",&hfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&hfSelectedAs);
 
     nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
         // only compute matched detector level candidates, but compute all particle level ones
-        if (!hfmatch) {
+        bool isReflection = (hfMatchedFrom != hfSelectedAs) ? true : false;
+        if (!hfmatch || isReflection) {
             continue;
         }
         

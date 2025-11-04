@@ -590,11 +590,11 @@ EfficiencyData calculateKinematicEfficiency(TFile* fClosureInputMatched, const s
         bool genJetPtRange = (MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax);
         bool genHfPtRange = (MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut);
         bool genDeltaRRange = (MCPDeltaR >= binningStruct.deltaRBinEdges_particle[0]) && (MCPDeltaR < MCPDeltaRcut);
-        bool genLevelRange = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && genDeltaRRange; // currently used
+        bool genLevelRange = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && genJetPtRange && genHfPtRange && genDeltaRRange; // currently used
         bool recoJetPtRange = (MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax);
         bool recoHfPtRange = (MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut);
         bool recoDeltaRRange = (MCDDeltaR >= binningStruct.deltaRBinEdges_detector[0]) && (MCDDeltaR < MCDDeltaRcut);
-        bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && recoDeltaRRange; // currently used
+        bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && recoJetPtRange && recoHfPtRange && recoDeltaRRange; // currently used
 
         // Get the threshold for this pT range: TODO - do NOT erase this, BDT cuts will be included in next hyperloop wagon
         double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, bdtPtCuts);
@@ -610,7 +610,7 @@ EfficiencyData calculateKinematicEfficiency(TFile* fClosureInputMatched, const s
                 int bin = hEffWeight->FindBin(MCDhfPt);
                 double estimatedEfficiency = hEffWeight->GetBinContent(bin);
                 if (estimatedEfficiency == 0) {
-                    //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
+                    std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
                     estimatedEfficiency = 1; // Avoid division by zero
                 }
                 // Fill 4D RooUnfoldResponse object
@@ -624,7 +624,7 @@ EfficiencyData calculateKinematicEfficiency(TFile* fClosureInputMatched, const s
                 int bin = hEffWeight->FindBin(MCDhfPt);
                 double estimatedEfficiency = hEffWeight->GetBinContent(bin);
                 if (estimatedEfficiency == 0) {
-                    //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
+                    std::cout << "Warning: Non-prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
                     estimatedEfficiency = 1; // Avoid division by zero
                 }
                 // Fill 4D RooUnfoldResponse object
@@ -773,7 +773,7 @@ std::vector<TH1D*> calculateSelectionEfficiencyRun3(TFile* fClosureInputNonMatch
     // defining variables for accessing detector level data on TTree
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
-    int MCDjetnconst;
+    int MCDhfMatchedFrom, MCDhfSelectedAs, MCDjetnconst;
     bool MCDhfmatch;
     //float MCDjetnconst;
     bool MCDhfprompt;
@@ -794,36 +794,32 @@ std::vector<TH1D*> calculateSelectionEfficiencyRun3(TFile* fClosureInputNonMatch
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
     nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
-        // only compute matched detector level candidates, but compute all particle level ones
-        if (!MCDhfmatch) {
-            continue;
-        }
-
         // calculating delta R
         double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
-        
+
         bool recoJetPtRange = (MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax);
         bool recoHfPtRange = (MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut);
         bool recoDeltaRRange = (MCDDeltaR >= binningStruct.deltaRBinEdges_detector[0]) && (MCDDeltaR < MCDDeltaRcut);
         bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && recoJetPtRange && recoHfPtRange && recoDeltaRRange; // currently used
+        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+
+        // only compute matched detector level candidates, but compute all particle level ones
+        if (!MCDhfmatch || isReflection) {
+            continue;
+        }
 
         // Get the threshold for this pT range
         double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, bdtPtCuts);
         bool passBDTcut = (MCDhfMlScore0 < maxBkgProb) ? true : false;
-        //std::cout << "Matched detector level entry." << std::endl;
-        if (recoLevelRange) {
-            //std::cout << "Passed recoLevelRange flag." << std::endl;
-        }
-        if (passBDTcut) {
-            //std::cout << "Passed passBDTcut flag." << std::endl;
-        }
         
         // Fill detector level histograms
-        if (recoLevelRange && passBDTcut) {
+        if (recoLevelRange && passBDTcut) { // default = recoLevelRange && passBDTcut
             
             // fill prompt efficiency histogram
             if (MCDhfprompt) {

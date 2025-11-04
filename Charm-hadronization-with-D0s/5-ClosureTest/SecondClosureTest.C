@@ -17,29 +17,6 @@
 
 using namespace std;
 
-// Already defined in sidebandClosure header file: calculate delta phi such that 0 < delta phi < 2*pi
-// double DeltaPhi(double phi1, double phi2) {
-//     // Compute the absolute difference between phi1 and phi2
-//     double dphi = std::abs(phi1 - phi2); 
-//     if (dphi > M_PI) {
-//         // subtract 2pi if the difference if bigger than pi
-//         dphi = dphi - 2*M_PI;
-//     }
-
-//     return dphi;
-// }
-
-// Already defined in sidebandClosure header file: get the optimal BDT score cut for the corresponding pT,D of the entry
-// double GetBkgProbabilityCut(double pT, const std::vector<std::pair<double, double>>& bdtPtCuts) {
-//     for (size_t i = 0; i < bdtPtCuts.size() - 1; ++i) {
-//         if (pT >= bdtPtCuts[i].first && pT < bdtPtCuts[i + 1].first) {
-//             return bdtPtCuts[i].second;
-//         }
-//     }
-//     return 1.0; // Default: accept all if out of range
-// }
-
-
 struct ClosureTestData2 {
 
     // Input objects: pT,jet vs DeltaR vs pT,D0
@@ -87,7 +64,7 @@ TH2D* CompareClosureTest(TFile* fClosureInputNonMatched, std::vector<TH2D*>& hUn
     TTree* tree = (TTree*)fClosureInputNonMatched->Get("InputTree/O2mcpjetdisttable");
     // Check for correct access
     if (!tree) {
-        cout << "Error opening correction data tree.\n";
+        cout << "Error opening input data tree.\n";
     }
     // defining variables for accessing particle level data on TTree
     float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
@@ -111,7 +88,7 @@ TH2D* CompareClosureTest(TFile* fClosureInputNonMatched, std::vector<TH2D*>& hUn
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
-        // Apply prompt (including reflections) selection (i.e., only c → D0)
+        // Apply prompt (excluding reflections) selection (i.e., only c → D0)
         if (!MCPhfprompt) {
             continue;
         }
@@ -127,6 +104,47 @@ TH2D* CompareClosureTest(TFile* fClosureInputNonMatched, std::vector<TH2D*>& hUn
             
         }
     }
+    bool useAllEffData = false;
+    if (useAllEffData) {
+        tree = (TTree*)fClosureInputNonMatched->Get("CorrectionTree/O2mcpjetdisttable");
+        // Check for correct access
+        if (!tree) {
+            cout << "Error opening correction data tree.\n";
+        }
+        tree->SetBranchAddress("fMcJetHfDist",&MCPaxisDistance);
+        tree->SetBranchAddress("fMcJetPt",&MCPjetPt);
+        tree->SetBranchAddress("fMcJetEta",&MCPjetEta);
+        tree->SetBranchAddress("fMcJetPhi",&MCPjetPhi);
+        tree->SetBranchAddress("fMcJetNConst",&MCPjetNconst);
+        tree->SetBranchAddress("fMcHfPt",&MCPhfPt);
+        tree->SetBranchAddress("fMcHfEta",&MCPhfEta);
+        tree->SetBranchAddress("fMcHfPhi",&MCPhfPhi);
+        MCPhfMass = 1.86483; // D0 rest mass in GeV/c^2
+        tree->SetBranchAddress("fMcHfY",&MCPhfY);
+        tree->SetBranchAddress("fMcHfPrompt",&MCPhfprompt);
+        tree->SetBranchAddress("fMcHfMatch",&MCPhfmatch);
+        int nEntries = tree->GetEntries();
+        for (int entry = 0; entry < nEntries; ++entry) {
+            tree->GetEntry(entry);
+
+            // Apply prompt (excluding reflections) selection (i.e., only c → D0)
+            if (!MCPhfprompt) {
+                continue;
+            }
+
+            // calculating delta R
+            double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
+
+            bool genLevelRange = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= binningStruct.deltaRBinEdges_particle[0]) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut));
+            
+            if (genLevelRange) {
+                // Fill input distribution for particle level
+                hInputParticle->Fill(MCPjetPt, MCPDeltaR);
+                
+            }
+        }
+    }
+    
     // 2 ----- Plot input particle level distribution against unfolded and kinematically corrected distributions
     TCanvas* cClosureTest = new TCanvas("cClosureTest","Second closure test", 1800, 1000);
     cClosureTest->cd();
@@ -210,6 +228,92 @@ TH2D* CompareClosureTest(TFile* fClosureInputNonMatched, std::vector<TH2D*>& hUn
     return hInputParticle;
 }
 
+TCanvas* AnalysisEvolutionSteps(TH2D* inputMCP, TH3D* hBackgroundSubtracted, TH2D* hEfficiencyCorrected, TH2D* hKinCorrBeforeUnfolding, TH2D* hUnfolded, TH2D* hUnfoldedKinCorrected, const BinningStruct& binningStruct) {
+    //
+    TCanvas* cStepsEvolution = new TCanvas("cStepsEvolution", "Analysis steps evolution", 1800, 1000);
+    cStepsEvolution->Divide(2,2);
+
+    int secondBin = 2; // default: 2
+    int lastButOneBin = inputMCP->GetXaxis()->GetNbins() - 1; // default: inputMCP->GetXaxis()->GetNbins() - 1 (penultimate bin)
+    TH1D* hInputParticleProj = inputMCP->ProjectionY("hInputParticleProj_StepsEvolution0", secondBin, lastButOneBin);
+    hInputParticleProj->SetLineColor(kRed+2);
+    hInputParticleProj->SetLineStyle(2);
+    hInputParticleProj->SetLineWidth(2);
+
+    // 1: Background subtracted
+    cStepsEvolution->cd(1);
+    TH2D* hBackgroundSubtracted2d = (TH2D*)hBackgroundSubtracted->Project3D("yx"); // project (pT,jet; DeltaR; pT,D) = (x; y; z) -> (x; y)
+    TH1D* hBackgroundSubtractedProj = (TH1D*)hBackgroundSubtracted2d->ProjectionY("hBackgroundSubtractedProj_StepsEvolution", secondBin, lastButOneBin);
+    hBackgroundSubtractedProj->SetLineColor(kBlue+2);
+    hBackgroundSubtractedProj->SetLineWidth(2);
+    //hBackgroundSubtractedProj->SetTitle("Background subtracted distribution");
+    TH1D* hInputParticleProj1 = (TH1D*)hInputParticleProj->Clone("hInputParticleProj_StepsEvolution1");
+    hInputParticleProj1->SetTitle("Step 1: background subtraction");
+    hInputParticleProj1->Draw();
+    hBackgroundSubtractedProj->Draw("same");
+
+    // 2: Efficiency corrected
+    cStepsEvolution->cd(2);
+    TH1D* hEfficiencyCorrectedProj = (TH1D*)hEfficiencyCorrected->ProjectionY("hEfficiencyCorrectedProj_StepsEvolution", secondBin, lastButOneBin);
+    hEfficiencyCorrectedProj->SetLineColor(kGreen+2);
+    hEfficiencyCorrectedProj->SetLineWidth(2);
+    //hBackgroundSubtractedProj->SetTitle("Background subtracted distribution");
+    TH1D* hInputParticleProj2 = (TH1D*)hInputParticleProj->Clone("hInputParticleProj_StepsEvolution2");
+    hInputParticleProj2->SetTitle("Step 2: efficiency correction");
+    hInputParticleProj2->Draw();
+    hEfficiencyCorrectedProj->Draw("same");
+
+    // 3: Unfolded + kinematic efficiency corrected
+    cStepsEvolution->cd(3);
+    TH1D* hKinCorrBeforeUnfoldingProj = (TH1D*)hKinCorrBeforeUnfolding->ProjectionY("hKinCorrBeforeUnfoldingProj_StepsEvolution", secondBin, lastButOneBin);
+    hKinCorrBeforeUnfoldingProj->SetLineColor(kMagenta+2);
+    hKinCorrBeforeUnfoldingProj->SetLineWidth(2);
+    TH1D* hUnfoldedProj = (TH1D*)hUnfolded->ProjectionY("hUnfoldedProj_StepsEvolution", secondBin, lastButOneBin);
+    hUnfoldedProj->SetLineColor(kOrange+2);
+    hUnfoldedProj->SetLineWidth(2);
+    TH1D* hUnfoldedKinCorrectedProj = (TH1D*)hUnfoldedKinCorrected->ProjectionY("hUnfoldedKinCorrectedProj_StepsEvolution", secondBin, lastButOneBin);
+    hUnfoldedKinCorrectedProj->SetLineColor(kCyan+2);
+    hUnfoldedKinCorrectedProj->SetLineWidth(2);
+    //hBackgroundSubtractedProj->SetTitle("Background subtracted distribution");
+    TH1D* hInputParticleProj3 = (TH1D*)hInputParticleProj->Clone("hInputParticleProj_StepsEvolution3");
+    hInputParticleProj3->SetTitle("Step 3: unfolding and kinematic efficiency correction");
+    hInputParticleProj3->Draw();
+    hKinCorrBeforeUnfoldingProj->Draw("same");
+    hUnfoldedProj->Draw("same");
+    hUnfoldedKinCorrectedProj->Draw("same");
+
+    // 4: altogether
+    cStepsEvolution->cd(4);
+    //hBackgroundSubtractedProj->SetTitle("Background subtracted distribution");
+    hInputParticleProj->SetTitle("All steps combined");
+    hInputParticleProj->Draw();
+    hBackgroundSubtractedProj->Draw("same");
+    hEfficiencyCorrectedProj->Draw("same");
+    hKinCorrBeforeUnfoldingProj->Draw("same");
+    hUnfoldedProj->Draw("same");
+    hUnfoldedKinCorrectedProj->Draw("same");
+
+    TLegend* legend = new TLegend(0.5,0.5,0.85,0.85);
+    legend->AddEntry(hInputParticleProj, "Input particle level", "le");
+    legend->AddEntry(hBackgroundSubtractedProj, "1 - After background subtraction", "le");
+    legend->AddEntry(hEfficiencyCorrectedProj, "2 - After efficiency correction", "le");
+    legend->AddEntry(hKinCorrBeforeUnfoldingProj, "3.1 - #varepsilon_{kin} correction before unfolding", "le");
+    legend->AddEntry(hUnfoldedProj, "3.2 - After unfolding", "le");
+    legend->AddEntry(hUnfoldedKinCorrectedProj, "3.3 - #varepsilon_{kin} correction after unfolding", "le");
+    legend->Draw();
+
+    double reportingJetPtMin = hUnfoldedKinCorrected->GetXaxis()->GetBinLowEdge(secondBin);
+    double reportingJetPtMax = hUnfoldedKinCorrected->GetXaxis()->GetBinUpEdge(lastButOneBin);
+
+    TLatex* latex = new TLatex();
+    latex->SetNDC(); // Set the coordinates to be normalized device coordinates
+    latex->SetTextSize(0.04);
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+
+
+    return cStepsEvolution;
+}
+
 void StoreSecondClosureTest(TH3D* hBackgroundSubtracted, EfficiencyData& efficiencyDatacontainer, UnfoldData& unfoldDataContainer) {
     //
     TFile* fOutput = new TFile("SecondClosureTestResults.root","recreate");
@@ -241,6 +345,58 @@ void StoreSecondClosureTest(TH3D* hBackgroundSubtracted, EfficiencyData& efficie
     fOutput->Close();
 }
 
+void InvestigateNonmatchingProblem(UnfoldData& unfoldDataContainer, std::vector<TH2D*>& hUnfKinCorrected, TH2D* inputMCP) {
+    //
+    TCanvas* cProblemRatio = new TCanvas("cProblemRatio","Investigate non-matching of final and inicial distributions", 1800, 1000);
+    cProblemRatio->cd();
+    TLegend* lUnfoldedIter = new TLegend(0.6,0.57,0.7,0.77);
+    std::vector<TH1D*> hUnfoldedProj(hUnfKinCorrected.size());
+    int secondBin = 2;
+    int lastButOneBin = hUnfKinCorrected[0]->GetXaxis()->GetNbins() - 1; // penultimate bin
+    for (size_t iIter = 0; iIter < hUnfKinCorrected.size(); iIter++) {
+        // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
+        hUnfoldedProj[iIter] = hUnfKinCorrected[iIter]->ProjectionY(Form("hProjIterInvestigation_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
+        hUnfoldedProj[iIter]->SetLineColor(kBlack + iIter);
+        lUnfoldedIter->AddEntry(hUnfoldedProj[iIter],Form("Iteration %zu", iIter+1), "le");
+        if (iIter == 0) {
+            hUnfoldedProj[iIter]->SetTitle("Closure test 2: background subtraction+efficiency+unfolding");
+            //hUnfoldedProj[iIter]->Draw();
+        } else {
+            //hUnfoldedProj[iIter]->Draw("same");
+        }
+        
+    }
+    //hUnfoldedProj[hUnfoldedProj.size() - 1]->Draw();
+    TH1D* hInputParticleProj = inputMCP->ProjectionY("hInputParticleProjInvestigation", secondBin, lastButOneBin);
+    hInputParticleProj->SetLineColor(kRed);
+    hInputParticleProj->SetLineStyle(2);
+    //hInputParticleProj->Draw("same");
+    hInputParticleProj->Divide(hUnfoldedProj[hUnfoldedProj.size() - 1]);
+    hInputParticleProj->Draw();
+    lUnfoldedIter->AddEntry(hInputParticleProj, "Input particle level", "le");
+    //lUnfoldedIter->Draw();
+    double reportingJetPtMin = hUnfKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
+    double reportingJetPtMax = hUnfKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+    TLatex* latex = new TLatex();
+    latex->SetNDC(); // Set the coordinates to be normalized device coordinates
+    latex->SetTextSize(0.03);
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+    // latex->DrawLatex(0.55, 0.5, Form("Unfolded integral (MC detector) = %.3f", hUnfoldedProj[hUnfoldedProj.size()-1]->Integral()));
+    // latex->DrawLatex(0.55, 0.45, Form("Input integral (MC particle) = %.3f", hInputParticleProj->Integral()));
+    // latex->DrawLatex(0.55, 0.4, Form("Unfolded / Input = %.3f", hUnfoldedProj[hUnfoldedProj.size()-1]->Integral() / hInputParticleProj->Integral()));
+
+    // Investigate response matrices
+    // TCanvas* cResponseMatrices = new TCanvas("cResponseMatrices","Response matrices investigation", 1800, 1000);
+    // cResponseMatrices->Divide(2,2);
+    // for (size_t iIter = 0; iIter < unfoldDataContainer.unfold.size(); ++iIter) {
+    //     cResponseMatrices->cd(iIter + 1);
+    //     TH2D* hResponseMatrix = (TH2D*)unfoldDataContainer.unfold[iIter]->Hresponse();
+    //     hResponseMatrix->SetTitle(Form("Response matrix - iteration %zu", iIter + 1));
+    //     hResponseMatrix->GetXaxis()->SetTitle("Detector level: p_{T,jet} (GeV/c)");
+    //     hResponseMatrix->GetYaxis()->SetTitle("Particle level: p_{T,jet} (GeV/c)");
+    //     hResponseMatrix->Draw("text");
+    // }
+}
 // 2 - Sideband subtraction + efficiency correction + unfolding closure test
 void SecondClosureTest(){
     // Execution time calculation
@@ -328,7 +484,12 @@ void SecondClosureTest(){
     // ----4: Compare input (MC particle level) with output (background subtracted, efficiency corrected, unfolded) distributions
     TH2D* inputMCP = CompareClosureTest(fClosureInputNonMatched, unfoldDataContainer.hUnfoldedKinCorrected, binningStruct);
 
+    // ----5: Compare correction after each step of the analysis chain
+    TCanvas* cStepsEvolution = AnalysisEvolutionSteps(inputMCP, hBackgroundSubtracted, hEfficiencyCorrected, unfoldDataContainer.hCorrectedInput, unfoldDataContainer.hUnfolded[iterationNumber - 1], unfoldDataContainer.hUnfoldedKinCorrected[iterationNumber - 1], binningStruct);
+
     StoreSecondClosureTest(hBackgroundSubtracted, efficiencyDatacontainer, unfoldDataContainer);
+
+    InvestigateNonmatchingProblem(unfoldDataContainer, unfoldDataContainer.hUnfoldedKinCorrected, inputMCP);
 
     time(&end); // end instant of program execution
     

@@ -85,6 +85,8 @@ struct FeedDownData {
     std::vector<TH2D*> hKineEffParticle = {nullptr, nullptr, nullptr}; // particle level (addition): [0] = numerator, [1] = denominator, [2] = efficiency
     std::vector<TH2D*> hKineEffDetector = {nullptr, nullptr, nullptr}; // detector level (removal): [0] = numerator, [1] = denominator, [2] = efficiency
     RooUnfoldResponse response; // response matrix for folding
+    TH2D* hResponseDeltaR;
+    TH2D* hResponsePtJet;
     TH2D* hProjected2DKinCorrected = nullptr; // 3D histogram projection with particle level kinematic efficiency correction
     TH2D* hMeasuredTemplate = nullptr; // template for measured data (jet pT vs DeltaR), used for hFolded binning
     TH2D* hFolded2D = nullptr; // folded 2D histogram (jet pT vs DeltaR)
@@ -158,6 +160,15 @@ FeedDownData createHistograms(const std::vector<double>& ptjetBinEdges_particle,
     dataContainer.hMeasuredTemplate = new TH2D("hMeasuredTemplate", "Folded 2D histogram;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}", 
                                                                                   ptjetBinEdges_detector.size() - 1, ptjetBinEdges_detector.data(), 
                                                                                   deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data());
+    //
+    // Response matrix projections
+    //
+    dataContainer.hResponseDeltaR = new TH2D("hResponseDeltaR","Response matrix #DeltaR projection;#DeltaR^{reco};#DeltaR^{gen}",
+                                                                                  deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data(),
+                                                                                  deltaRBinEdges_particle.size() - 1, deltaRBinEdges_particle.data());
+    dataContainer.hResponsePtJet = new TH2D("hResponsePtJet","Response matrix p_{T,jet} projection;p_{T,jet}^{reco ch};p_{T,jet}^{gen}",
+                                                                                  ptjetBinEdges_detector.size() - 1, ptjetBinEdges_detector.data(),
+                                                                                  ptjetBinEdges_particle.size() - 1, ptjetBinEdges_particle.data());
     std::cout << "Histograms created.\n";
 
     return dataContainer;
@@ -339,6 +350,8 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, FeedDownData& dataContain
             double efficiency_prompt = dataContainer.hSelectionEfficiency.first->GetBinContent(bin);
             // Fill 4D RooUnfoldResponse object (jet pT shape is influenced by D0 pT efficiency)
             dataContainer.response.Fill(MCDjetPt, MCDDeltaR, MCPjetPt, MCPDeltaR, 1./efficiency_prompt);
+            dataContainer.hResponseDeltaR->Fill(MCDDeltaR,MCPDeltaR,1./efficiency_prompt);
+            dataContainer.hResponsePtJet->Fill(MCDjetPt,MCPjetPt,1./efficiency_prompt);
             
             // Fill kinematic efficiency numerator histograms
             dataContainer.hKineEffParticle[0]->Fill(MCPjetPt, MCPDeltaR);
@@ -573,7 +586,7 @@ void smearGeneratorData(FeedDownData& dataContainer, double& luminosity_powheg, 
     dataContainer.hProjected2D->SetTitle("2nd step: projected POWHEG efficiency corrected histogram;p_{T,jet}^{gen} (GeV/#it{c});#DeltaR");
 
     //
-    // 3.1th step: remove outside of response range data in POWHEG (apply particle levelkinematic efficiency)
+    // 3.1th step: remove outside of response range data in POWHEG (apply particle level kinematic efficiency)
     //
     removeOutsideData(dataContainer);
 
@@ -637,6 +650,12 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     TH2D* hresponse2DClone = static_cast<TH2D*>(hresponse2D->Clone("hResponse2D"));
     hresponse2DClone->SetTitle("2D response matrix from 4D RooUnfoldResponse - non-prompt D^{0}'s;2D Reconstructed;2D Truth");
     hresponse2DClone->Draw("colz");
+    TCanvas* cResponseDeltaR = new TCanvas("cResponseDeltaR","cResponseDeltaR");
+    cResponseDeltaR->cd();
+    dataContainer.hResponseDeltaR->Draw("colz");
+    TCanvas* cResponsePtJet = new TCanvas("cResponsePtJet","cResponsePtJet");
+    cResponsePtJet->cd();
+    dataContainer.hResponsePtJet->Draw("colz");
     //
     // Kinematic efficiency histograms
     //
@@ -655,6 +674,14 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     dataContainer.hKineEffDetector[1]->Draw("colz"); // denominator
     cKinEfficiency->cd(6);
     dataContainer.hKineEffDetector[2]->Draw("text"); // efficiency
+    TCanvas* cKinEffParticle = new TCanvas("cKinEffParticle","cKinEffParticle");
+    cKinEffParticle->cd();
+    dataContainer.hKineEffParticle[2]->SetTitle("Particle level kinematic efficiency (non-prompt D^{0}'s)");
+    dataContainer.hKineEffParticle[2]->Draw("text");
+    TCanvas* cKinEffDetector = new TCanvas("cKinEffDetector","cKinEffDetector");
+    cKinEffDetector->cd();
+    dataContainer.hKineEffDetector[2]->SetTitle("Detector level kinematic efficiency (non-prompt D^{0}'s)");
+    dataContainer.hKineEffDetector[2]->Draw("text");
     
     //
     // Folded data
@@ -675,6 +702,12 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     dataContainer.hBFedDownData->Draw("colz");
     cFedDownData->cd(2);
     dataContainer.hBFedDownData->ProjectionY("hBFedDownDataDeltaR")->Draw();
+    TCanvas* cFedDownData2DOnly = new TCanvas("cFedDownData2DOnly","Background subtracted, efficiency corrected, fed down 2D data distribution");
+    cFedDownData2DOnly->cd();
+    dataContainer.hBFedDownData->Draw("colz");
+    TCanvas* cFedDownData1DOnly = new TCanvas("cFedDownData1DOnly","Background subtracted, efficiency corrected, fed down 1D data distribution");
+    cFedDownData1DOnly->cd();
+    dataContainer.hBFedDownData->ProjectionY("hBFedDownDataDeltaR")->Draw();
 
     //
     // Storing images
@@ -689,12 +722,30 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     cKinEfficiency->Update();
     cKinEfficiency->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cKinEfficiency->SaveAs(imagePath + "kinematic_efficiencies.png");
+    cKinEffParticle->Update();
+    cKinEffParticle->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cKinEffParticle->SaveAs(imagePath + "kinematic_efficiency_particle.png");
+    cKinEffDetector->Update();
+    cKinEffDetector->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cKinEffDetector->SaveAs(imagePath + "kinematic_efficiency_detector.png");
     cFolded->Update();
     cFolded->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cFolded->SaveAs(imagePath + "folded_stages.png");
     cFedDownData->Update();
     cFedDownData->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
     cFedDownData->SaveAs(imagePath + "fed_down_data.png");
+    cFedDownData2DOnly->Update();
+    cFedDownData2DOnly->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cFedDownData2DOnly->SaveAs(imagePath + "fed_down_2d_data.png");
+    cFedDownData1DOnly->Update();
+    cFedDownData1DOnly->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cFedDownData1DOnly->SaveAs(imagePath + "fed_down_1d_data.png");
+    cResponseDeltaR->Update();
+    cResponseDeltaR->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cResponseDeltaR->SaveAs(imagePath + "response_matrix_proj_deltar.png");
+    cResponsePtJet->Update();
+    cResponsePtJet->SetWindowSize(1920, 1080);  // Optional: Match window size for viewing.
+    cResponsePtJet->SaveAs(imagePath + "response_matrix_proj_ptjet.png");
 
     //
     // Storing in a single pdf file
@@ -704,6 +755,9 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     cKinEfficiency->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cFolded->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cFedDownData->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    // in separate .pdf file
+    cKinEffParticle->Print(imagePath + "kinematic_efficiency_particle.pdf");
+    cKinEffDetector->Print(imagePath + "kinematic_efficiency_detector.pdf");
 
 }
 

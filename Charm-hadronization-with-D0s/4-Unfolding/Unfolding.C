@@ -191,7 +191,7 @@ void fillHistograms(TFile* fFeedDown, TFile* fEfficiency, TFile* fSimulatedMCMat
         std::cout << "Error: failed to acquire background subtracted, efficiency corrected, fed-down distribution acquired." << std::endl;
     }
 
-    // Access prompt efficiency
+    // Access prompt and non-prompt efficiency
     dataContainer.hSelectionEfficiency.first = (TH1D*)fEfficiency->Get("hSelectionEfficiencyPrompt");
     dataContainer.hSelectionEfficiency.second = (TH1D*)fEfficiency->Get("hSelectionEfficiencyNonPrompt");
     if (dataContainer.hSelectionEfficiency.first || dataContainer.hSelectionEfficiency.second) {
@@ -485,6 +485,14 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     dataContainer.hKineEffDetector[2]->Draw("text");
     cKinEff->cd(2);
     dataContainer.hKineEffParticle[2]->Draw("text");
+    TCanvas* cKinEffParticle = new TCanvas("cKinEffParticle","Particle level kinematic efficiency");
+    cKinEffParticle->cd();
+    dataContainer.hKineEffParticle[2]->SetTitle("Particle level kinematic efficiency (prompt D^{0}'s)");
+    dataContainer.hKineEffParticle[2]->Draw("text");
+    TCanvas* cKinEffDetector = new TCanvas("cKinEffDetector","Detector level kinematic efficiency");
+    cKinEffDetector->cd();
+    dataContainer.hKineEffDetector[2]->SetTitle("Detector level kinematic efficiency (prompt D^{0}'s)");
+    dataContainer.hKineEffDetector[2]->Draw("text");
 
     TCanvas* cResponse = new TCanvas("cResponse","Response matrix 2D representation");
     cResponse->Divide(2,2);
@@ -496,6 +504,12 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     cResponse->cd(2);
     dataContainer.hResponse2D[0]->Draw("colz");
     cResponse->cd(3);
+    dataContainer.hResponse2D[1]->Draw("colz");
+    TCanvas* cResponseDeltaR = new TCanvas("cResponseDeltaR","Response matrix DeltaR projection");
+    cResponseDeltaR->cd();
+    dataContainer.hResponse2D[0]->Draw("colz");
+    TCanvas* cResponsePtJet = new TCanvas("cResponsePtJet","Response matrix pT,jet projection");
+    cResponsePtJet->cd();
     dataContainer.hResponse2D[1]->Draw("colz");
 
     TCanvas* cUnfoldedIter = new TCanvas("cUnfoldedIter","Unfolded histograms for each iteration");
@@ -510,6 +524,7 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
         hUnfoldedKinCorrectedProj[iIter]->SetLineColor(kBlack + iIter);
         lUnfoldedIter->AddEntry(hUnfoldedKinCorrectedProj[iIter],Form("Iteration %zu", iIter+1), "le");
         if (iIter == 0) {
+            hUnfoldedKinCorrectedProj[iIter]->SetTitle("Unfolded with #epsilon^{particle}_{kin} correction");
             hUnfoldedKinCorrectedProj[iIter]->Draw();
         } else {
             hUnfoldedKinCorrectedProj[iIter]->Draw("same");
@@ -548,6 +563,7 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
         dataContainer.hRefolded[iHisto]->SetLineColor(kBlack + iHisto);
         lRefoldedIter->AddEntry(dataContainer.hRefolded[iHisto],Form("Refolded Iteration %zu with #epsilon_{kin}^{part} correction", iHisto+1), "le");
         if (iHisto == 0) {
+            dataContainer.hRefolded[iHisto]->ProjectionY(Form("hRefolded_iter%zu_Proj",iHisto+1))->SetTitle("Refolding test");
             dataContainer.hRefolded[iHisto]->ProjectionY(Form("hRefolded_iter%zu_Proj",iHisto+1))->Sumw2();
             dataContainer.hRefolded[iHisto]->ProjectionY(Form("hRefolded_iter%zu_Proj",iHisto+1))->Draw();
         } else {
@@ -567,26 +583,37 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     auto* hLastRefolded = dataContainer.hRefolded.back();
     // Define bin ranges
     int bin7  = hLastRefolded->GetXaxis()->FindBin(7.0);
+    int bin10  = hLastRefolded->GetXaxis()->FindBin(10.0);
     int bin15 = hLastRefolded->GetXaxis()->FindBin(15.0);
     int bin30 = hLastRefolded->GetXaxis()->FindBin(30.0);
     // Create projections for refolded
-    auto* hProj_7_15 = hLastRefolded->ProjectionY("hRefolded_iter_8_Proj_7_15GeV", bin7, bin15);
-    hProj_7_15->SetLineColor(kBlue);
-    hProj_7_15->Draw();
-    lRefoldedPtRanges->AddEntry(hProj_7_15, "Refolded: 7 < p_{T,jet} < 15", "le");
+    auto* hProj_7_10 = hLastRefolded->ProjectionY("hRefolded_iter_8_Proj_7_10GeV", bin7, bin10);
+    hProj_7_10->SetLineColor(kBlue);
+    hProj_7_10->Draw();
+    lRefoldedPtRanges->AddEntry(hProj_7_10, "Refolded: 7 < p_{T,jet} < 10", "le");
+    auto* hProj_10_15 = hLastRefolded->ProjectionY("hRefolded_iter_8_Proj_10_15GeV", bin10+1, bin15);
+    hProj_10_15->SetLineColor(kBlack);
+    hProj_10_15->Draw("same");
+    lRefoldedPtRanges->AddEntry(hProj_10_15, "Refolded: 10 < p_{T,jet} < 15", "le");
     auto* hProj_15_30 = hLastRefolded->ProjectionY("hRefolded_iter_8_Proj_15_30GeV", bin15+1, bin30);
     hProj_15_30->SetLineColor(kRed);
     hProj_15_30->Draw("same");
     lRefoldedPtRanges->AddEntry(hProj_15_30, "Refolded: 15 < p_{T,jet} < 30", "le");
     // Create projections for original (BFedDown) data
     bin7  = dataContainer.hBFedDownDataKinCorrected->GetXaxis()->FindBin(7.0);
+    bin10 = dataContainer.hBFedDownDataKinCorrected->GetXaxis()->FindBin(10.0);
     bin15 = dataContainer.hBFedDownDataKinCorrected->GetXaxis()->FindBin(15.0);
     bin30 = dataContainer.hBFedDownDataKinCorrected->GetXaxis()->FindBin(30.0);
-    auto* hOrig_7_15 = dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY_7_15GeV", bin7, bin15);
-    hOrig_7_15->SetLineColor(kBlue);
-    hOrig_7_15->SetLineStyle(2); // dashed line for distinction
-    hOrig_7_15->Draw("same");
-    lRefoldedPtRanges->AddEntry(hOrig_7_15, "Original: 7 < p_{T,jet} < 15", "le");
+    auto* hOrig_7_10 = dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY_7_10GeV", bin7, bin10);
+    hOrig_7_10->SetLineColor(kBlue);
+    hOrig_7_10->SetLineStyle(2); // dashed line for distinction
+    hOrig_7_10->Draw("same");
+    lRefoldedPtRanges->AddEntry(hOrig_7_10, "Original: 7 < p_{T,jet} < 10", "le");
+    auto* hOrig_10_15 = dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY_10_15GeV", bin10+1, bin15);
+    hOrig_10_15->SetLineColor(kBlack);
+    hOrig_10_15->SetLineStyle(2); // dashed line for distinction
+    hOrig_10_15->Draw("same");
+    lRefoldedPtRanges->AddEntry(hOrig_10_15, "Original: 10 < p_{T,jet} < 15", "le");
     auto* hOrig_15_30 = dataContainer.hBFedDownDataKinCorrected->ProjectionY("hBFedDownDataKinCorrectedProjY_15_30GeV", bin15+1, bin30);
     hOrig_15_30->SetLineColor(kRed);
     hOrig_15_30->SetLineStyle(2);
@@ -600,8 +627,16 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     TString imagePath = "../Images/4-Unfolding/";
     cKinEff->Update();
     cKinEff->SaveAs(imagePath + "Unfolding_kin_efficiencies.png");
+    cKinEffParticle->Update();
+    cKinEffParticle->SaveAs(imagePath + "Unfolding_kin_efficiency_particle.png");
+    cKinEffDetector->Update();
+    cKinEffDetector->SaveAs(imagePath + "Unfolding_kin_efficiency_detector.png");
     cResponse->Update();
     cResponse->SaveAs(imagePath + "Unfolding_response.png");
+    cResponseDeltaR->Update();
+    cResponseDeltaR->SaveAs(imagePath + "Unfolding_response_deltar.png");
+    cResponsePtJet->Update();
+    cResponsePtJet->SaveAs(imagePath + "Unfolding_response_ptjet.png");
     cUnfoldedIter->Update();
     cUnfoldedIter->SaveAs(imagePath + "Unfolding_unfolded_iterations.png");
     cRefoldedIter->Update();
@@ -617,9 +652,14 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     cUnfoldedIter->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cRefoldedIter->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cRefoldedPtRanges->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
-    //cKinEfficiency->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    //cFolded->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    //cFedDownData->Print(imagePath + Form("feeddown_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    //cKinEfficiency->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    //cFolded->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    //cFedDownData->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    // in separate .pdf file
+    cKinEffParticle->Print(imagePath + "Unfolding_kin_efficiency_particle.pdf");
+    cKinEffDetector->Print(imagePath + "Unfolding_kin_efficiency_detector.pdf");
+    cUnfoldedIter->Print(imagePath + "Unfolding_unfolded_iterations.pdf");
+    cRefoldedIter->Print(imagePath + "Unfolding_refolded_comparison.pdf");
 
 }
 
