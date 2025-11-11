@@ -18,11 +18,12 @@ double DeltaPhi(double phi1, double phi2) {
 }
 // Define the enum class with descriptive names
 enum class FitModelType {
-    FullPowerLaw,           // Signal + Reflections + power law Background,
-    FullPoly2,             // Signal + Reflections + 2nd order polynominal Background,
-    SignalReflectionsOnly,     // Signal + Reflections only
-    SignalOnly,     // Only Signal
-    ReflectionsOnly         // Only Reflections
+    FullPowerLaw,                   // Signal + Reflections + power law Background,
+    FullPoly2,                      // Signal + Reflections + 2nd order polynominal Background,
+    FullSingleGaussian,             // Signal as single Gaussian + Reflections + power law background,
+    SignalReflectionsOnly,          // Signal + Reflections only
+    SignalOnly,                     // Only Signal
+    ReflectionsOnly                 // Only Reflections
 };
 //_________________________________Template for on-the-run chosen model (policy-based strategy)________________________________________________
 struct PowerLawBackgroundPolicy {
@@ -43,7 +44,7 @@ struct Poly2BackgroundPolicy {
         Double_t p1 = par[1];   // linear term
         Double_t p2 = par[13];  // quadratic term (use a new index!)
 
-        Double_t result = p0 + p1 * m + p2 * m * m;
+        Double_t result = p2 + p1 * m + p0 * m * m;
         return result;
     }
 };
@@ -60,6 +61,18 @@ struct SignalPolicy {
 
         // Defining the custom function
         Double_t result = A1Signal * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma1), 2)) + A2Signal * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma2), 2));
+        return result;
+    }
+};
+struct SignalSinglePolicy { // need to implement in Reflections.C macro as well
+    static double eval(double* x, double* par) {
+        Double_t m = x[0];
+        Double_t A1Signal = par[2];                                         // Free parameter
+        Double_t m0 = par[4];                                               // Free parameter
+        Double_t sigma1 = par[5];                                           // Free parameter
+        
+        // Defining the custom function
+        Double_t result = A1Signal * TMath::Exp(-TMath::Power((m - m0) / (2 * sigma1), 2));
         return result;
     }
 };
@@ -96,17 +109,18 @@ double fitWrapper(double* x, double* par) {
     return Model::eval(x, par);
 }
 // Compile time polymorphism via policy-based design for fit models
-using FullModelPowerLaw = FitModel<SignalPolicy, ReflectionPolicy, PowerLawBackgroundPolicy>;   // Signal + Reflection + power law Background
-using FullModelPoly2 = FitModel<SignalPolicy, ReflectionPolicy, Poly2BackgroundPolicy>;   // Signal + Reflection + 2nd order polynomial Background
-using SigRefModel = FitModel<SignalPolicy, ReflectionPolicy>;                   // Signal + Reflection only
+using FullModelPowerLaw = FitModel<SignalPolicy, ReflectionPolicy, PowerLawBackgroundPolicy>;               // Signal + Reflection + power law Background
+using FullModelPoly2 = FitModel<SignalPolicy, ReflectionPolicy, Poly2BackgroundPolicy>;                     // Signal + Reflection + 2nd order polynomial Background
+using SigRefModel = FitModel<SignalPolicy, ReflectionPolicy>;                                               // Signal + Reflection only
+using FullSingleGaussianModel = FitModel<SignalSinglePolicy, ReflectionPolicy, PowerLawBackgroundPolicy>;   // Single Gaussian Signal + Reflection + power law Background
 //__________________________________________________________________________________________________________________________
 // Fit functions
 // Custom fit functions for full fit, background, signal, and reflection components
 Double_t backgroundFunctionPoly2(Double_t* x, Double_t* par) {
     Double_t m = x[0];
-    Double_t p0 = par[0];   // constant term
+    Double_t p0 = par[2];   // constant term
     Double_t p1 = par[1];   // linear term
-    Double_t p2 = par[2];  // quadratic term (use a new index!)
+    Double_t p2 = par[0];  // quadratic term (use a new index!)
 
     // Defining the custom function
     Double_t result = p0 + p1 * m + p2 * m * m;
@@ -425,8 +439,8 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
             fittings.fitTotal.push_back(new TF1(Form("totalFit_histMass%zu_%0.f_to_%0.fGeV", iHisto + 1, jetptMin, jetptMax), fitWrapper<SigRefModel>, minMass, maxMass, 13));
         }
 
-        // Set initial values and fix parameters
-        Double_t params[14] = {200000, -10.0, 1000, 1.5, m_0_reference, 0.02, 1.2, 2.0, 1.3, 1.83, 1.85, 0.02, 0.03, 2}; // last parameter only for poly2 background
+        // Set initial values and fix parameters (original background amplitude guess = 200000)
+        Double_t params[14] = {200, -10.0, 1000, 1.5, m_0_reference, 0.02, 1.2, 2.0, 1.3, 1.83, 1.85, 0.02, 0.03, 2}; // last parameter only for poly2 background
         fittings.fitTotal[iHisto]->SetParameters(params);
 
         // Set parameter names
@@ -455,10 +469,43 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
         fittings.fitTotal[iHisto]->FixParameter(12, sigma2Reflections); // sigma_2
 
         // Apply range limits to the parameters
-        //fittings.fitTotal[iHisto]->SetParLimits(0, 0., TMath::Infinity()); // only accepts non-negative background fits
+        fittings.fitTotal[iHisto]->SetParLimits(0, 0., TMath::Infinity()); // only accepts non-negative background fits
         fittings.fitTotal[iHisto]->SetParLimits(2, 0., TMath::Infinity()); // only accepts non-negative primary gaussian amplitude
-        fittings.fitTotal[iHisto]->SetParLimits(4, 0.95 * m_0_reference, 1.05 * m_0_reference);
+        fittings.fitTotal[iHisto]->SetParLimits(4, 0.95 * m_0_reference, 1.05 * m_0_reference); // mean invariant mass should be around the one from literature
         fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 3.0 * sigma_reference);
+        //---------Force polynomial fit to work with specific constrains to each pT,jet and pT,D bin
+        if (modelToUse == FitModelType::FullPoly2) {
+            fittings.fitTotal[iHisto]->SetParLimits(1, -TMath::Infinity(), 0.); // minimum of parabole is positive -> b < 0
+            fittings.fitTotal[iHisto]->SetParLimits(13, 0., TMath::Infinity()); // x=0 crosses y axis on a positive value -> c > 0
+            //fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference); // mean invariant mass should be around the one from literature
+            // choose pT,jet
+            if ((jetptMin == 5) && (jetptMax == 7)) {
+                if (iHisto == 4) { // pT,D in [5,6]GeV/c
+                    fittings.fitTotal[iHisto]->SetParLimits(4, 0.96 * m_0_reference, 1.04 * m_0_reference);
+                }
+            } else if ((jetptMin == 15) && (jetptMax == 30)) {
+                if (iHisto == 2) {// pT,D in [3,4]GeV/c
+                    fittings.fitTotal[iHisto]->SetParLimits(4, 0.96 * m_0_reference, 1.04 * m_0_reference);
+                } else if (iHisto == 5) { // pT,D in [6,7]GeV/c
+                    fittings.fitTotal[iHisto]->SetParLimits(4, 0.96 * m_0_reference, 1.04 * m_0_reference);
+                } else if (iHisto == 6) { // pT,D in [7,8]GeV/c
+                    fittings.fitTotal[iHisto]->SetParLimits(5, 0.9 * sigma_reference, 3.0 * sigma_reference);
+                }
+            } else if ((jetptMin == 30) && ((jetptMax == 50))) {
+                //fittings.fitTotal[iHisto]->SetParLimits(5, 1.0 * sigma_reference, 3.0 * sigma_reference);
+                if (iHisto == 5) { // pT,D in [6,7]GeV/c
+                    fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference);
+                } else if (iHisto == 6) { // pT,D in [7,8]GeV/c
+                    fittings.fitTotal[iHisto]->SetParLimits(5, 1.5 * sigma_reference, 4.0 * sigma_reference);
+                } else if (iHisto == 7) { // pT,D in [8,9]GeV/c
+                    fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference);
+                } else if (iHisto == 8) { // pT,D in [9,10]GeV/c
+                    fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference);
+                }
+            }
+            
+        }
+        //---------
 
         // Choose line color
         fittings.fitTotal[iHisto]->SetLineColor(kBlack);
@@ -510,13 +557,13 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
     int numberOfFits = fittings.fitTotal.size();
     for (size_t iHisto = 0; iHisto < numberOfFits; iHisto++) {
         if (modelToUse == FitModelType::FullPowerLaw) { // backgroundFunctionPowerLaw
-            // Getting total parameter values
+            // Getting total parameter values (a * exp(b*x))
             double a_par = fittings.fitTotal[iHisto]->GetParameter(0); // Get the value of parameter 'a'
             double b_par = fittings.fitTotal[iHisto]->GetParameter(1); // Get the value of parameter 'b'
             fittings.fitBackgroundOnly.push_back(new TF1(Form("backgroundOnlyFit_%zu", iHisto), backgroundFunction, minMass, maxMass, 2));
             fittings.fitBackgroundOnly[iHisto]->SetParameters(a_par,b_par); // fittings.size()-1 = the latest added to the vector
         } else if (modelToUse == FitModelType::FullPoly2) { // backgroundFunctionPoly2
-            // Getting total parameter values
+            // Getting total parameter values (f(x) = a*x² + b*x + c)
             double a_par = fittings.fitTotal[iHisto]->GetParameter(0); // Get the value of parameter 'a'
             double b_par = fittings.fitTotal[iHisto]->GetParameter(1); // Get the value of parameter 'b'
             double c_par = fittings.fitTotal[iHisto]->GetParameter(13); // Get the value of parameter 'c'
@@ -1132,6 +1179,8 @@ void PlotHistograms(const SubtractionResult& outputStruct, const std::vector<TH2
         histograms[iHisto]->SetLineColor(kBlack);
         histograms[iHisto]->GetYaxis()->SetTitle("counts");
         histograms[iHisto]->SetMinimum(0);
+        //histograms[iHisto]->SetMaximum(4000);
+        //fittings.fitBackgroundOnly[iHisto]->Draw();
         histograms[iHisto]->Draw();
         fittings.fitTotal[iHisto]->Draw("same");
         fittings.fitSignalOnly[iHisto]->Draw("same");
@@ -1502,7 +1551,7 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     fillHistograms(fDist, histograms2d, jetptMin, jetptMax, ptDBinEdges, deltaRBinEdges, bdtPtCuts);
 
     // Perform fits
-    FitModelType modelToUse = FitModelType::FullPowerLaw; // options: FullPowerLaw, FullPoly2, SignalReflectionsOnly, SignalOnly, ReflectionsOnly
+    FitModelType modelToUse = FitModelType::FullPoly2; // options: FullPowerLaw, FullPoly2, SignalReflectionsOnly, SignalOnly, ReflectionsOnly
     FitContainer fittings = performFit(fReflectionsMC, histograms2d, minMass, maxMass, modelToUse, jetptMin, jetptMax);
 
     // signal/side-band region parameters
@@ -1645,7 +1694,7 @@ void BackgroundSubtraction_with_reflections() {
     }
     // Load pTjet bin edges
     std::vector<double> ptjetBinEdges = LoadBinning(fReflectionsMC, "axes/ptjetBinEdges");
-    //std::vector<double> ptjetBinEdges = {10., 15.};
+    //std::vector<double> ptjetBinEdges = {30., 50.};
     // Load ΔR bin edges
     std::vector<double> deltaRBinEdges = LoadBinning(fReflectionsMC, "axes/deltaRBinEdges");
     // Load pTD bin edges
