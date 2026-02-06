@@ -293,6 +293,7 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, FeedDownData& dataContain
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
     bool MCDhfprompt;
+    int MCDhfMatchedFrom, MCDhfSelectedAs;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
 
@@ -321,13 +322,16 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, FeedDownData& dataContain
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
 
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
         
         // Apply non-prompt selection (i.e., only B → D0)
-        if (MCDhfprompt) {
+        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+        if (MCDhfprompt || isReflection) {
             continue;
         }
 

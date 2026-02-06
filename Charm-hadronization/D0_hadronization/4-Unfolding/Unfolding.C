@@ -56,17 +56,21 @@ struct UnfoldData {
     // Step 4: bayesian unfolding
     std::vector<TH2D*> hKineEffParticle = {nullptr, nullptr, nullptr};      // particle level (addition): [0] = numerator, [1] = denominator, [2] = efficiency
     std::vector<TH2D*> hKineEffDetector = {nullptr, nullptr, nullptr};      // detector level (removal): [0] = numerator, [1] = denominator, [2] = efficiency
-    TH2D* hBFedDownDataKinCorrected = nullptr;                            // 2D histogram with detector level kinematic efficiency correction
-    RooUnfoldResponse* response;                                             // response matrix for folding
-    std::vector<TH2D*> hResponse2D = {nullptr, nullptr};                     // response projections matrix: first = DeltaR, second = pT,jet
-    std::vector<RooUnfoldBayes*> unfold;                                     // unfolding objects, there are iterationNumber unfolding objects
+    TH2D* hBFedDownDataKinCorrected = nullptr;                              // 2D histogram with detector level kinematic efficiency correction
+    RooUnfoldResponse* response;                                            // response matrix for folding
+    std::vector<TH2D*> hResponse2D = {nullptr, nullptr};                    // response projections matrix: first = DeltaR, second = pT,jet
+    std::vector<RooUnfoldBayes*> unfold;                                    // unfolding objects, there are iterationNumber unfolding objects
     TH2D* hMeasuredTemplate = nullptr;                                      // template for measured data (jet pT vs DeltaR), used for hUnfolded binning
     TH2D* hTruthTemplate = nullptr;
-    std::vector<TH2D*> hUnfolded;                                         // unfolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
-    std::vector<TH2D*> hUnfoldedKinCorrected;                             // unfolded 2D histogram with detector level kinematic correction, there are iterationNumber unfolding objects
+    std::vector<TH2D*> hUnfolded;                                           // unfolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
+    std::vector<TH2D*> hUnfoldedKinCorrected;                               // unfolded 2D histogram with detector level kinematic correction, there are iterationNumber unfolding objects
 
     // Refolding test
     std::vector<TH2D*> hRefolded;                                           // refolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
+
+    // Convergence test
+    std::vector<TH1D*> hConvergenceTest;                                    // between sucessive iterations
+    std::vector<TH1D*> hConvergenceTest2;                                   // between unfolded and original fed-down subtracted data
 };
 
 // Obtain the bin edges of a histogram (useful for asymmetrical bin sizes)
@@ -225,6 +229,7 @@ void fillHistograms(TFile* fFeedDown, TFile* fEfficiency, TFile* fSimulatedMCMat
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
     bool MCDhfprompt;
+    int MCDhfMatchedFrom, MCDhfSelectedAs;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
 
@@ -253,13 +258,16 @@ void fillHistograms(TFile* fFeedDown, TFile* fEfficiency, TFile* fSimulatedMCMat
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
 
     nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
         
         // Apply prompt selection (i.e., only c → D0, not B → D0)
-        if (!MCDhfprompt) {
+        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+        if (!MCDhfprompt || isReflection) {
             continue;
         }
 
@@ -362,11 +370,6 @@ void performUnfolding(UnfoldData& dataContainer, int& iterationNumber) {
     std::cout << "Unfolding procedure performed." << std::endl;
 }
 
-void convergenceTest(UnfoldData& dataContainer) {
-    //
-    std::cout << "Convergence test performed." << std::endl;
-}
-
 // Manual folding of TH2D data using a RooUnfoldResponse object.
 TH2D* manualFolding(RooUnfoldResponse* response, TH2D* hTruth, TH2D* hMeasured) {
     
@@ -455,19 +458,103 @@ void refoldingTest(UnfoldData& dataContainer) {
     std::cout << "Refolding test performed." << std::endl;
 }
 
-void closureTest(UnfoldData& dataContainer) {
-    // Build MC input sample (20%): matched data with detector level to test and particle level to compare with
+std::vector<TH1D*> convergenceTest(UnfoldData& dataContainer, const std::vector<TH2D*>& hUnfoldedKinCorrected) {
+    // First convergence test: ratio between successive iterations
+    //std::vector<TH1D*> hConvergenceTest;
 
-    // Build MC correction sample (80%): build all MC level correction objects (efficiencies and response matrices)
+    // Compute ratios between successive iterations
+    for (size_t iHisto = 1; iHisto < hUnfoldedKinCorrected.size(); iHisto++) {
 
-    // 1 - Unfolding closure test
+        // Project 2D histograms to 1D (along X axis)
+        TH1D* hCurrent = hUnfoldedKinCorrected[iHisto]->ProjectionY(Form("projCurrent_%zu", iHisto));
+        TH1D* hPrevious = hUnfoldedKinCorrected[iHisto-1]->ProjectionY(Form("projPrevious_%zu", iHisto-1));
 
-    // 2 - Unfolding closure test + sideband subtraction correction steps
+        // Clone the current histogram to hold the ratio
+        TH1D* hRatio = (TH1D*)hCurrent->Clone(Form("ratioIter_%zu", iHisto));
+        hRatio->SetTitle(Form("Iteration %zu / %zu ratio", iHisto, iHisto-1));
+        
+        // Divide by the previous iteration
+        hRatio->Divide(hPrevious);
+        
+        // Optional: style
+        hRatio->SetLineColor(kBlack + iHisto);
+        //hRatio->SetMarkerStyle(20);
+        
+        dataContainer.hConvergenceTest.push_back(hRatio);
+    }
 
-    // 3 - Unfolding closure test + sideband subtraction correction steps + feed-down subtraction steps
+    // Quantitative check using RMS deviation
+    std::vector<double> rmsValues;
+    for (size_t iHisto = 0; iHisto < dataContainer.hConvergenceTest.size(); iHisto++) {
+        TH1D* hRatio = dataContainer.hConvergenceTest[iHisto];
+        double rms = 0;
+        int nBins = hRatio->GetNbinsX();
+        for (int iBin = 1; iBin <= nBins; iBin++) {
+            double val = hRatio->GetBinContent(iBin) - 1.0; // deviation from 1
+            rms += val * val;
+        }
+        rms = sqrt(rms / nBins);
+        rmsValues.push_back(rms);
+        std::cout << "Iteration " << iHisto+1 << "/" << iHisto << " RMS deviation from 1: " << rms << std::endl;
+    }
 
-    std::cout << "Closure test performed." << std::endl;
+    // Plot
+    TCanvas* cRatio = new TCanvas("cRatioUnfoldingConvergence", "Unfolding Convergence Ratios", 1200, 800);
+    cRatio->cd();
+
+    for (size_t iHisto = 0; iHisto < dataContainer.hConvergenceTest.size(); iHisto++) {
+        if (iHisto == 0) {
+            dataContainer.hConvergenceTest[iHisto]->Draw("E");      // draw the first ratio
+        } else {
+            dataContainer.hConvergenceTest[iHisto]->Draw("E SAME");        // draw others on the same canvas
+        }
+    }
+
+    TLegend* legend = new TLegend(0.7, 0.7, 0.9, 0.9);
+    for (size_t iHisto = 0; iHisto < dataContainer.hConvergenceTest.size(); iHisto++) {
+        legend->AddEntry(dataContainer.hConvergenceTest[iHisto], Form("Iteration %zu / %zu's RMS: %.5f", iHisto+1, iHisto, rmsValues[iHisto]), "l");
+    }
+    legend->Draw();
+
+    std::cout << "Convergence test performed." << std::endl;
+
+    // Second convergence test: ratio to original fed-down data
+    TCanvas* cRatio2 = new TCanvas("cRatioUnfoldingConvergence2", "Unfolding Convergence Ratios to Original Fed-Down Data", 1200, 800);
+    gStyle->SetOptStat(0);
+    cRatio2->cd();
+    TH1D* hFedDown1D = dataContainer.hBFedDownDataKinCorrected->ProjectionY("OriginalFromFeedDown");
+    //std::vector<TH1D*> hConvergenceTest2;
+    // Compute ratios between successive iterations
+    for (size_t iHisto = 1; iHisto < hUnfoldedKinCorrected.size(); iHisto++) {
+
+        // Project 2D histograms to 1D (along X axis)
+        TH1D* hCurrent = hUnfoldedKinCorrected[iHisto]->ProjectionY(Form("projCurrent_%zu", iHisto));
+        //TH1D* hPrevious = hUnfoldedKinCorrected[iHisto-1]->ProjectionY(Form("projPrevious_%zu", iHisto-1));
+
+        // Clone the current histogram to hold the ratio
+        TH1D* hRatio = (TH1D*)hCurrent->Clone(Form("ratio2Iter_%zu", iHisto));
+        hRatio->SetTitle(Form("Iteration %zu / original ratio", iHisto));
+        
+        // Divide by the previous iteration
+        hRatio->Divide(hFedDown1D);
+        
+        // Optional: style
+        hRatio->SetLineColor(kBlack + iHisto);
+        //hRatio->SetMarkerStyle(20);
+        
+        dataContainer.hConvergenceTest2.push_back(hRatio);
+        dataContainer.hConvergenceTest2[dataContainer.hConvergenceTest2.size()-1]->Draw((iHisto == 1) ? "" : "SAME");
+    }
+    TLegend* origlegend = new TLegend(0.7, 0.7, 0.9, 0.9);
+    for (size_t iHisto = 0; iHisto < dataContainer.hConvergenceTest2.size(); iHisto++) {
+        origlegend->AddEntry(dataContainer.hConvergenceTest2[iHisto], Form("Iteration %zu / original", iHisto+1), "l");
+    }
+    origlegend->Draw();
+
+    return dataContainer.hConvergenceTest2;
+
 }
+
 
 void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, const double& jetptMax) {
     cout << "Plotting histograms...\n";
@@ -534,6 +621,31 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     lUnfoldedIter->Draw();
     double reportingJetPtMin = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
     double reportingJetPtMax = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+
+    TCanvas* cUnfoldedIterNorm = new TCanvas("cUnfoldedIterNorm","Unfolded histograms for each iteration self-normalized");
+    cUnfoldedIterNorm->cd();
+    TLegend* lUnfoldedIterNorm = new TLegend(0.6,0.57,0.7,0.77);
+    std::vector<TH1D*> hUnfoldedKinCorrectedProjNorm(dataContainer.hUnfoldedKinCorrected.size());
+    secondBin = 2;
+    lastButOneBin = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetNbins() - 1; // penultimate bin
+    for (size_t iIter = 0; iIter < dataContainer.hUnfoldedKinCorrected.size(); iIter++) {
+        // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
+        hUnfoldedKinCorrectedProjNorm[iIter] = dataContainer.hUnfoldedKinCorrected[iIter]->ProjectionY(Form("hProjIterNorm_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
+        hUnfoldedKinCorrectedProjNorm[iIter]->SetLineColor(kBlack + iIter);
+        hUnfoldedKinCorrectedProjNorm[iIter]->Scale(1.0 / hUnfoldedKinCorrectedProjNorm[iIter]->Integral(),"width"); // self-normalization
+        lUnfoldedIterNorm->AddEntry(hUnfoldedKinCorrectedProjNorm[iIter],Form("Iteration %zu", iIter+1), "le");
+        if (iIter == 0) {
+            hUnfoldedKinCorrectedProjNorm[iIter]->SetTitle("Unfolded with #epsilon^{particle}_{kin} correction, self-normalized");
+            hUnfoldedKinCorrectedProjNorm[iIter]->Draw();
+        } else {
+            hUnfoldedKinCorrectedProjNorm[iIter]->Draw("same");
+        }
+        
+    }
+    lUnfoldedIterNorm->Draw();
+    reportingJetPtMin = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
+    reportingJetPtMax = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
     latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
 
     TCanvas* cSteps = new TCanvas("cSteps","Unfolding steps");
@@ -621,6 +733,70 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     lRefoldedPtRanges->AddEntry(hOrig_15_30, "Original: 15 < p_{T,jet} < 30", "le");
     lRefoldedPtRanges->Draw();
 
+    // Self normalized final iteration distribution
+    TCanvas* cSelfNorm = new TCanvas("cSelfNorm","Self-normalized unfolded distribution for last iteration");
+    cSelfNorm->cd();
+    TH2D* hLastUnfolded = dataContainer.hUnfoldedKinCorrected.back();
+    bin7  = hLastUnfolded->GetXaxis()->FindBin(7.0);
+    bin10 = hLastUnfolded->GetXaxis()->FindBin(10.0);
+    bin15  = hLastUnfolded->GetXaxis()->FindBin(15.0);
+    bin30 = hLastUnfolded->GetXaxis()->FindBin(30.0);
+    TH1D* hLastUnfoldedProjY = hLastUnfolded->ProjectionY("hLastUnfoldedProjY");
+    hLastUnfoldedProjY->SetTitle("Self-normalized unfolded distribution for last iteration;#DeltaR^{gen};#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}");
+    hLastUnfoldedProjY->Sumw2();
+    double integral = hLastUnfoldedProjY->Integral();
+    if (integral != 0) {
+        hLastUnfoldedProjY->Scale(1.0 / integral, "width");
+    }
+    hLastUnfoldedProjY->Draw();
+    // Multiple pT,jet ranges
+    TCanvas* cSelfNormRanges = new TCanvas("cSelfNormRanges","Self-normalized unfolded distribution for last iteration, multiple ranges");
+    cSelfNormRanges->cd();
+    TH1D* hLastUnfoldedProjY_7_10 = hLastUnfolded->ProjectionY("hLastUnfoldedProjY_7_10GeV", bin7, bin10);
+    hLastUnfoldedProjY_7_10->SetTitle("Self-normalized unfolded distribution for last iteration;#DeltaR^{gen};#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}");
+    hLastUnfoldedProjY_7_10->SetLineColor(kBlue);
+    hLastUnfoldedProjY_7_10->Sumw2();
+    double integral_7_10 = hLastUnfoldedProjY_7_10->Integral();
+    if (integral_7_10 != 0) {
+        hLastUnfoldedProjY_7_10->Scale(1.0 / integral_7_10, "width");
+    }
+    hLastUnfoldedProjY_7_10->Draw();
+    TH1D* hLastUnfoldedProjY_10_15 = hLastUnfolded->ProjectionY("hLastUnfoldedProjY_10_15GeV", bin10+1, bin15);
+    hLastUnfoldedProjY_10_15->SetLineColor(kBlack);
+    hLastUnfoldedProjY_10_15->Sumw2();
+    double integral_10_15 = hLastUnfoldedProjY_10_15->Integral();
+    if (integral_10_15 != 0) {
+        hLastUnfoldedProjY_10_15->Scale(1.0 / integral_10_15, "width");
+    }
+    hLastUnfoldedProjY_10_15->Draw("same");
+    TH1D* hLastUnfoldedProjY_15_30 = hLastUnfolded->ProjectionY("hLastUnfoldedProjY_15_30GeV", bin15+1, bin30);
+    hLastUnfoldedProjY_15_30->SetLineColor(kRed);
+    hLastUnfoldedProjY_15_30->Sumw2();
+    double integral_15_30 = hLastUnfoldedProjY_15_30->Integral();
+    if (integral_15_30 != 0) {
+        hLastUnfoldedProjY_15_30->Scale(1.0 / integral_15_30, "width");
+    }
+    hLastUnfoldedProjY_15_30->Draw("same");
+    TLegend* lSelfNormRanges = new TLegend(0.5,0.57,0.85,0.87);
+    lSelfNormRanges->AddEntry(hLastUnfoldedProjY_7_10, "7 < p_{T,jet} < 10", "le");
+    lSelfNormRanges->AddEntry(hLastUnfoldedProjY_10_15, "10 < p_{T,jet} < 15", "le");
+    lSelfNormRanges->AddEntry(hLastUnfoldedProjY_15_30, "15 < p_{T,jet} < 30", "le");
+    lSelfNormRanges->Draw();
+
+    // Convergence test plots
+    // Second convergence test: ratio to original fed-down data
+    TCanvas* cConvTest = new TCanvas("cConvTest", "Convergence Ratios to Original Fed-Down Data", 1200, 800);
+    gStyle->SetOptStat(0);
+    cConvTest->cd();
+    TH1D* hFedDown1D = dataContainer.hBFedDownDataKinCorrected->ProjectionY("OriginalFromFeedDown_convtest");
+    TLegend* origlegend = new TLegend(0.7, 0.7, 0.9, 0.9);
+    dataContainer.hConvergenceTest2[0]->GetYaxis()->SetTitle("Unfolded / Original");
+    for (size_t iHisto = 0; iHisto < dataContainer.hConvergenceTest2.size(); iHisto++) {
+        dataContainer.hConvergenceTest2[iHisto]->Draw((iHisto == 0) ? "" : "SAME");
+        origlegend->AddEntry(dataContainer.hConvergenceTest2[iHisto], Form("Iteration %zu / original", iHisto+1), "l");
+    }
+    origlegend->Draw();
+
     //
     // Storing images
     //
@@ -651,7 +827,10 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     cResponse->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cUnfoldedIter->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cRefoldedIter->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cRefoldedPtRanges->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cRefoldedPtRanges->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cSelfNorm->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cSelfNormRanges->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cConvTest->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
     //cKinEfficiency->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     //cFolded->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     //cFedDownData->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
@@ -660,6 +839,7 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     cKinEffDetector->Print(imagePath + "Unfolding_kin_efficiency_detector.pdf");
     cUnfoldedIter->Print(imagePath + "Unfolding_unfolded_iterations.pdf");
     cRefoldedIter->Print(imagePath + "Unfolding_refolded_comparison.pdf");
+    
 
 }
 
@@ -816,7 +996,11 @@ void Unfolding(){
 
     performUnfolding(dataContainer, iterationNumber);
 
+    // Fold the resulting distribution and compare with input detector level distribution
     refoldingTest(dataContainer);
+    
+    // Verify convergence and choose best iteration number
+    std::vector<TH1D*> hConvergents = convergenceTest(dataContainer, dataContainer.hUnfoldedKinCorrected);
 
     // Plot the efficiency histogram and further corrected histograms
     plotHistograms(dataContainer, jetptMin, jetptMax);

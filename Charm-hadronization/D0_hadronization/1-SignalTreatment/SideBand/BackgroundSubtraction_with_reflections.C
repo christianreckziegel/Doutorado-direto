@@ -493,15 +493,15 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
                 }
             } else if ((jetptMin == 30) && ((jetptMax == 50))) {
                 //fittings.fitTotal[iHisto]->SetParLimits(5, 1.0 * sigma_reference, 3.0 * sigma_reference);
-                if (iHisto == 5) { // pT,D in [6,7]GeV/c
-                    fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference);
-                } else if (iHisto == 6) { // pT,D in [7,8]GeV/c
-                    fittings.fitTotal[iHisto]->SetParLimits(5, 1.5 * sigma_reference, 4.0 * sigma_reference);
-                } else if (iHisto == 7) { // pT,D in [8,9]GeV/c
-                    fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference);
-                } else if (iHisto == 8) { // pT,D in [9,10]GeV/c
-                    fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference);
-                }
+                // if (iHisto == 5) { // pT,D in [6,7]GeV/c
+                //     fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference);
+                // } else if (iHisto == 6) { // pT,D in [7,8]GeV/c
+                //     fittings.fitTotal[iHisto]->SetParLimits(5, 1.5 * sigma_reference, 4.0 * sigma_reference);
+                // } else if (iHisto == 7) { // pT,D in [8,9]GeV/c
+                //     fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference);
+                // } else if (iHisto == 8) { // pT,D in [9,10]GeV/c
+                //     fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference);
+                // }
             }
             
         }
@@ -530,10 +530,12 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
         if ((D0LiteratureMass < (primaryMean - 2*primarySigma)) || (D0LiteratureMass > (primaryMean + 2*primarySigma))) { // fit failed: PDG mass outside of signal region
             // if literature mass is outside, clear histogram as it should be excluded
             //histograms[iHisto]->Reset();
-            histograms[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+            //histograms[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+            histograms[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (Fit failed)");
             //histograms2d[iHisto]->Reset("ICES");
             //histograms2d[iHisto]->Reset();
-            histograms2d[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+            //histograms2d[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+            histograms2d[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (Fit failed)");
 
             fittings.workingFits.push_back(false);
         } else { // fit worked: PDG mass inside of signal region
@@ -1569,7 +1571,7 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     PlotHistograms(outputStruct, histograms2d, fittings, jetptMin, jetptMax, ptDBinEdges);
 
     // Storing final histograms to output file
-    SaveData(outputStruct,jetptMin,jetptMax, deltaRBinEdges, ptjetBinEdges, ptDBinEdges);
+    SaveData(outputStruct, jetptMin, jetptMax, deltaRBinEdges, ptjetBinEdges, ptDBinEdges);
 
 }
 
@@ -1686,8 +1688,9 @@ void BackgroundSubtraction_with_reflections() {
     time(&start); // initial instant of program execution
     
     // Opening
-    double jetptMin = 5.; // GeV
-    double jetptMax = 7.; // GeV
+    double jetptMin = 5.; // default = 5 GeV, for Emma's use 5 GeV
+    bool useEmmaYeatsBins = false;
+    double jetptMax = useEmmaYeatsBins ? 10. : 7.; // default = 7GeV, for Emma's use 10 GeV
     TFile* fReflectionsMC = new TFile(Form("../Reflections/reflections_%.0f_to_%.0fGeV.root",jetptMin,jetptMax),"read");
     if (!fReflectionsMC || fReflectionsMC->IsZombie()) {
         std::cerr << "Error: Unable to open the first ROOT reflections file." << std::endl;
@@ -1701,7 +1704,22 @@ void BackgroundSubtraction_with_reflections() {
     std::vector<double> ptDBinEdges = LoadBinning(fReflectionsMC, "axes/ptDBinEdges");
     fReflectionsMC->Close();
     
-    
+    std::cout << "Sanity check on loaded bin edges:" << std::endl;
+    std::cout << "pT,jet bin edges: ";
+    for (const auto& edge : ptjetBinEdges) {
+        std::cout << edge << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "DeltaR bin edges: ";
+    for (const auto& edge : deltaRBinEdges) {
+        std::cout << edge << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "pT,D bin edges: ";
+    for (const auto& edge : ptDBinEdges) {
+        std::cout << edge << " ";
+    }
+    std::cout << std::endl;
 
     for (size_t iJetPt = 0; iJetPt < ptjetBinEdges.size() - 1; iJetPt++) {
         // Apply side-band method to each pT,jet bin
@@ -1717,7 +1735,7 @@ void BackgroundSubtraction_with_reflections() {
     JetPtIterator(jetptMin, jetptMax, ptjetBinEdges);
 
     // Create 3D final histogram with pT,jet vs DeltaR vs pT,D
-    create3DBackgroundSubtracted(ptjetBinEdges,deltaRBinEdges,ptDBinEdges);
+    create3DBackgroundSubtracted(ptjetBinEdges, deltaRBinEdges, ptDBinEdges);
 
     time(&end); // end instant of program execution
     // Calculating total time taken by the program. 

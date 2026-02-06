@@ -79,7 +79,7 @@ Double_t pureSignalFunction(Double_t* x, Double_t* par) {
     return result;
 }
 // Custom pure reflections fit function: reflection components (amplitude,mean,sigma) = (0,2,4) and (1,3,5)
-Double_t pureReclectionsFunction(Double_t* x, Double_t* par) {
+Double_t pureReflectionsFunction(Double_t* x, Double_t* par) {
 
     Double_t m = x[0];
     Double_t C_1 = par[0];      // total parameter index: 5
@@ -101,7 +101,7 @@ Double_t signalAndReflectionsFunction(Double_t* x, Double_t* par) {
     // reflection primary: reflection(0,2,4) =  total(5,7,9)
     // reflection secondary: reflection(1,3,5) =  total(6,8,10)
     
-    return pureSignalFunction(x,par) + pureReclectionsFunction(x,&par[5]);
+    return pureSignalFunction(x,par) + pureReflectionsFunction(x,&par[5]);
 }
 //-----------------------------------------------------------------------------Main workflow functions---------------------------------------------------------------------------------------------------------
 // Module to create TH2D histograms including interest variable
@@ -269,9 +269,9 @@ void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& j
                     filled = true; // Exit the loop once the correct histogram is found
                 }
                 
-            }
+            } // pT,D chosen
             
-        }
+        } // end of TTree entries loop
 
         
         
@@ -318,7 +318,7 @@ FitsGroup performFits(HistogramGroup& histograms, std::vector<double>& ptDBinEdg
 
     // Perform fits for reflections
     performFit(histograms.reflections, histograms.reflections_1d, fits.reflections, 
-               "reflections", new TF1("reflectionsFit", pureReclectionsFunction, xmin, xmax, 6));
+               "reflections", new TF1("reflectionsFit", pureReflectionsFunction, xmin, xmax, 6));
 
     // Perform combined fits
     performFit(histograms.signals_and_reflections, histograms.signals_and_reflections_1d, fits.signals_and_reflections, 
@@ -362,7 +362,7 @@ FitsGroup performFits(HistogramGroup& histograms, std::vector<double>& ptDBinEdg
 
     // Reflections fits
     for (size_t iInterval = 0; iInterval < ptDBinEdges.size() - 1; iInterval++) {
-        TF1* reflectionsFit = new TF1(Form("reflectionsFit_%zu", iInterval), pureReclectionsFunction, xmin, xmax, 6);
+        TF1* reflectionsFit = new TF1(Form("reflectionsFit_%zu", iInterval), pureReflectionsFunction, xmin, xmax, 6);
 
         // Obtain 1D mass histogram projection
         histograms.reflections_1d.push_back( histograms.reflections[iInterval]->ProjectionX(Form("histMass_reflections_1d_%zu", iInterval+1), 1, -1) );
@@ -588,7 +588,7 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fits, const dou
     //
     // Storing images
     //
-    TString imagePath = "../../Images/1-SignalTreatment/SideBand/Reflections/";
+    TString imagePath = "../../Images/1-SignalTreatment/Reflections/";
     TString jetPtRange = Form("%.0f_to_%.0fGeV", jetptMin, jetptMax);
 
     
@@ -656,7 +656,7 @@ void SaveData(TFile* fOutput, const HistogramGroup& histograms, FitsGroup& fits,
     fOutput->cd();
 }
 
-void JetPtIterator(const double jetptMin, const double jetptMax, const std::vector<double>& ptjetBinEdges) {
+void JetPtIterator(const double jetptMin, const double jetptMax, const std::vector<double>& ptjetBinEdges, const bool useEmmaYeatsBins) {
 
     // D0 mass in GeV/c^2
     double m_0_parameter = 1.86484;
@@ -668,12 +668,22 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     //const double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1]; // GeV
     //const double jetptMin = 5.; // GeV
     //const double jetptMax = 7.; // GeV
-    // DeltaR bins: default = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5}
-    std::vector<double> deltaRBinEdges = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15,0.175, 0.2, 0.225, 0.25, 0.275, 0.3, 0.325, 0.35, 0.375, 0.4, 0.5};
+    // DeltaR bins: default = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3, 0.325, 0.35, 0.375, 0.4, 0.5}
+    std::vector<double> deltaRBinEdges = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5};
     double minDeltaR = deltaRBinEdges[0];
     double maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
-    // pT,D bins
-    std::vector<double> ptDBinEdges = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.}; // 1., 2., 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 8., 10., 12., 15., 30.
+    // // pT,D bins
+    std::vector<double> ptDBinEdges = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.}; // 1., 2., 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 8., 10., 12., 15., 30.}
+    // Emma Yeats reported analysis bins:
+    if (useEmmaYeatsBins) {
+        deltaRBinEdges = {0., 0.01, 0.03, 0.05, 0.12, 0.2}; // originally {0., 0.01, 0.03, 0.05, 0.12}, need to add higher bin for unfolding step
+        minDeltaR = deltaRBinEdges[0];
+        maxDeltaR = deltaRBinEdges[deltaRBinEdges.size() - 1];
+        ptDBinEdges = {5., 6., 7., 8., 9., 10., 12., 20.};
+    }
+    
+    
+    
     // default = {3., 4., 5., 6., 7., 8., 10., 12., 15., 30.}
     // fractional = {3., 3.5, 4., 4.5, 5., 5.5, 6., 7., 8., 10., 12., 15., 30.}
     // low bins = {1., 2., 3., 3.5, 4., 4.5, 5., 5.5, 6., 7., 8., 10., 12., 15., 30.}
@@ -725,6 +735,23 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     
     // Plot histograms
     PlotHistograms(histograms, fits, jetptMin, jetptMax);
+    
+    std::cout << "Sanity check on loaded bin edges:" << std::endl;
+    std::cout << "pT,jet bin edges: ";
+    for (const auto& edge : ptjetBinEdges) {
+        std::cout << edge << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "DeltaR bin edges: ";
+    for (const auto& edge : deltaRBinEdges) {
+        std::cout << edge << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "pT,D bin edges: ";
+    for (const auto& edge : ptDBinEdges) {
+        std::cout << edge << " ";
+    }
+    std::cout << std::endl;
 
     // Storing final histograms to output file
     SaveData(fOutput, histograms, fits, deltaRBinEdges, ptjetBinEdges, ptDBinEdges);
@@ -742,20 +769,26 @@ void ReflectionsTreatment() {
     
     // pT,jet cuts
     std::vector<double> ptjetBinEdges = {5., 7., 10., 15., 30., 50.}; // default = {5., 7., 15., 30., 50.}
-    //std::vector<double> ptjetBinEdges = {7., 10.}; // default = {5., 7., 15., 30., 50.}
+    //std::vector<double> ptjetBinEdges = {30., 50.}; // default = {5., 7., 15., 30., 50.}
+    // Emma Yeats reported analysis bins:
+    bool useEmmaYeatsBins = false;
+    if (useEmmaYeatsBins) {
+        ptjetBinEdges = {5., 10., 15., 20., 30.}; // originally {10., 15., 20.}, need to add lower and higher bins for unfolding step
+    }
+
     for (size_t iJetPt = 0; iJetPt < ptjetBinEdges.size() - 1; iJetPt++) {
         
         // Apply side-band method to each pT,jet bin
         double jetptMin = ptjetBinEdges[iJetPt];
         double jetptMax = ptjetBinEdges[iJetPt+1];
 
-        JetPtIterator(jetptMin, jetptMax, ptjetBinEdges);
+        JetPtIterator(jetptMin, jetptMax, ptjetBinEdges, useEmmaYeatsBins);
     }
 
     // Compute the entire range too
     double jetptMin = ptjetBinEdges[0];
     double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1];
-    JetPtIterator(jetptMin, jetptMax, ptjetBinEdges);
+    JetPtIterator(jetptMin, jetptMax, ptjetBinEdges, useEmmaYeatsBins);
 
     time(&end); // end instant of program execution
     // Calculating total time taken by the program. 

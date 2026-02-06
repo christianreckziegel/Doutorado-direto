@@ -174,133 +174,6 @@ EfficiencyData createHistograms(const std::vector<double>& ptjetBinEdges_particl
 
     return histStruct;
 }
-
-//_____________________________________________________________________________________________________________________________________________________________________________________
-// Modules to convert under and overflow entries to edge bins of the histogram
-void handleUnderOverflow2D(TH2* histogram) {
-    int nBinsX = histogram->GetNbinsX();
-    int nBinsY = histogram->GetNbinsY();
-
-    double newContent;
-    double newError2;
-
-    // X-axis (pT,jet), Y-axis (pT,D)
-    for (int i = 1; i <= nBinsX; ++i) {
-        // Add underflow to first Y bin (binY = 0)
-        newContent = histogram->GetBinContent(i, 1) + histogram->GetBinContent(i, 0);
-        newError2 = std::pow(histogram->GetBinError(i, 1), 2) + std::pow(histogram->GetBinError(i, 0), 2);
-        histogram->SetBinContent(i, 1, newContent);
-        histogram->SetBinError(i, 1, std::sqrt(newError2));
-
-        // Add overflow to last Y bin (binY = nBinsY+1)
-        newContent = histogram->GetBinContent(i, nBinsY) + histogram->GetBinContent(i, nBinsY + 1);
-        newError2 = std::pow(histogram->GetBinError(i, nBinsY), 2) + std::pow(histogram->GetBinError(i, nBinsY + 1), 2);
-        histogram->SetBinContent(i, nBinsY, newContent);
-        histogram->SetBinError(i, nBinsY, std::sqrt(newError2));
-    }
-
-    for (int j = 1; j <= nBinsY; ++j) {
-        // Add underflow to first X bin (binX = 0)
-        newContent = histogram->GetBinContent(1, j) + histogram->GetBinContent(0, j);
-        newError2 = std::pow(histogram->GetBinError(1, j), 2) + std::pow(histogram->GetBinError(0, j), 2);
-        histogram->SetBinContent(1, j, newContent);
-        histogram->SetBinError(1, j, std::sqrt(newError2));
-
-        // Add overflow to last X bin (binX = nBinsX+1)
-        newContent = histogram->GetBinContent(nBinsX, j) + histogram->GetBinContent(nBinsX + 1, j);
-        newError2 = std::pow(histogram->GetBinError(nBinsX, j), 2) + std::pow(histogram->GetBinError(nBinsX + 1, j), 2);
-        histogram->SetBinContent(nBinsX, j, newContent);
-        histogram->SetBinError(nBinsX, j, std::sqrt(newError2));
-    }
-}
-
-template<typename T>
-void handleUnderOverflowGeneric(T* histogram) {
-    int ndim = histogram->GetDimension();
-
-    const int nBinsX = histogram->GetNbinsX();
-    const int nBinsY = ndim >= 2 ? histogram->GetNbinsY() : 0;
-    const int nBinsZ = ndim == 3 ? histogram->GetNbinsZ() : 0;
-
-    double newContent, newError2;
-
-    for (int i = 1; i <= nBinsX; ++i) {
-        for (int j = (ndim >= 2 ? 1 : 0); j <= (ndim >= 2 ? nBinsY : 0); ++j) {
-            for (int k = (ndim == 3 ? 1 : 0); k <= (ndim == 3 ? nBinsZ : 0); ++k) {
-
-                int binMain = histogram->GetBin(i, j, k);
-
-                // Underflow
-                int binUF = histogram->GetBin(i - (i == 1), j - (j == 1 && ndim >= 2), k - (k == 1 && ndim == 3));
-                if (binUF != binMain) {
-                    newContent = histogram->GetBinContent(binMain) + histogram->GetBinContent(binUF);
-                    newError2 = std::pow(histogram->GetBinError(binMain), 2) + std::pow(histogram->GetBinError(binUF), 2);
-                    histogram->SetBinContent(binMain, newContent);
-                    histogram->SetBinError(binMain, std::sqrt(newError2));
-
-                    // Set the underflow bin content to zero: important to avoid double counting
-                    histogram->SetBinContent(binUF, 0);
-                    histogram->SetBinError(binUF, 0);
-                }
-
-                // Overflow
-                int iOF = i == nBinsX ? nBinsX + 1 : i;
-                int jOF = (ndim >= 2 && j == nBinsY) ? nBinsY + 1 : j;
-                int kOF = (ndim == 3 && k == nBinsZ) ? nBinsZ + 1 : k;
-
-                int binOF = histogram->GetBin(iOF, jOF, kOF);
-
-                if (binOF != binMain) {
-                    newContent = histogram->GetBinContent(binMain) + histogram->GetBinContent(binOF);
-                    newError2 = std::pow(histogram->GetBinError(binMain), 2) + std::pow(histogram->GetBinError(binOF), 2);
-                    histogram->SetBinContent(binMain, newContent);
-                    histogram->SetBinError(binMain, std::sqrt(newError2));
-
-                    // Set the overflow bin content to zero: important to avoid double counting
-                    histogram->SetBinContent(binOF, 0);
-                    histogram->SetBinError(binOF, 0);
-                }
-            }
-        }
-    }
-}
-
-//_____________________________________________________________________________________________________________________________________________________________________________________
-// Function to fill the response matrix with underflow and overflow handling
-double FillResponse(RooUnfoldResponse& response, std::vector<double>& ptjetBinEdges_detector, std::vector<double>& ptDBinEdges_detector, std::vector<double>& ptjetBinEdges_particle, std::vector<double>& ptDBinEdges_particle,
-                  float& MCDjetPt, float& MCDhfPt, float& MCPjetPt, float& MCPhfPt, TH1D* hEffWeight, bool& doUnderOverFlow) {
-    
-    // Lambda Function to adjust the value to the bin center if it is outside the bin edges
-    auto AdjustToBinCenter = [](const std::vector<double>& binEdges, double value) {
-        if (value > binEdges.back()) {
-            return 0.5 * (binEdges[binEdges.size() - 1] + binEdges[binEdges.size() - 2]);
-        } else if (value < binEdges.front()) {
-            return 0.5 * (binEdges[0] + binEdges[1]);
-        } else {
-            return value;
-        }
-    };
-
-    if (doUnderOverFlow) {
-        MCDjetPt = AdjustToBinCenter(ptjetBinEdges_detector, MCDjetPt);
-        MCDhfPt = AdjustToBinCenter(ptDBinEdges_detector, MCDhfPt);
-        MCPjetPt = AdjustToBinCenter(ptjetBinEdges_particle, MCPjetPt);
-        MCPhfPt = AdjustToBinCenter(ptDBinEdges_particle, MCPhfPt);
-    }
-    
-    // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
-    int bin = hEffWeight->FindBin(MCDhfPt);
-    double estimatedEfficiency = hEffWeight->GetBinContent(bin);
-    if (estimatedEfficiency == 0) {
-        //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
-        estimatedEfficiency = 1; // Avoid division by zero
-    }
-    // Fill the response matrix
-    response.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency);
-
-    return estimatedEfficiency;
-    
-}
 //_____________________________________________________________________________________________________________________________________________________________________________________
 // Find the appropriate cut value based on pT
 double GetBkgProbabilityCut(double pT, const std::vector<std::pair<double, double>>& bdtPtCuts) {
@@ -353,7 +226,7 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, TFile* fEffRun2Style, Eff
     // defining variables for accessing detector level data on TTree
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
-    int MCDjetnconst;//, MCDhfmatch;
+    int MCDjetnconst, MCDhfMatchedFrom, MCDhfSelectedAs;
     bool MCDhfprompt;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
@@ -386,6 +259,8 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, TFile* fEffRun2Style, Eff
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
 
     // Histogram for efficiency weighting of response matrix
     TH1D* hEffWeight;
@@ -393,6 +268,12 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, TFile* fEffRun2Style, Eff
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
+
+        // only compute matched detector level candidates, but compute all particle level ones
+        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+        if (isReflection) {
+            continue;
+        }
 
         // calculating delta R
         double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
@@ -430,9 +311,6 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, TFile* fEffRun2Style, Eff
 
                 // Fill 4D RooUnfoldResponse object
                 histStruct.response.first.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
-                // double estimatedEfficiency = FillResponse(histStruct.response.first, 
-                //                              ptjetBinEdges_detector, ptDBinEdges_detector, ptjetBinEdges_particle, ptDBinEdges_particle, 
-                //                              MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, hEffWeight, doUnderOverFlow);
                 histStruct.responseProjections.first[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, prompt D0s
                 histStruct.responseProjections.first[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,D projection, prompt D0s
             } else{
@@ -449,9 +327,6 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, TFile* fEffRun2Style, Eff
 
                 // Fill 4D RooUnfoldResponse object
                 histStruct.response.second.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
-                // double estimatedEfficiency = FillResponse(histStruct.response.second, 
-                //                              ptjetBinEdges_detector, ptDBinEdges_detector, ptjetBinEdges_particle, ptDBinEdges_particle, 
-                //                              MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, hEffWeight, doUnderOverFlow);
                 histStruct.responseProjections.second[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, non-prompt D0s
                 histStruct.responseProjections.second[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,D projection, non-prompt D0s
             }
@@ -502,15 +377,6 @@ void fillMatchedHistograms(TFile* fSimulatedMCMatched, TFile* fEffRun2Style, Eff
     }
     cout << "Response matrix and kinematic correction histograms filled.\n";
 
-    // Handle underflow and overflow for the kinematic efficiency matrices
-    // handleUnderOverflow2D(histStruct.hKEffTruthTotalParticle.first);
-    // handleUnderOverflow2D(histStruct.hKEffTruthTotalParticle.second);
-    // handleUnderOverflow2D(histStruct.hKEffResponseParticle.first);
-    // handleUnderOverflow2D(histStruct.hKEffResponseParticle.second);
-    // handleUnderOverflow2D(histStruct.hKEffRecoTotalDetector.first);
-    // handleUnderOverflow2D(histStruct.hKEffRecoTotalDetector.second);
-    // handleUnderOverflow2D(histStruct.hKEffResponseDetector.first);
-    // handleUnderOverflow2D(histStruct.hKEffResponseDetector.second);
 }
 
 void fillNonMatchedHistograms(TFile* fSimulatedMCNonMatched, EfficiencyData& histStruct, double& jetptMin, double& jetptMax, double& hfptMin, double& hfptMax, 

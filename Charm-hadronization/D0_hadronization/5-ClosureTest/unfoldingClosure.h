@@ -91,6 +91,7 @@ UnfoldData calculateKinematics(TFile* fClosureInputMatched, std::vector<TH1D*>& 
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
     bool MCDhfprompt;
+    int MCDhfMatchedFrom, MCDhfSelectedAs;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
     // particle level branches
@@ -118,12 +119,16 @@ UnfoldData calculateKinematics(TFile* fClosureInputMatched, std::vector<TH1D*>& 
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
+
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
         
         // Apply prompt selection (i.e., only c → D0, not B → D0)
-        if (!MCDhfprompt) {
+        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+        if (!MCDhfprompt || isReflection) {
             continue;
         }
 

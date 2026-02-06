@@ -33,6 +33,7 @@ struct ClosureTestData1 {
 
     // Correction objects
     RooUnfoldResponse* response;                                        // response matrix
+    std::vector<TH2D*> hResponseProj = {nullptr, nullptr};              // response matrix projections -> 0 = deltaR, 1 = pT,jet
     std::vector<TH2D*> hKineEffParticle = {nullptr, nullptr, nullptr};  // particle level kinematic efficiency -> 0 = numerator, 1 = denominator, 2 = efficiency
     std::vector<TH2D*> hKineEffDetector = {nullptr, nullptr, nullptr};  // detector level kinematic efficiency -> 0 = numerator, 1 = denominator, 2 = efficiency
     
@@ -98,6 +99,12 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
 
     // Create response matrix for unfolding
     dataContainer.response = new RooUnfoldResponse(dataContainer.hKineEffDetector[0], dataContainer.hKineEffParticle[0]);
+    dataContainer.hResponseProj[0] = new TH2D("hResponseProj_pTjet","Response matrix projection on p_{T,jet};p_{T,jet}^{reco ch} (GeV/#it{c});p_{T,jet}^{truth ch} (GeV/#it{c})",
+                                             ptjetBinEdges_detector.size() - 1, ptjetBinEdges_detector.data(),
+                                             ptjetBinEdges_particle.size() - 1, ptjetBinEdges_particle.data());
+    dataContainer.hResponseProj[1] = new TH2D("hResponseProj_deltaR","Response matrix projection on #DeltaR;#DeltaR^{reco};#DeltaR^{gen}",
+                                             deltaRBinEdges_detector.size() - 1, deltaRBinEdges_detector.data(),
+                                             deltaRBinEdges_particle.size() - 1, deltaRBinEdges_particle.data());
 
 
     //_______________________________________________Correction data_______________________________________________
@@ -178,6 +185,8 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
             
             // Fill 4D RooUnfoldResponse object (jet pT shape is influenced by D0 pT efficiency)
             dataContainer.response->Fill(MCDjetPt, MCDDeltaR, MCPjetPt, MCPDeltaR);
+            dataContainer.hResponseProj[0]->Fill(MCDjetPt, MCPjetPt);
+            dataContainer.hResponseProj[1]->Fill(MCDDeltaR, MCPDeltaR);
             
             // Fill kinematic efficiency numerator histograms
             dataContainer.hKineEffParticle[0]->Fill(MCPjetPt, MCPDeltaR);
@@ -268,11 +277,12 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
         if (genLevelRange) {
             // Fill input distribution for particle level
             dataContainer.hInputParticle->Fill(MCPjetPt, MCPDeltaR);
-            
+            //std::cout << "Filling particle level input: pT,jet = " << MCPjetPt << ", DeltaR = " << MCPDeltaR << std::endl;
         }
         if (recoLevelRange && passBDTcut) {
             // Fill input distribution for detector level
             dataContainer.hInputDetector->Fill(MCDjetPt, MCDDeltaR);
+            //std::cout << "Filling detector level input: pT,jet = " << MCDjetPt << ", DeltaR = " << MCDDeltaR << std::endl;
         }
     }
 
@@ -283,6 +293,7 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
 void unfoldInputDetector(ClosureTestData1& dataContainer, int& iterationNumber) {
     // Correct input with detector level kinematic efficiency
     dataContainer.hInputDetector->Multiply(dataContainer.hKineEffDetector[2]); // A = A * B:  A = A->Multiply(B)
+    //std::cout << "Input detector level histogram has " << dataContainer.hInputDetector->GetEntries() << " entries after kinematic efficiency correction." << std::endl;
 
     // Unfold with multiple iterations
     // Unfold in multiple iterations
@@ -321,10 +332,19 @@ void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMi
         hUnfoldedProj[iIter] = dataContainer.hUnfolded[iIter]->ProjectionY(Form("hProjIter_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
         hUnfoldedProj[iIter]->SetLineColor(kBlack + iIter);
         lUnfoldedIter->AddEntry(hUnfoldedProj[iIter],Form("Iteration %zu", iIter+1), "le");
+        //std::cout << "hUnfoldedProj[" << iIter << "] has " << hUnfoldedProj[iIter]->GetEntries() << " entries." << std::endl;
         if (iIter == 0) {
-            hUnfoldedProj[iIter]->SetTitle("Closure test 1: unfolding");
+            hUnfoldedProj[iIter]->SetTitle("Closure test 1: unfolding, all histograms self-normalized");
+            double integral = hUnfoldedProj[iIter]->Integral();
+            if (integral != 0) {
+                hUnfoldedProj[iIter]->Scale(1.0 / integral, "width");
+            }
             hUnfoldedProj[iIter]->Draw();
         } else {
+            double integral = hUnfoldedProj[iIter]->Integral();
+            if (integral != 0) {
+                hUnfoldedProj[iIter]->Scale(1.0 / integral, "width");
+            }
             hUnfoldedProj[iIter]->Draw("same");
         }
         
@@ -332,6 +352,10 @@ void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMi
     TH1D* hInputParticleProj = dataContainer.hInputParticle->ProjectionY("hInputParticleProj", secondBin, lastButOneBin);
     hInputParticleProj->SetLineColor(kRed);
     hInputParticleProj->SetLineStyle(2);
+    double integral = hInputParticleProj->Integral();
+            if (integral != 0) {
+                hInputParticleProj->Scale(1.0 / integral, "width");
+            }
     hInputParticleProj->Draw("same");
     lUnfoldedIter->AddEntry(hInputParticleProj, "Input particle level", "le");
     lUnfoldedIter->Draw();
@@ -339,6 +363,19 @@ void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMi
     double reportingJetPtMax = dataContainer.hUnfolded[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
     latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
     
+    TCanvas* cCorrectionObjects = new TCanvas("cCorrectionObjects", "Correction objects");
+    cCorrectionObjects->Divide(2,2);
+    dataContainer.hKineEffParticle[2]->SetTitle("Particle level kinematic efficiency;p_{T,jet}^{gen} (GeV/#it{c});#DeltaR^{gen}");
+    cCorrectionObjects->cd(1);
+    dataContainer.hKineEffParticle[2]->Draw("colz");
+    dataContainer.hKineEffDetector[2]->SetTitle("Detector level kinematic efficiency;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}");
+    cCorrectionObjects->cd(2);
+    dataContainer.hKineEffDetector[2]->Draw("colz");
+    cCorrectionObjects->cd(3);
+    dataContainer.hResponseProj[0]->Draw("text");
+    cCorrectionObjects->cd(4);
+    dataContainer.hResponseProj[1]->Draw("text");
+
     //
     // Storing images
     //
@@ -393,14 +430,17 @@ void FirstClosureTest(){
     std::vector<double> ptjetBinEdges_detector = LoadBinning(fAxes, "axes/ptjetBinEdges_detector");
     double jetptMin = ptjetBinEdges_detector[0]; // GeV
     double jetptMax = ptjetBinEdges_detector[ptjetBinEdges_detector.size() - 1]; // GeV
+    //std::cout << "Jet pT range for detector level: " << jetptMin << " to " << jetptMax << " GeV/c" << std::endl;
     // Load ΔR bin edges
     std::vector<double> deltaRBinEdges_detector = LoadBinning(fAxes, "axes/deltaRBinEdges_detector");
     double minDeltaR = deltaRBinEdges_detector[0];
     double maxDeltaR = deltaRBinEdges_detector[deltaRBinEdges_detector.size() - 1];
+    //std::cout << "Delta R range for detector level: " << minDeltaR << " to " << maxDeltaR << std::endl;
     // Load pTD bin edges
     std::vector<double> ptDBinEdges_detector = LoadBinning(fAxes, "axes/ptDBinEdges_detector");
     double hfptMin = ptDBinEdges_detector[0]; //ptDBinEdges[0] - should start from 0 or from the lowest pT,D value?
     double hfptMax = ptDBinEdges_detector[ptDBinEdges_detector.size() - 1];
+    //std::cout << "D0 pT range for detector level: " << hfptMin << " to " << hfptMax << " GeV/c" << std::endl;
     fAxes->Close();
 
     TFile* fEfficiency = new TFile(Form("../2-Efficiency/selection_efficiency_run3style_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
@@ -410,6 +450,9 @@ void FirstClosureTest(){
     std::vector<double> ptjetBinEdges_particle = LoadBinning(fEfficiency, "axes/ptjetBinEdges_particle");
     std::vector<double> deltaRBinEdges_particle = LoadBinning(fEfficiency, "axes/deltaRBinEdges_particle");
     std::vector<double> ptDBinEdges_particle = LoadBinning(fEfficiency, "axes/ptDBinEdges_particle");
+    // std::cout << "Jet pT range for particle level: " << jetptMin << " to " << jetptMax << " GeV/c" << std::endl;
+    // std::cout << "Delta R range for particle level: " << minDeltaR << " to " << maxDeltaR << std::endl;
+    // std::cout << "D0 pT range for particle level: " << hfptMin << " to " << hfptMax << " GeV/c" << std::endl;
 
     // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
     //std::vector<std::pair<double, double>> bdtPtCuts = {

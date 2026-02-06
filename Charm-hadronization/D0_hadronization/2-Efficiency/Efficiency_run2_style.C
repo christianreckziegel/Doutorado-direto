@@ -564,6 +564,23 @@ void Efficiency_run2_style(){
     double hfptMin = ptDBinEdges[0]; //ptDBinEdges[0] - should start from 0 or from the lowest pT,D value?
     double hfptMax = ptDBinEdges[ptDBinEdges.size() - 1];
 
+    std::cout << "Sanity check on loaded bin edges:" << std::endl;
+    std::cout << "pT,jet bin edges: ";
+    for (const auto& edge : ptjetBinEdges) {
+        std::cout << edge << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "DeltaR bin edges: ";
+    for (const auto& edge : deltaRBinEdges) {
+        std::cout << edge << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "pT,D bin edges: ";
+    for (const auto& edge : ptDBinEdges) {
+        std::cout << edge << " ";
+    }
+    std::cout << std::endl;
+
     // Opening files
     //TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/McEfficiency/New_with_reflections/Merged_AO2D_HF_LHC24d3a_All.root","read"); // previous used file
     TFile* fSimulated = new TFile("../SimulatedData/Hyperloop_output/Train_runs/410602_Eff/AO2D_mergedDFs.root","read");

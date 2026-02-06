@@ -191,7 +191,7 @@ TH2D* CompareClosureTest(TFile* fClosureInputNonMatched, std::vector<TH2D*>& hUn
     for (size_t iIter = 0; iIter < hUnfKinCorrected.size(); iIter++) {
         // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
         hUnfoldedProjNorm[iIter] = hUnfKinCorrected[iIter]->ProjectionY(Form("hProjIterNorm_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
-        hUnfoldedProjNorm[iIter]->Scale(1. / hUnfoldedProjNorm[iIter]->Integral());
+        hUnfoldedProjNorm[iIter]->Scale(1. / hUnfoldedProjNorm[iIter]->Integral(), "width");
         std::cout << "Unfolded iteration " << iIter << " integral is " << hUnfoldedProjNorm[iIter]->Integral() << std::endl;
         hUnfoldedProjNorm[iIter]->SetLineColor(kBlack + iIter);
         lUnfoldedIterNorm->AddEntry(hUnfoldedProjNorm[iIter],Form("Iteration %zu", iIter+1), "le");
@@ -204,7 +204,7 @@ TH2D* CompareClosureTest(TFile* fClosureInputNonMatched, std::vector<TH2D*>& hUn
         
     }
     TH1D* hInputParticleProjNorm = (TH1D*)hInputParticleProj->Clone("hInputParticleProjNorm");
-    hInputParticleProjNorm->Scale(1. / hInputParticleProjNorm->Integral());
+    hInputParticleProjNorm->Scale(1. / hInputParticleProjNorm->Integral(), "width");
     std::cout << "Input particle level distribution integral is " << hInputParticleProjNorm->Integral() << std::endl;
     hInputParticleProjNorm->SetLineColor(kRed);
     hInputParticleProjNorm->SetLineStyle(2);
@@ -249,6 +249,10 @@ TCanvas* AnalysisEvolutionSteps(TH2D* inputMCP, TH3D* hBackgroundSubtracted, TH2
     //hBackgroundSubtractedProj->SetTitle("Background subtracted distribution");
     TH1D* hInputParticleProj1 = (TH1D*)hInputParticleProj->Clone("hInputParticleProj_StepsEvolution1");
     hInputParticleProj1->SetTitle("Step 1: background subtraction");
+    double max1 = hInputParticleProj1->GetMaximum();
+    double max2 = hBackgroundSubtractedProj->GetMaximum();
+    double ymax = TMath::Max(max1, max2) * 1.2; // Add 20% margin
+    hInputParticleProj1->GetYaxis()->SetRangeUser(0., ymax);
     hInputParticleProj1->Draw();
     hBackgroundSubtractedProj->Draw("same");
 
@@ -311,6 +315,7 @@ TCanvas* AnalysisEvolutionSteps(TH2D* inputMCP, TH3D* hBackgroundSubtracted, TH2
     latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
 
 
+    
     return cStepsEvolution;
 }
 
@@ -335,68 +340,217 @@ void StoreSecondClosureTest(TH3D* hBackgroundSubtracted, EfficiencyData& efficie
     efficiencyDatacontainer.hKEffResponseDetector_Over_TotalDetector.first->Write("hKinEff_detectorLevel_prompt");
     efficiencyDatacontainer.hKEffResponseDetector_Over_TotalDetector.second->Write("hKinEff_detectorLevel_nonprompt");
     
-    TDirectory* dirOuputUnfolding = fOutput->mkdir("3_Unfolding/Unfolded/");
-    dirOuputUnfolding->cd();
-    for (size_t i = 0; i < unfoldDataContainer.hUnfoldedKinCorrected.size(); ++i) {
-        unfoldDataContainer.hUnfoldedKinCorrected[i]->Write(Form("hUnfoldedKinCorrected_%zu", i));
+    // Create parent directory first
+    TDirectory* dirParent = fOutput->mkdir("3_Unfolding");
+    if (dirParent) {
+        dirParent->cd();
+        TDirectory* dirOuputUnfolding = dirParent->mkdir("Unfolded");
+        if (!dirOuputUnfolding) {
+            std::cerr << "Error: Failed to create directory '3_Unfolding/Unfolded/'" << std::endl;
+            fOutput->Close();
+            return;
+        }
+        dirOuputUnfolding->cd();
+        for (size_t i = 0; i < unfoldDataContainer.hUnfoldedKinCorrected.size(); ++i) {
+            unfoldDataContainer.hUnfoldedKinCorrected[i]->Write(Form("hUnfoldedKinCorrected_%zu", i));
+        }
+        unfoldDataContainer.hKineEffParticle[2]->Write("UnfoldKineEffParticle");
+        unfoldDataContainer.hKineEffDetector[2]->Write("UnfoldKineEffDetector");
     }
-    unfoldDataContainer.hKineEffParticle[2]->Write("UnfoldKineEffParticle");
-    unfoldDataContainer.hKineEffDetector[2]->Write("UnfoldKineEffDetector");
+    
     fOutput->Close();
 }
 
+// void InvestigateNonmatchingProblem(UnfoldData& unfoldDataContainer, std::vector<TH2D*>& hUnfKinCorrected, TH2D* inputMCP) {
+//     //
+//     TCanvas* cProblemRatio = new TCanvas("cProblemRatio","Investigate non-matching of final and inicial distributions", 1800, 1000);
+//     cProblemRatio->cd();
+//     TLegend* lUnfoldedIter = new TLegend(0.6,0.57,0.7,0.77);
+//     std::vector<TH1D*> hUnfoldedProj(hUnfKinCorrected.size());
+//     int secondBin = 2;
+//     int lastButOneBin = hUnfKinCorrected[0]->GetXaxis()->GetNbins() - 1; // penultimate bin
+//     for (size_t iIter = 0; iIter < hUnfKinCorrected.size(); iIter++) {
+//         // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
+//         hUnfoldedProj[iIter] = hUnfKinCorrected[iIter]->ProjectionY(Form("hProjIterInvestigation_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
+//         hUnfoldedProj[iIter]->SetLineColor(kBlack + iIter);
+//         lUnfoldedIter->AddEntry(hUnfoldedProj[iIter],Form("Iteration %zu", iIter+1), "le");
+//         if (iIter == 0) {
+//             hUnfoldedProj[iIter]->SetTitle("Closure test 2: background subtraction+efficiency+unfolding");
+//             //hUnfoldedProj[iIter]->Draw();
+//         } else {
+//             //hUnfoldedProj[iIter]->Draw("same");
+//         }
+//     }
+//     //hUnfoldedProj[hUnfoldedProj.size() - 1]->Draw();
+//     TH1D* hInputParticleProj = inputMCP->ProjectionY("hInputParticleProjInvestigation", secondBin, lastButOneBin);
+//     hInputParticleProj->SetLineColor(kRed);
+//     hInputParticleProj->SetLineStyle(2);
+//     //hInputParticleProj->Draw("same");
+//     hInputParticleProj->Divide(hUnfoldedProj[hUnfoldedProj.size() - 1]);
+//     hInputParticleProj->Draw();
+//     lUnfoldedIter->AddEntry(hInputParticleProj, "Input particle level", "le");
+//     //lUnfoldedIter->Draw();
+//     double reportingJetPtMin = hUnfKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
+//     double reportingJetPtMax = hUnfKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+//     TLatex* latex = new TLatex();
+//     latex->SetNDC(); // Set the coordinates to be normalized device coordinates
+//     latex->SetTextSize(0.03);
+//     latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+//     // latex->DrawLatex(0.55, 0.5, Form("Unfolded integral (MC detector) = %.3f", hUnfoldedProj[hUnfoldedProj.size()-1]->Integral()));
+//     // latex->DrawLatex(0.55, 0.45, Form("Input integral (MC particle) = %.3f", hInputParticleProj->Integral()));
+//     // latex->DrawLatex(0.55, 0.4, Form("Unfolded / Input = %.3f", hUnfoldedProj[hUnfoldedProj.size()-1]->Integral() / hInputParticleProj->Integral()));
+//     // Investigate response matrices
+//     // TCanvas* cResponseMatrices = new TCanvas("cResponseMatrices","Response matrices investigation", 1800, 1000);
+//     // cResponseMatrices->Divide(2,2);
+//     // for (size_t iIter = 0; iIter < unfoldDataContainer.unfold.size(); ++iIter) {
+//     //     cResponseMatrices->cd(iIter + 1);
+//     //     TH2D* hResponseMatrix = (TH2D*)unfoldDataContainer.unfold[iIter]->Hresponse();
+//     //     hResponseMatrix->SetTitle(Form("Response matrix - iteration %zu", iIter + 1));
+//     //     hResponseMatrix->GetXaxis()->SetTitle("Detector level: p_{T,jet} (GeV/c)");
+//     //     hResponseMatrix->GetYaxis()->SetTitle("Particle level: p_{T,jet} (GeV/c)");
+//     //     hResponseMatrix->Draw("text");
+//     // }
+// }
+
 void InvestigateNonmatchingProblem(UnfoldData& unfoldDataContainer, std::vector<TH2D*>& hUnfKinCorrected, TH2D* inputMCP) {
-    //
     TCanvas* cProblemRatio = new TCanvas("cProblemRatio","Investigate non-matching of final and inicial distributions", 1800, 1000);
     cProblemRatio->cd();
     TLegend* lUnfoldedIter = new TLegend(0.6,0.57,0.7,0.77);
     std::vector<TH1D*> hUnfoldedProj(hUnfKinCorrected.size());
     int secondBin = 2;
     int lastButOneBin = hUnfKinCorrected[0]->GetXaxis()->GetNbins() - 1; // penultimate bin
+    
     for (size_t iIter = 0; iIter < hUnfKinCorrected.size(); iIter++) {
-        // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
-        hUnfoldedProj[iIter] = hUnfKinCorrected[iIter]->ProjectionY(Form("hProjIterInvestigation_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
+        hUnfoldedProj[iIter] = hUnfKinCorrected[iIter]->ProjectionY(Form("hProjIterInvestigation_%zu", iIter),secondBin, lastButOneBin);
         hUnfoldedProj[iIter]->SetLineColor(kBlack + iIter);
         lUnfoldedIter->AddEntry(hUnfoldedProj[iIter],Form("Iteration %zu", iIter+1), "le");
-        if (iIter == 0) {
-            hUnfoldedProj[iIter]->SetTitle("Closure test 2: background subtraction+efficiency+unfolding");
-            //hUnfoldedProj[iIter]->Draw();
-        } else {
-            //hUnfoldedProj[iIter]->Draw("same");
-        }
-        
     }
-    //hUnfoldedProj[hUnfoldedProj.size() - 1]->Draw();
+    
     TH1D* hInputParticleProj = inputMCP->ProjectionY("hInputParticleProjInvestigation", secondBin, lastButOneBin);
     hInputParticleProj->SetLineColor(kRed);
     hInputParticleProj->SetLineStyle(2);
-    //hInputParticleProj->Draw("same");
+    
+    // Calculate percentage deviation: (unfolded - particle) / particle * 100%
+    TLegend* legDeviationHistos = new TLegend(0.7, 0.6, 0.9, 0.75);
+    legDeviationHistos->SetFillStyle(0);
+    
+    std::vector<TH1D*> hPercentageDeviation(hUnfKinCorrected.size());
+    for (size_t iHisto = 0; iHisto < hPercentageDeviation.size(); iHisto++) {
+        hPercentageDeviation[iHisto] = (TH1D*)hUnfoldedProj[iHisto]->Clone(Form("hPercentageDeviation_%zu", iHisto));
+        hPercentageDeviation[iHisto]->Add(hInputParticleProj, -1.0); // unfolded - particle
+        hPercentageDeviation[iHisto]->Divide(hInputParticleProj);    // (unfolded - particle) / particle
+        hPercentageDeviation[iHisto]->Scale(100.0);                  // Convert to percentage
+
+        // Style the percentage deviation plot
+        hPercentageDeviation[iHisto]->SetLineColor(kBlack + iHisto);
+        hPercentageDeviation[iHisto]->SetLineWidth(2);
+        hPercentageDeviation[iHisto]->SetMarkerColor(kBlack + iHisto);
+        hPercentageDeviation[iHisto]->SetMarkerStyle(20);
+        hPercentageDeviation[iHisto]->SetMarkerSize(0.8);
+        if (iHisto == hPercentageDeviation.size()-1) {
+            hPercentageDeviation[iHisto]->SetLineColor(28);
+            hPercentageDeviation[iHisto]->SetMarkerColor(28);
+        }
+        
+
+        // Set titles and labels for the deviation plot
+        hPercentageDeviation[iHisto]->SetTitle(Form("Percentage Deviation from Particle Level, iteration %zu; #DeltaR; Deviation (%%)", iHisto));
+        hPercentageDeviation[iHisto]->GetYaxis()->SetTitle("(Unfolded - Particle) / Particle #times 100%");
+
+        // Draw the percentage deviation plot        
+        hPercentageDeviation[iHisto]->Draw(iHisto == 0 ? "E1" : "E1 same");
+
+        legDeviationHistos->AddEntry(hPercentageDeviation[iHisto], "Percentage Deviation", "lep");
+    }
+    
+    // Create reference lines for ±10% deviation
+    TLine* linePlus10 = new TLine(hPercentageDeviation[hPercentageDeviation.size()-1]->GetXaxis()->GetXmin(), 10.0, 
+                                  hPercentageDeviation[hPercentageDeviation.size()-1]->GetXaxis()->GetXmax(), 10.0);
+    TLine* lineMinus10 = new TLine(hPercentageDeviation[hPercentageDeviation.size()-1]->GetXaxis()->GetXmin(), -10.0, 
+                                   hPercentageDeviation[hPercentageDeviation.size()-1]->GetXaxis()->GetXmax(), -10.0);
+    TLine* lineZero = new TLine(hPercentageDeviation[hPercentageDeviation.size()-1]->GetXaxis()->GetXmin(), 0.0, 
+                                hPercentageDeviation[hPercentageDeviation.size()-1]->GetXaxis()->GetXmax(), 0.0);
+    
+    // Style the reference lines
+    linePlus10->SetLineColor(kRed);
+    linePlus10->SetLineStyle(2);
+    linePlus10->SetLineWidth(1);
+    
+    lineMinus10->SetLineColor(kRed);
+    lineMinus10->SetLineStyle(2);
+    lineMinus10->SetLineWidth(1);
+    
+    lineZero->SetLineColor(kBlack);
+    lineZero->SetLineStyle(1);
+    lineZero->SetLineWidth(1);
+    
+    // Draw reference lines
+    lineZero->Draw("same");
+    linePlus10->Draw("same");
+    lineMinus10->Draw("same");
+    
+    // Add legend for deviation plot
+    TLegend* legDeviation = new TLegend(0.7, 0.75, 0.9, 0.9);
+    legDeviation->SetBorderSize(0);
+    legDeviation->SetFillStyle(0);
+    //legDeviation->AddEntry(hPercentageDeviation, "Percentage Deviation", "lep");
+    legDeviation->AddEntry(linePlus10, "#pm10% Reference", "l");
+    legDeviation->AddEntry(lineZero, "Perfect Agreement (0%)", "l");
+    legDeviation->Draw();
+    legDeviationHistos->Draw();
+    
+    // Calculate and display statistics
+    double meanDeviation = hPercentageDeviation[hPercentageDeviation.size()-1]->GetMean();
+    double rmsDeviation = hPercentageDeviation[hPercentageDeviation.size()-1]->GetRMS();
+    double maxDeviation = hPercentageDeviation[hPercentageDeviation.size()-1]->GetMaximum();
+    double minDeviation = hPercentageDeviation[hPercentageDeviation.size()-1]->GetMinimum();
+    
+    TLatex* latex = new TLatex();
+    latex->SetNDC();
+    latex->SetTextSize(0.02); // default = 0.3
+    double latexVerticalDistance = 0.03; // default = 0.04
+    double reportingJetPtMin = hUnfKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
+    double reportingJetPtMax = hUnfKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+    
+    // Add deviation statistics
+    latex->DrawLatex(0.15, 0.80, Form("Mean deviation (last iteration): %.1f%%", meanDeviation));
+    latex->DrawLatex(0.15, 0.8 - latexVerticalDistance, Form("RMS deviation (last iteration): %.1f%%", rmsDeviation));
+    latex->DrawLatex(0.15, 0.8 - 2*latexVerticalDistance, Form("Max deviation (last iteration): %.1f%%", maxDeviation));
+    latex->DrawLatex(0.15, 0.8 - 3*latexVerticalDistance, Form("Min deviation (last iteration): %.1f%%", minDeviation));
+    
+    // Count bins outside ±10% range
+    int binsOutside10Percent = 0;
+    int totalBins = hPercentageDeviation[hPercentageDeviation.size()-1]->GetNbinsX();
+    for (int i = 1; i <= totalBins; i++) {
+        double deviation = hPercentageDeviation[hPercentageDeviation.size()-1]->GetBinContent(i);
+        if (fabs(deviation) > 10.0) {
+            binsOutside10Percent++;
+        }
+    }
+    double percentOutside10Percent = (double)binsOutside10Percent / totalBins * 100.0;
+    
+    latex->DrawLatex(0.15, 0.62, Form("Bins outside #pm10%% (last iteration): %d/%d (%.1f%%)", 
+                                     binsOutside10Percent, totalBins, percentOutside10Percent));
+    
+    // Also keep your original ratio plot if you want both
+    // You might want to create a second canvas for the ratio plot
+    TCanvas* cOriginalRatio = new TCanvas("cOriginalRatio", "Original Ratio Plot", 1800, 1000);
+    cOriginalRatio->cd();
+    
+    // Your original ratio plotting code here...
     hInputParticleProj->Divide(hUnfoldedProj[hUnfoldedProj.size() - 1]);
     hInputParticleProj->Draw();
     lUnfoldedIter->AddEntry(hInputParticleProj, "Input particle level", "le");
     //lUnfoldedIter->Draw();
-    double reportingJetPtMin = hUnfKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
-    double reportingJetPtMax = hUnfKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
-    TLatex* latex = new TLatex();
-    latex->SetNDC(); // Set the coordinates to be normalized device coordinates
-    latex->SetTextSize(0.03);
-    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
-    // latex->DrawLatex(0.55, 0.5, Form("Unfolded integral (MC detector) = %.3f", hUnfoldedProj[hUnfoldedProj.size()-1]->Integral()));
-    // latex->DrawLatex(0.55, 0.45, Form("Input integral (MC particle) = %.3f", hInputParticleProj->Integral()));
-    // latex->DrawLatex(0.55, 0.4, Form("Unfolded / Input = %.3f", hUnfoldedProj[hUnfoldedProj.size()-1]->Integral() / hInputParticleProj->Integral()));
-
-    // Investigate response matrices
-    // TCanvas* cResponseMatrices = new TCanvas("cResponseMatrices","Response matrices investigation", 1800, 1000);
-    // cResponseMatrices->Divide(2,2);
-    // for (size_t iIter = 0; iIter < unfoldDataContainer.unfold.size(); ++iIter) {
-    //     cResponseMatrices->cd(iIter + 1);
-    //     TH2D* hResponseMatrix = (TH2D*)unfoldDataContainer.unfold[iIter]->Hresponse();
-    //     hResponseMatrix->SetTitle(Form("Response matrix - iteration %zu", iIter + 1));
-    //     hResponseMatrix->GetXaxis()->SetTitle("Detector level: p_{T,jet} (GeV/c)");
-    //     hResponseMatrix->GetYaxis()->SetTitle("Particle level: p_{T,jet} (GeV/c)");
-    //     hResponseMatrix->Draw("text");
-    // }
+    //double reportingJetPtMin = hUnfKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
+    //double reportingJetPtMax = hUnfKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+    TLatex* origlatex = new TLatex();
+    origlatex->SetNDC(); // Set the coordinates to be normalized device coordinates
+    origlatex->SetTextSize(0.03);
+    origlatex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
 }
+
 // 2 - Sideband subtraction + efficiency correction + unfolding closure test
 void SecondClosureTest(){
     // Execution time calculation

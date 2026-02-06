@@ -545,7 +545,7 @@ EfficiencyData calculateKinematicEfficiency(TFile* fClosureInputMatched, const s
     // defining variables for accessing detector level data on TTree
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
-    int MCDjetnconst;//, MCDhfmatch;
+    int MCDjetnconst, MCDhfMatchedFrom, MCDhfSelectedAs;
     bool MCDhfprompt;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
@@ -575,10 +575,19 @@ EfficiencyData calculateKinematicEfficiency(TFile* fClosureInputMatched, const s
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
+
     TH1D* hEffWeight; // Histogram for efficiency weighting of response matrix
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
+
+        // only compute matched detector level candidates, but compute all particle level ones
+        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+        if (isReflection) {
+            continue;
+        }
 
         // calculating delta R
         double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
