@@ -103,11 +103,6 @@ struct FitModel {
         return (Policies::eval(x, par) + ...); // fold expression in C++17
     }
 };
-// ROOT TF1 expects a regular function pointer
-template <typename Model>
-double fitWrapper(double* x, double* par) {
-    return Model::eval(x, par);
-}
 // Compile time polymorphism via policy-based design for fit models
 using FullModelPowerLaw = FitModel<SignalPolicy, ReflectionPolicy, PowerLawBackgroundPolicy>;               // Signal + Reflection + power law Background
 using FullModelPoly2 = FitModel<SignalPolicy, ReflectionPolicy, Poly2BackgroundPolicy>;                     // Signal + Reflection + 2nd order polynomial Background
@@ -399,19 +394,50 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
         //fSignal->Print("V");
         TF1* fReflections = (TF1*)fReflectionsMC->Get(Form("reflectionsFit_%zu", iHisto));
 
-        double A1Signal = fSignal->GetParameter(0); // A1Signal
-        double A2Signal = fSignal->GetParameter(1); // A2Signal
-        double m0Signal = fSignal->GetParameter(2); // m0
-        double sigma1Signal = fSignal->GetParameter(3); // sigma1
-        double sigma2Signal = fSignal->GetParameter(4); // sigma2
+        // Define signal fit variables
+        double A1Signal; // A1Signal
+        double A2Signal; // A2Signal
+        double m0Signal; // m0
+        double sigma1Signal; // sigma1
+        double sigma2Signal; // sigma2
+        // Fetch that Gaussian "1" will always be the primary (with bigger amplitude)
+        if (fSignal->GetParameter(0) > fSignal->GetParameter(1)) {
+            A1Signal = fSignal->GetParameter(0); // A1Signal
+            A2Signal = fSignal->GetParameter(1); // A2Signal
+            sigma1Signal = fSignal->GetParameter(3); // sigma1
+            sigma2Signal = fSignal->GetParameter(4); // sigma2
+        } else {
+            A1Signal = fSignal->GetParameter(1); // A1Signal
+            A2Signal = fSignal->GetParameter(0); // A2Signal
+            sigma1Signal = fSignal->GetParameter(4); // sigma1
+            sigma2Signal = fSignal->GetParameter(3); // sigma2
+        }
+        m0Signal = fSignal->GetParameter(2); // m0
         //std::cout << "A1Signal = " << A1Signal << ", A2Signal = " << A2Signal << ", m0Signal = " << m0Signal << ", sigma1Signal = " << sigma1Signal << ", sigma2Signal = " << sigma2Signal << std::endl;
 
-        double A1Reflection = fReflections->GetParameter(0); // A1Reflection
-        double A2Reflection = fReflections->GetParameter(1); // A2Reflection
-        double m0_1Reflections = fReflections->GetParameter(2); // m0_1
-        double m0_2Reflections = fReflections->GetParameter(3); // m0_2
-        double sigma1Reflections = fReflections->GetParameter(4); // sigma1
-        double sigma2Reflections = fReflections->GetParameter(5); // sigma2
+        // Define signal fit variables
+        double A1Reflection; // A1Reflection
+        double A2Reflection; // A2Reflection
+        double m0_1Reflections; // m0_1
+        double m0_2Reflections; // m0_2
+        double sigma1Reflections; // sigma1
+        double sigma2Reflections; // sigma2
+        // Fetch that Gaussian "1" will always be the primary (with bigger amplitude)
+        if (fSignal->GetParameter(0) > fSignal->GetParameter(1)) {
+            A1Reflection = fReflections->GetParameter(5); // A1Reflection
+            A2Reflection = fReflections->GetParameter(6); // A2Reflection
+            m0_1Reflections = fReflections->GetParameter(7); // m0_1
+            m0_2Reflections = fReflections->GetParameter(8); // m0_2
+            sigma1Reflections = fReflections->GetParameter(9); // sigma1
+            sigma2Reflections = fReflections->GetParameter(10); // sigma2
+        } else {
+            A1Reflection = fReflections->GetParameter(6); // A1Reflection
+            A2Reflection = fReflections->GetParameter(5); // A2Reflection
+            m0_1Reflections = fReflections->GetParameter(8); // m0_1
+            m0_2Reflections = fReflections->GetParameter(7); // m0_2
+            sigma1Reflections = fReflections->GetParameter(10); // sigma1
+            sigma2Reflections = fReflections->GetParameter(9); // sigma2
+        }
         //std::cout << "A1Reflection = " << A1Reflection << ", A2Reflection = " << A2Reflection << ", m0_1Reflections = " << m0_1Reflections << ", m0_2Reflections = " << m0_2Reflections << ", sigma1Reflections = " << sigma1Reflections << ", sigma2Reflections = " << sigma2Reflections << std::endl;
 
         // -> signal constrains
@@ -833,7 +859,7 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
     return scallingFactors;
 }
 
-// Check if histogram should be erased before storing
+// Check if histogram should be erased before storing (in case the fit failed)
 bool eraseHistogram(const std::vector<bool>& workingFits, size_t& histoIndex) {
     bool doEraseHistogram = false;
 
