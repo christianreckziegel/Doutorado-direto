@@ -2,14 +2,14 @@
  * Lambda_c hadron analysis
  * @file BackgroundSubtraction.C
  * @brief Background subtraction using sideband method
- * Input: Reflections.root: contain histograms and fit templates of Lambda_c signal and reflections
+ * Input: Reflections.root - contain histograms and fit templates of Lambda_c signal and reflections
  * Outputs: BackgroundSubtraction.root
  * 
  * @author: Christian Reckziegel
  * Date: February 2026
  */
 
- #include "../../commonUtilities.h"
+#include "../../commonUtilities.h"
 using namespace std;
 
 //_________________________________Template for on-the-run chosen model (policy-based strategy)________________________________________________
@@ -277,12 +277,12 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
         // Get TF1 objects from MC file
         TF1* fSignal = (TF1*)fReflectionsMC->Get(Form("signalFit_%zu", iHisto));
         TF1* fReflections = (TF1*)fReflectionsMC->Get(Form("reflectionsFit_%zu", iHisto));
-        std::cout << " --- Printing signal fit parameters. ---" << std::endl;
-        fSignal->Print("V");
-        std::cout << " --- Signal fit parameters printed. ---" << std::endl;
-        std::cout << " --- Printing reflections fit parameters. ---" << std::endl;
-        fReflections->Print("V");
-        std::cout << " --- Reflections fit parameters printed. ---" << std::endl;
+        // std::cout << " --- Printing signal fit parameters. ---" << std::endl;
+        // fSignal->Print("V");
+        // std::cout << " --- Signal fit parameters printed. ---" << std::endl;
+        // std::cout << " --- Printing reflections fit parameters. ---" << std::endl;
+        // fReflections->Print("V");
+        // std::cout << " --- Reflections fit parameters printed. ---" << std::endl;
 
         // Extract parameters from MC pure signal fits to set constraints for data fits
         // Define signal fit variables
@@ -398,8 +398,8 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
         dataContainer.fittings.fitTotal[iHisto]->FixParameter(12, sigma2Reflections); // sigma_2
 
         // Perform fit with "Q" (quiet) option: no drawing of the fit function
-        dataContainer.histograms1d[iHisto]->Fit(dataContainer.fittings.fitTotal[iHisto], "RQN");
-        dataContainer.fittings.fitTotal[iHisto]->Print("V");
+        dataContainer.histograms1d[iHisto]->Fit(dataContainer.fittings.fitTotal[iHisto], "RQN"); // add "WIDTH"?
+        // dataContainer.fittings.fitTotal[iHisto]->Print("V");
 
         // Check if signal gaussian acomodates the literature D0 rest mass
         double primaryMean = dataContainer.fittings.fitTotal[iHisto]->GetParameter(4);
@@ -407,11 +407,11 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
         if ((m_0_reference < (primaryMean - 2*primarySigma)) || (m_0_reference > (primaryMean + 2*primarySigma))) { // fit failed: PDG mass outside of signal region
             // if literature mass is outside, clear histogram as it should be excluded
             //histograms[iHisto]->Reset();
-            //histograms[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+            //histograms[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{#Lambda_{c}^{+}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
             dataContainer.histograms1d[iHisto]->SetTitle(TString(dataContainer.histograms1d[iHisto]->GetTitle()) + " (Fit failed)");
             //histograms2d[iHisto]->Reset("ICES");
             //histograms2d[iHisto]->Reset();
-            //histograms2d[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
+            //histograms2d[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{#Lambda_{c}^{+}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
             dataContainer.histograms2d[iHisto]->SetTitle(TString(dataContainer.histograms1d[iHisto]->GetTitle()) + " (Fit failed)");
             dataContainer.fittings.workingFits.push_back(false);
         } else { // fit worked: PDG mass inside of signal region
@@ -541,6 +541,7 @@ SubtractionResult SideBand(SidebandData& dataContainer, const BinningStruct& bin
         // Create side-band histogram
         if (sidebandRanges.first[0] == 0. && sidebandRanges.first[1] == 0.) {
             // Use only the right sideband
+            std::cout << "Using only the right sideband..." << std::endl;
             lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
             highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
             h_sideBand = dataContainer.histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_%zu",iHisto), lowBin, highBin); // sum the right sideband
@@ -554,12 +555,13 @@ SubtractionResult SideBand(SidebandData& dataContainer, const BinningStruct& bin
             double signalHistogram = dataContainer.histograms1d[iHisto]->Integral(lowBin, highBin);
         } else {
             // Use both sidebands
+            std::cout << "Using both sidebands..." << std::endl;
             lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[0]);
             highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[1]);
             h_sideBand = dataContainer.histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_left_%zu",iHisto), lowBin, highBin); // sum the left sideband
             double leftSBHistogram = dataContainer.histograms1d[iHisto]->Integral(lowBin, highBin); // integral of sideband regions of mass histogram
-            std::cout << "Sideband integral (only left) = " << h_sideBand->Integral() << std::endl;
-            std::cout << "leftSBHistogram = " << leftSBHistogram << std::endl;
+            // std::cout << "Sideband integral (only left) = " << h_sideBand->Integral() << std::endl;
+            // std::cout << "leftSBHistogram = " << leftSBHistogram << std::endl;
 
             lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
             highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
@@ -576,14 +578,14 @@ SubtractionResult SideBand(SidebandData& dataContainer, const BinningStruct& bin
         }
 
         // Scale the sideband histogram by ratio of it in the signal region Bs/(B1+B2)
-        std::cout << "Sideband integral (before beta scaling) = " << h_sideBand->Integral() << std::endl;
+        // std::cout << "Sideband integral (before beta scaling) = " << h_sideBand->Integral() << std::endl;
+        // std::cout << "beta = " << scallingFactors[1] << std::endl;
         h_sideBand->Scale(scallingFactors[1]);
-        std::cout << "Sideband integral (after beta scaling) = " << h_sideBand->Integral() << std::endl;
+        // std::cout << "Sideband integral (after beta scaling) = " << h_sideBand->Integral() << std::endl;
         dataContainer.subtractionResults.sidebandHist.push_back(h_sideBand);
 
         // Subtract background histogram from signal histogram
         h_back_subtracted = (TH1D*)h_signal->Clone(Form("h_back_subtracted_%zu",iHisto));
-        std::cout << "Before subtraction: Signal integral = " << h_signal->Integral() << ", Sideband integral = " << h_sideBand->Integral() << std::endl;
         h_back_subtracted->Add(h_sideBand,-1.0);
 
         // Scale by reflections correction
@@ -595,6 +597,20 @@ SubtractionResult SideBand(SidebandData& dataContainer, const BinningStruct& bin
         // If histogram isn't empty, store it in the container
         bool isHistoEmpty = (h_back_subtracted->GetEntries() != 0) ? true : false;
         dataContainer.subtractionResults.subtractedHist.push_back(h_back_subtracted);
+
+        // Calculate areas for the invariant mass distribution
+        lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[0]);
+        highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[1]);
+        double leftBandHistoArea = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin, "width");
+        lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
+        highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
+        double rightBandHistoArea = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin, "width");
+        lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
+        highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
+        double signalregionHistoArea = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin, "width");
+        std::cout << "leftBandHistoArea=" << leftBandHistoArea << "\t rightBandHistoArea=" << rightBandHistoArea << "\t left+right=" << leftBandHistoArea+rightBandHistoArea << "\t signalregionHistoArea=" << signalregionHistoArea << std::endl;
+        std::cout << "Ys / B (calculated from histograms) = " << signalregionHistoArea / (leftBandHistoArea+rightBandHistoArea) << std::endl;
+        std::cout << "Y(x=2.28646) evaluated with the fit function = " << dataContainer.fittings.fitTotal[iHisto]->Eval(2.28646) << std::endl;
 
         // Calculating significance
         // Get signal yield by integrating Gaussian in a 2σ window
@@ -614,7 +630,7 @@ SubtractionResult SideBand(SidebandData& dataContainer, const BinningStruct& bin
         // Storing significance in the output struct object
         if (iHisto == 0) {
             // Set a significance value for each corresponding pT,D bin
-            dataContainer.subtractionResults.hSignificance = new TH1D("hSignificance", "Estimated significance for each m_{invariant} distribution bin;p_{T, D^{0}} (GeV/#it{c});Significance = #frac{S}{#sqrt{S+B}}", binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data());
+            dataContainer.subtractionResults.hSignificance = new TH1D("hSignificance", "Estimated significance for each m_{invariant} distribution bin;p_{T, #Lambda_{c}^{+}} (GeV/#it{c});Significance = #frac{S}{#sqrt{S+B}}", binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data());
             dataContainer.subtractionResults.hSignificance->SetBinContent(iHisto+1, significance);
             dataContainer.subtractionResults.hSignificance->SetBinError(iHisto+1, 0);
         } else {
@@ -780,8 +796,8 @@ void PlotHistograms(const SidebandData& dataContainer, const BinningStruct& binn
     cscallingFactorsArrays->cd();
     // Fill two histograms with the scaling factors
     int nBins = binning.ptHFBinEdges_detector.size();
-    TH1D* hAlpha = new TH1D("hAlpha", "Scaling factors;p_{T,D^{0}} (GeV/c); s.f.", binning.ptHFBinEdges_detector.size()-1, binning.ptHFBinEdges_detector.data());
-    TH1D* hBeta = new TH1D("hBeta", "Scaling factor;p_{T,D^{0}} (GeV/c); s.f.", binning.ptHFBinEdges_detector.size()-1, binning.ptHFBinEdges_detector.data());
+    TH1D* hAlpha = new TH1D("hAlpha", "Scaling factors;p_{T,#Lambda_{c}^{+}} (GeV/c); s.f.", binning.ptHFBinEdges_detector.size()-1, binning.ptHFBinEdges_detector.data());
+    TH1D* hBeta = new TH1D("hBeta", "Scaling factor;p_{T,#Lambda_{c}^{+}} (GeV/c); s.f.", binning.ptHFBinEdges_detector.size()-1, binning.ptHFBinEdges_detector.data());
     for (int iBin = 0; iBin < nBins; ++iBin) {
         hAlpha->SetBinContent(iBin + 1, dataContainer.subtractionResults.scalingFactorsArrays[iBin][0]); // alpha
         hBeta->SetBinContent(iBin + 1, dataContainer.subtractionResults.scalingFactorsArrays[iBin][1]); // beta
@@ -915,7 +931,7 @@ void create3DBackgroundSubtracted(const BinningStruct& binning) {
     double minDeltaR = binning.deltaRBinEdges_detector[0];
     double maxDeltaR = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1];
 
-    TH3D* h3D = new TH3D("h3DBackgroundSubtracted", "Background subtracted; p_{T,jet} (GeV/c); #DeltaR; p_{T,D^{0}} (GeV/c)",
+    TH3D* h3D = new TH3D("h3DBackgroundSubtracted", "Background subtracted; p_{T,jet} (GeV/c); #DeltaR; p_{T,#Lambda_{c}^{+}} (GeV/c)",
                      binning.ptjetBinEdges_detector.size()-1, binning.ptjetBinEdges_detector.data(),
                      binning.deltaRBinEdges_detector.size()-1, binning.deltaRBinEdges_detector.data(),
                      binning.ptHFBinEdges_detector.size()-1, binning.ptHFBinEdges_detector.data());
@@ -931,6 +947,10 @@ void create3DBackgroundSubtracted(const BinningStruct& binning) {
         for (int iHist = 0; iHist < 100; ++iHist) {
             TString histName = Form("h_back_subtracted_%d", iHist);
             TH1D* hDeltaR = (TH1D*)fJetRange->Get(histName);
+            if (!hDeltaR) {
+                std::cout << "Warning: histogram " << histName << " not found!" << std::endl;
+            }
+            
             if (!hDeltaR) break; // No more histograms
             //std::cout << "Histogram x axis range: " << hDeltaR->GetXaxis()->GetXmin() << " to " << hDeltaR->GetXaxis()->GetXmax() << std::endl;
 
@@ -952,8 +972,8 @@ void create3DBackgroundSubtracted(const BinningStruct& binning) {
             }
 
             double ptHFlow = -1, ptHFhigh = -1;
-            if (sscanf(title.Data(), "%lf < #it{p}_{T, D^{0}} < %lf GeV/#it{c}", &ptHFlow, &ptHFhigh) != 2) {
-                std::cerr << "Could not parse pT,D range from histogram title: " << title << std::endl;
+            if (sscanf(title.Data(), "%lf < #it{p}_{T, #Lambda_{c}^{+}} < %lf GeV/#it{c}", &ptHFlow, &ptHFhigh) != 2) {
+                std::cerr << "Could not parse pT,HF range from histogram title: " << title << std::endl;
                 std::cout << "Trying to parse title: '" << title << "'" << std::endl;
                 std::cout << "hDeltaR histogram -> " << hDeltaR->GetName() << std::endl;
                 std::cout << "In file " << fJetRange->GetName() << std::endl;
@@ -1020,7 +1040,7 @@ void BackgroundSubtraction() {
     jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
     JetPtIterator(jetptMin, jetptMax, binning);
 
-    // Create 3D final histogram with pT,jet vs DeltaR vs pT,D
+    // Create 3D final histogram with pT,jet vs DeltaR vs pT,HF
     create3DBackgroundSubtracted(binning);
 
     time(&end); // end instant of program execution
