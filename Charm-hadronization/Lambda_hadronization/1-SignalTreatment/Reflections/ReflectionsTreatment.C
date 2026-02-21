@@ -10,15 +10,6 @@ using namespace std;
 
 //-----------------------------------------------------------------------------Fits---------------------------------------------------------------------------------------------------------
 // Defining fit functions using policy-based design for flexibility and modularity in fit model construction
-// Define the enum class with descriptive names
-enum class FitModelType {
-    FullPowerLaw,                   // Signal + Reflections + power law Background,
-    FullPoly2,                      // Signal + Reflections + 2nd order polynominal Background,
-    FullSingleGaussian,             // Signal as single Gaussian + Reflections + power law background,
-    SignalReflectionsOnly,          // Signal + Reflections only
-    SignalOnly,                     // Only Signal
-    ReflectionsOnly                 // Only Reflections
-};
 //_________________________________Template for on-the-run chosen model (policy-based strategy)________________________________________________
 struct PowerLawBackgroundPolicy {
     static double eval(double* x, double* par) {
@@ -72,13 +63,12 @@ struct ReflectionPolicy {
     static double eval(double* x, double* par) {
         // m0 and sigma values fixed from fits obtained from MC data fits
         Double_t m = x[0];
-        Double_t C_1 = par[0];      // total parameter index: 5
-    Double_t C_2 = par[5];      // total parameter index: 6
-    Double_t m0_1 = par[6];     // total parameter index: 7
-    Double_t m0_2 = par[7];     // total parameter index: 8
-    Double_t sigma_1 = par[8];  // total parameter index: 9
-    Double_t sigma_2 = par[9];  // total parameter index: 10
-
+        Double_t C_1 = par[5];      // total parameter index: 5
+    Double_t C_2 = par[6];      // total parameter index: 6
+    Double_t m0_1 = par[7];     // total parameter index: 7
+    Double_t m0_2 = par[8];     // total parameter index: 8
+    Double_t sigma_1 = par[9];  // total parameter index: 9
+    Double_t sigma_2 = par[10];  // total parameter index: 10
     // Defining the custom function
     Double_t result = C_1 * TMath::Exp(-TMath::Power((m - m0_1) / (2 * sigma_1), 2)) + C_2 * TMath::Exp(-TMath::Power((m - m0_2) / (2 * sigma_2), 2));
     return result;
@@ -87,18 +77,6 @@ struct ReflectionPolicy {
 // Parameters indices description:
 // 0-4: signal parameters (C1, C2, m0, sigma1, sigma2)
 // 5-10: reflection parameters (C1, C2, m0_1, m0_2, sigma1, sigma2)
-// template for combinations of policies
-template <typename... Policies>
-struct FitModel {
-    static double eval(double* x, double* par) {
-        return (Policies::eval(x, par) + ...); // fold expression in C++17
-    }
-};
-// ROOT TF1 expects a regular function pointer
-template <typename Model>
-double fitWrapper(double* x, double* par) {
-    return Model::eval(x, par);
-}
 // Compile time polymorphism via policy-based design for fit models
 using SigRefModel = FitModel<SignalPolicy, ReflectionPolicy>;                                               // Signal + Reflection only
 using SingleGausRefModel = FitModel<SignalSinglePolicy, ReflectionPolicy>;                                  // Single Gaussian Signal + Reflection
@@ -197,37 +175,37 @@ HistogramGroup createHistograms(const std::vector<double>& ptHFBinEdges, int mas
         if (std::fmod(ptHFBinEdges[i], 1.0) != 0) { // if the first bin edge is not an integer
             if (std::fmod(ptHFBinEdges[i+1], 1.0) != 0) {
                 // pure reflections histograms
-                histograms.reflections.push_back(new TH2D(Form("histMass_reflections%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.reflections.push_back(new TH2D(Form("histMass_reflections%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}^{+}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
                 // pure signals histograms
-                histograms.signals.push_back(new TH2D(Form("histMass_signals%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.signals.push_back(new TH2D(Form("histMass_signals%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}^{+}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
                 // signals+reflections histograms: calculate ratios
-                histograms.signals_and_reflections.push_back(new TH2D(Form("histMass_signals_and_reflections%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.signals_and_reflections.push_back(new TH2D(Form("histMass_signals_and_reflections%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}^{+}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
         
             } else {
                 // pure reflections histograms
-                histograms.reflections.push_back(new TH2D(Form("histMass_reflections%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.reflections.push_back(new TH2D(Form("histMass_reflections%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}^{+}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
                 // pure signals histograms
-                histograms.signals.push_back(new TH2D(Form("histMass_signals%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.signals.push_back(new TH2D(Form("histMass_signals%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}^{+}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
                 // signals+reflections histograms: calculate ratios
-                histograms.signals_and_reflections.push_back(new TH2D(Form("histMass_signals_and_reflections%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.signals_and_reflections.push_back(new TH2D(Form("histMass_signals_and_reflections%zu",i+1), Form("%.1f < p_{T,#Lambda_{c}^{+}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
         
             }
         } else {
             if (std::fmod(ptHFBinEdges[i+1], 1.0) != 0) {
                 // pure reflections histograms
-                histograms.reflections.push_back(new TH2D(Form("histMass_reflections%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.reflections.push_back(new TH2D(Form("histMass_reflections%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}^{+}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
                 // pure signals histograms
-                histograms.signals.push_back(new TH2D(Form("histMass_signals%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.signals.push_back(new TH2D(Form("histMass_signals%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}^{+}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
                 // signals+reflections histograms: calculate ratios
-                histograms.signals_and_reflections.push_back(new TH2D(Form("histMass_signals_and_reflections%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.signals_and_reflections.push_back(new TH2D(Form("histMass_signals_and_reflections%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}^{+}} < %.1f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
         
             } else {
                 // pure reflections histograms
-                histograms.reflections.push_back(new TH2D(Form("histMass_reflections%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.reflections.push_back(new TH2D(Form("histMass_reflections%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}^{+}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
                 // pure signals histograms
-                histograms.signals.push_back(new TH2D(Form("histMass_signals%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.signals.push_back(new TH2D(Form("histMass_signals%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}^{+}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
                 // signals+reflections histograms: calculate ratios
-                histograms.signals_and_reflections.push_back(new TH2D(Form("histMass_signals_and_reflections%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
+                histograms.signals_and_reflections.push_back(new TH2D(Form("histMass_signals_and_reflections%zu",i+1), Form("%.0f < p_{T,#Lambda_{c}^{+}} < %.0f GeV/c;#it{M}(#piKPr) GeV/c^{2};#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), massBins, minMass, maxMass, deltaRBinEdges.size() - 1, deltaRBinEdges.data()));
         
             }
         }
@@ -248,15 +226,15 @@ HistogramGroup createHistograms(const std::vector<double>& ptHFBinEdges, int mas
 }
 
 // Module to fill 2D histograms from TTree data
-void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& jetptMin, const double& jetptMax, std::vector<double>& ptHFBinEdges, std::vector<double>& deltaRBinEdges, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& jetptMin, const double& jetptMax, const BinningStruct& binning) {
     
     // Defining cuts
     const double jetRadius = 0.4;
     const double etaCut = 0.9 - jetRadius; // on particle level jet
     const double yCut = 0.8; // on detector level Lc
-    const double DeltaRcut = deltaRBinEdges[deltaRBinEdges.size() - 1]; // on particle level delta R
-    double hfptMin = ptHFBinEdges[0]; //ptHFBinEdges[0] - should start from 0 or from the lowest pT,Lc value?
-    double hfptMax = ptHFBinEdges[ptHFBinEdges.size() - 1];
+    const double DeltaRcut = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1]; // on particle level delta R
+    double hfptMin = binning.ptHFBinEdges_detector[0]; //ptHFBinEdges[0] - should start from 0 or from the lowest pT,Lc value?
+    double hfptMax = binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1];
     const double hfPtMincut = hfptMin; // on particle level HF
     const double hfPtMaxcut = hfptMax; // on particle level HF
 
@@ -322,19 +300,19 @@ void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& j
         double deltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
         
         // Fill each histogram with their respective pT intervals
-        if ((abs(MCDhfEta) < etaCut) && (abs(MCDhfY) < yCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((deltaR >= deltaRBinEdges[0]) && (deltaR < DeltaRcut))) {
+        if ((abs(MCDhfEta) < etaCut) && (abs(MCDhfY) < yCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((deltaR >= binning.deltaRBinEdges_detector[0]) && (deltaR < DeltaRcut))) {
             
             bool filled = false;
             // Loop through pT,D bin edges to find the appropriate histogram and fill it
-            for (size_t iEdge = 0; iEdge < ptHFBinEdges.size() - 1 && !filled; iEdge++) {
-                if ((MCDhfPt >= ptHFBinEdges[iEdge]) && (MCDhfPt < ptHFBinEdges[iEdge + 1])) {
+            for (size_t iEdge = 0; iEdge < binning.ptHFBinEdges_detector.size() - 1 && !filled; iEdge++) {
+                if ((MCDhfPt >= binning.ptHFBinEdges_detector[iEdge]) && (MCDhfPt < binning.ptHFBinEdges_detector[iEdge + 1])) {
 
                     // Lc = +1, Lcbar = -1, neither = 0
                     if ((MCDhfMatchedFrom != 0) && (MCDhfSelectedAs != 0)) {
                         if (MCDhfMatchedFrom == MCDhfSelectedAs) {
                             
                             // Get the threshold for this pT range
-                            double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, bdtPtCuts);
+                            double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
                             // Fill histogram only if the cut is passed
                             if (MCDhfMlScore0 < maxBkgProb) {
                                 // pure signals
@@ -344,7 +322,7 @@ void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& j
                         } else {
 
                             // Get the threshold for this pT range
-                            double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, bdtPtCuts);
+                            double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
                             // Fill histogram only if the cut is passed
                             if (MCDhfMlScore0 < maxBkgProb) {
                                 // pure reflections
@@ -354,7 +332,7 @@ void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& j
                         }
                         
                         // Get the threshold for this pT range
-                        double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, bdtPtCuts);
+                        double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
                         // Fill histogram only if the cut is passed
                         if (MCDhfMlScore0 < maxBkgProb) {
                             // signals and reflections altogether, withOUT "neither = 0" entries
@@ -382,11 +360,23 @@ void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& j
         histograms.signals_and_reflections_1d.push_back(histograms.signals_and_reflections[iHist]->ProjectionX(Form("h_mass_signals_and_reflections_proj_%zu", iHist)));
         // histograms.signals_and_reflections_1d[iHist]->Sumw2();
     }
-
     std::cout << "1D Histograms projected from 2D histograms." << std::endl;
+
+    // Check for discontinuities in the histograms, e.g., empty bins, unexpected spikes and print warnings if found (currently only empty bins surrounded by filled bins)
+    for (size_t iHist = 0; iHist < histograms.signals_1d.size(); iHist++) {
+        if (checkHistoDiscontinuity(histograms.signals_1d[iHist])) {
+            // std::cerr << "Warning: Discontinuity found in signal histogram " << iHist << std::endl;
+        }
+        if (checkHistoDiscontinuity(histograms.reflections_1d[iHist])) {
+            // std::cerr << "Warning: Discontinuity found in reflection histogram " << iHist << std::endl;
+        }
+        if (checkHistoDiscontinuity(histograms.signals_and_reflections_1d[iHist])) {
+            // std::cerr << "Warning: Discontinuity found in signals+reflections histogram " << iHist << std::endl;
+        }
+    }
 }
 
-FitsGroup performFits(HistogramGroup& histograms, std::vector<double>& ptHFBinEdges, const double& jetptMin, const double& jetptMax, const double& minMass, const double& maxMass) {
+FitsGroup performFits(HistogramGroup& histograms, const std::vector<double>& ptHFBinEdges, const double& jetptMin, const double& jetptMax, const double& minMass, const double& maxMass) {
 
     FitsGroup fittings;
 
@@ -417,54 +407,93 @@ FitsGroup performFits(HistogramGroup& histograms, std::vector<double>& ptHFBinEd
         fittings.signals[iInterval]->SetParLimits(1, 0., TMath::Infinity());
         //fittings.signals[iInterval]->SetParLimits(3, 0.5 * sigma1, 2.0 * sigma1); // Example constraint for sigma1
 
-        histograms.signals_1d[iInterval]->Fit(fittings.signals[iInterval], "RQ"); // "Q" option performs quiet fit without drawing the fit function
-        fittings.signals.push_back(fittings.signals[iInterval]);
+        histograms.signals_1d[iInterval]->Fit(fittings.signals[iInterval], "RQN"); // "Q" option performs quiet fit without drawing the fit function
+        //fittings.signals.push_back(fittings.signals[iInterval]);
         //fits.signals[iInterval]->Print("V");
 
         // Also create and store individual components
         TF1* fSignalPrimary = new TF1(Form("signalPrimaryFit_%zu", iInterval), singleGaussianFunction, minMass, maxMass, 3);
-        fSignalPrimary->SetParameters(fittings.signals[iInterval]->GetParameter(0), fittings.signals[iInterval]->GetParameter(2), fittings.signals[iInterval]->GetParameter(3)); // Amplitude, mean, sigma
+        // fSignalPrimary->SetParameters(fittings.signals[iInterval]->GetParameter(0), fittings.signals[iInterval]->GetParameter(2), fittings.signals[iInterval]->GetParameter(3)); // Amplitude, mean, sigma
+        fSignalPrimary->FixParameter(0, fittings.signals[iInterval]->GetParameter(0)); // Fix amplitude to the value from the combined fit
+        fSignalPrimary->FixParameter(1, fittings.signals[iInterval]->GetParameter(2)); // Fix mean to the value from the combined fit
+        fSignalPrimary->FixParameter(2, fittings.signals[iInterval]->GetParameter(3)); // Fix sigma to the value from the combined fit
+        fSignalPrimary->SetParName(0, "C1_primary");
+        fSignalPrimary->SetParName(1, "m0_primary");
+        fSignalPrimary->SetParName(2, "sigma_primary");
         TF1* fSignalSecondary = new TF1(Form("signalSecondaryFit_%zu", iInterval), singleGaussianFunction, minMass, maxMass, 3);
-        fSignalSecondary->SetParameters(fittings.signals[iInterval]->GetParameter(1), fittings.signals[iInterval]->GetParameter(2), fittings.signals[iInterval]->GetParameter(4)); // Amplitude, mean, sigma
+        // fSignalSecondary->SetParameters(fittings.signals[iInterval]->GetParameter(1), fittings.signals[iInterval]->GetParameter(2), fittings.signals[iInterval]->GetParameter(4)); // Amplitude, mean, sigma
+        fSignalSecondary->FixParameter(0, fittings.signals[iInterval]->GetParameter(1)); // Fix amplitude to the value from the combined fit
+        fSignalSecondary->FixParameter(1, fittings.signals[iInterval]->GetParameter(2)); // Fix mean to the value from the combined fit
+        fSignalSecondary->FixParameter(2, fittings.signals[iInterval]->GetParameter(4)); // Fix sigma to the value from the combined fit
+        fSignalSecondary->SetParName(0, "C2_secondary");
+        fSignalSecondary->SetParName(1, "m0_secondary");
+        fSignalSecondary->SetParName(2, "sigma_secondary");
         fittings.individualSignals.push_back(std::make_pair(fSignalPrimary,fSignalSecondary));
     }
 
     // --- Reflections fits
     for (size_t iInterval = 0; iInterval < ptHFBinEdges.size() - 1; iInterval++) {
         // Create the fit function, enforce constraints on some parameters, set initial parameter values and performing fit
-        fittings.reflections.push_back(new TF1(Form("reflectionsFit_%zu", iInterval), fitWrapper<PureReflectionsModel>, minMass, maxMass, 6));
+        fittings.reflections.push_back(new TF1(Form("reflectionsFit_%zu", iInterval), fitWrapper<PureReflectionsModel>, minMass, maxMass, 10));
 
         // Obtain 1D mass histogram projection
         histograms.reflections_1d.push_back( histograms.reflections[iInterval]->ProjectionX(Form("histMass_reflections_1d_%zu", iInterval+1), 1, -1) );
 
         // Initialize parameters from the histogram distribution characteristics
         double C1, C2, m0_1, m0_2, sigma1, sigma2;
-        C1 = 0.6 * histograms.reflections_1d[iInterval]->GetMaximum();   // Dominant reflection
-        C2 = 0.4 * histograms.reflections_1d[iInterval]->GetMaximum();   // Secondary reflection
+        C1 = 0.6 * histograms.reflections_1d[iInterval]->GetMaximum();   // Dominant reflection, default to 60% of the histogram maximum
+        C2 = 0.4 * histograms.reflections_1d[iInterval]->GetMaximum();   // Secondary reflection, default to 40% of the histogram maximum
         m0_1 = histograms.reflections_1d[iInterval]->GetMean() - histograms.reflections_1d[iInterval]->GetRMS() / 2; // Offset from mean
         m0_2 = histograms.reflections_1d[iInterval]->GetMean() + histograms.reflections_1d[iInterval]->GetRMS() / 2; // Offset from mean
         sigma1 = histograms.reflections_1d[iInterval]->GetRMS() / 2;  // Narrower
         sigma2 = histograms.reflections_1d[iInterval]->GetRMS();      // Wider
-        fittings.reflections[iInterval]->SetParameters(C1, C2, m0_1, m0_2, sigma1, sigma2);
-        fittings.reflections[iInterval]->SetParName(0, "C1");
-        fittings.reflections[iInterval]->SetParName(1, "C2");
-        fittings.reflections[iInterval]->SetParName(2, "m0_1");
-        fittings.reflections[iInterval]->SetParName(3, "m0_2");
-        fittings.reflections[iInterval]->SetParName(4, "sigma1");
-        fittings.reflections[iInterval]->SetParName(5, "sigma2");
-        fittings.reflections[iInterval]->SetParLimits(0, 0., TMath::Infinity());
-        fittings.reflections[iInterval]->SetParLimits(1, 0., TMath::Infinity());
+        fittings.reflections[iInterval]->SetParameters(0., 0., 0., 0., 0., C1, C2, m0_1, m0_2, sigma1, sigma2);
+        fittings.reflections[iInterval]->SetParName(5, "C1");
+        fittings.reflections[iInterval]->SetParName(6, "C2");
+        fittings.reflections[iInterval]->SetParName(7, "m0_1");
+        fittings.reflections[iInterval]->SetParName(8, "m0_2");
+        fittings.reflections[iInterval]->SetParName(9, "sigma1");
+        fittings.reflections[iInterval]->SetParName(10, "sigma2");
+        fittings.reflections[iInterval]->SetParLimits(5, 0., TMath::Infinity());
+        fittings.reflections[iInterval]->SetParLimits(6, 0., TMath::Infinity()); // amplitudes
+        //fittings.reflections[iInterval]->SetParLimits(4, 0., histograms.reflections_1d[iInterval]->GetRMS());
+        //fittings.reflections[iInterval]->SetParLimits(5, 0., histograms.reflections_1d[iInterval]->GetRMS()); // sigmas
 
-        histograms.reflections_1d[iInterval]->Fit(fittings.reflections[iInterval], "RQ");
-        fittings.reflections.push_back(fittings.reflections[iInterval]);
-        //fittings.reflections[iInterval]->Print("V");
+        histograms.reflections_1d[iInterval]->Fit(fittings.reflections[iInterval], "RQN"); // "Q" option sets minimum printing, "R" option fit in the specified range, "N" option does not store the fit result in the histogram (to avoid overwriting the previous fit results)
+
+        // Reflections parameters:
+        // std::cout << "Reflection parameter 0 = " << fittings.reflections[iInterval]->GetParameter(0) << std::endl;
+        // std::cout << "Reflection parameter 1 = " << fittings.reflections[iInterval]->GetParameter(1) << std::endl;
+        // std::cout << "Reflection parameter 2 = " << fittings.reflections[iInterval]->GetParameter(2) << std::endl;
+        // std::cout << "Reflection parameter 3 = " << fittings.reflections[iInterval]->GetParameter(3) << std::endl;
+        // std::cout << "Reflection parameter 4 = " << fittings.reflections[iInterval]->GetParameter(4) << std::endl;
+        // std::cout << "Reflection parameter 5 = " << fittings.reflections[iInterval]->GetParameter(5) << std::endl;
+        // std::cout << "Reflection parameter 6 = " << fittings.reflections[iInterval]->GetParameter(6) << std::endl;
+        // std::cout << "Reflection parameter 7 = " << fittings.reflections[iInterval]->GetParameter(7) << std::endl;
+        // std::cout << "Reflection parameter 8 = " << fittings.reflections[iInterval]->GetParameter(8) << std::endl;
+        // std::cout << "Reflection parameter 9 = " << fittings.reflections[iInterval]->GetParameter(9) << std::endl;
+        // std::cout << "Reflection parameter 10 = " << fittings.reflections[iInterval]->GetParameter(10) << std::endl;
+        //fittings.reflections.push_back(fittings.reflections[iInterval]);
+        // fittings.reflections[iInterval]->Print("V");
         std::cout << "A1/A2 = " << fittings.reflections[iInterval]->GetParameter(0) / fittings.reflections[iInterval]->GetParameter(1) << std::endl;
 
         // Also create and store individual components
         TF1* fReflectionPrimary = new TF1(Form("reflectionPrimaryFit_%zu", iInterval), singleGaussianFunction, minMass, maxMass, 3);
-        fReflectionPrimary->SetParameters(fittings.reflections[iInterval]->GetParameter(0), fittings.reflections[iInterval]->GetParameter(2), fittings.reflections[iInterval]->GetParameter(4)); // Amplitude, mean, sigma
+        // fReflectionPrimary->SetParameters(fittings.reflections[iInterval]->GetParameter(0), fittings.reflections[iInterval]->GetParameter(2), fittings.reflections[iInterval]->GetParameter(4)); // Amplitude, mean, sigma
+        fReflectionPrimary->FixParameter(0, fittings.reflections[iInterval]->GetParameter(0)); // Fix amplitude to the value from the combined fit
+        fReflectionPrimary->FixParameter(1, fittings.reflections[iInterval]->GetParameter(2)); // Fix mean to the value from the combined fit
+        fReflectionPrimary->FixParameter(2, fittings.reflections[iInterval]->GetParameter(4)); // Fix sigma to the value from the combined fit
+        fReflectionPrimary->SetParName(0, "C1_primary");
+        fReflectionPrimary->SetParName(1, "m0_primary");
+        fReflectionPrimary->SetParName(2, "sigma_primary");
         TF1* fReflectionSecondary = new TF1(Form("reflectionSecondaryFit_%zu", iInterval), singleGaussianFunction, minMass, maxMass, 3);
-        fReflectionSecondary->SetParameters(fittings.reflections[iInterval]->GetParameter(1), fittings.reflections[iInterval]->GetParameter(3), fittings.reflections[iInterval]->GetParameter(5)); // Amplitude, mean, sigma
+        // fReflectionSecondary->SetParameters(fittings.reflections[iInterval]->GetParameter(1), fittings.reflections[iInterval]->GetParameter(3), fittings.reflections[iInterval]->GetParameter(5)); // Amplitude, mean, sigma
+        fReflectionSecondary->FixParameter(0, fittings.reflections[iInterval]->GetParameter(1)); // Fix amplitude to the value from the combined fit
+        fReflectionSecondary->FixParameter(1, fittings.reflections[iInterval]->GetParameter(3)); // Fix mean to the value from the combined fit
+        fReflectionSecondary->FixParameter(2, fittings.reflections[iInterval]->GetParameter(5)); // Fix sigma to the value from the combined fit
+        fReflectionSecondary->SetParName(0, "C2_secondary");
+        fReflectionSecondary->SetParName(1, "m0_secondary");
+        fReflectionSecondary->SetParName(2, "sigma_secondary");
         fittings.individualReflections.push_back(std::make_pair(fReflectionPrimary,fReflectionSecondary));
     }
 
@@ -478,20 +507,20 @@ FitsGroup performFits(HistogramGroup& histograms, std::vector<double>& ptHFBinEd
 
         // Initialize parameters from previous fits
         fittings.signals_and_reflections[iInterval]->SetParameters(fittings.signals[iInterval]->GetParameter(0), fittings.signals[iInterval]->GetParameter(1), fittings.signals[iInterval]->GetParameter(2), fittings.signals[iInterval]->GetParameter(3), fittings.signals[iInterval]->GetParameter(4), 
-                                      fittings.reflections[iInterval]->GetParameter(0), fittings.reflections[iInterval]->GetParameter(1), fittings.reflections[iInterval]->GetParameter(2), fittings.reflections[iInterval]->GetParameter(3), fittings.reflections[iInterval]->GetParameter(4), fittings.reflections[iInterval]->GetParameter(5));
+                                      fittings.reflections[iInterval]->GetParameter(5), fittings.reflections[iInterval]->GetParameter(6), fittings.reflections[iInterval]->GetParameter(7), fittings.reflections[iInterval]->GetParameter(8), fittings.reflections[iInterval]->GetParameter(9), fittings.reflections[iInterval]->GetParameter(10));
         fittings.signals_and_reflections[iInterval]->FixParameter(0,fittings.signals[iInterval]->GetParameter(0));
         fittings.signals_and_reflections[iInterval]->FixParameter(1,fittings.signals[iInterval]->GetParameter(1));
         fittings.signals_and_reflections[iInterval]->FixParameter(2,fittings.signals[iInterval]->GetParameter(2));
         fittings.signals_and_reflections[iInterval]->FixParameter(3,fittings.signals[iInterval]->GetParameter(3));
         fittings.signals_and_reflections[iInterval]->FixParameter(4,fittings.signals[iInterval]->GetParameter(4));
-        fittings.signals_and_reflections[iInterval]->FixParameter(5,fittings.reflections[iInterval]->GetParameter(0));
-        fittings.signals_and_reflections[iInterval]->FixParameter(6,fittings.reflections[iInterval]->GetParameter(1));
-        fittings.signals_and_reflections[iInterval]->FixParameter(7,fittings.reflections[iInterval]->GetParameter(2));
-        fittings.signals_and_reflections[iInterval]->FixParameter(8,fittings.reflections[iInterval]->GetParameter(3));
-        fittings.signals_and_reflections[iInterval]->FixParameter(9,fittings.reflections[iInterval]->GetParameter(4));
-        fittings.signals_and_reflections[iInterval]->FixParameter(10,fittings.reflections[iInterval]->GetParameter(5));
-        histograms.signals_and_reflections_1d[iInterval]->Fit(fittings.signals_and_reflections[iInterval], "RQ");
-        fittings.signals_and_reflections.push_back(fittings.signals_and_reflections[iInterval]);
+        fittings.signals_and_reflections[iInterval]->FixParameter(5,fittings.reflections[iInterval]->GetParameter(5));
+        fittings.signals_and_reflections[iInterval]->FixParameter(6,fittings.reflections[iInterval]->GetParameter(6));
+        fittings.signals_and_reflections[iInterval]->FixParameter(7,fittings.reflections[iInterval]->GetParameter(7));
+        fittings.signals_and_reflections[iInterval]->FixParameter(8,fittings.reflections[iInterval]->GetParameter(8));
+        fittings.signals_and_reflections[iInterval]->FixParameter(9,fittings.reflections[iInterval]->GetParameter(9));
+        fittings.signals_and_reflections[iInterval]->FixParameter(10,fittings.reflections[iInterval]->GetParameter(10));
+        histograms.signals_and_reflections_1d[iInterval]->Fit(fittings.signals_and_reflections[iInterval], "RQN");
+        //fittings.signals_and_reflections.push_back(fittings.signals_and_reflections[iInterval]);
         //fittings.signals_and_reflections[iInterval]->Print("V");
     }
     
@@ -545,19 +574,16 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fittings, const
         fittings.individualSignals[iHist].second->SetLineStyle(kDashed);
         fittings.individualSignals[iHist].first->Draw("same");
         fittings.individualSignals[iHist].second->Draw("same");
-        //fittings[iHist]->Draw("same");
-        //int backgroundHist = histograms.size() + iHist;
-        //fittings[backgroundHist]->Draw("same");
         //double m_0 = fittings[iHist]->GetParameter(3); // Get the value of parameter 'm_0'
         //double sigma = fittings[iHist]->GetParameter(4); // Get the value of parameter 'sigma'
-        // double chi2 = fittings.signals[iHist]->GetChisquare();
-        // double degOfFreedom = fittings.signals[iHist]->GetNDF();
+        double chi2 = fittings.signals[iHist]->GetChisquare();
+        double degOfFreedom = fittings.signals[iHist]->GetNDF();
         // original position at statBoxPos-0.35, 0.70 with 0.03 of size
-        // latex->DrawLatex(statBoxPos-0.4, 0.65, Form("m_{0} = %.3f GeV/c^{2}", fittings.signals[iHist]->GetParameter(2))); // Display parameter 'm_0' value
+        latex->DrawLatex(statBoxPos-0.4, 0.65, Form("m_{0} = %.3f GeV/c^{2}", fittings.signals[iHist]->GetParameter(2))); // Display parameter 'm_0' value
         latex->DrawLatex(statBoxPos-0.87, 0.70,"MC derived data:"); // Derived data from LHC24d3a (MC)
         latex->DrawLatex(statBoxPos-0.87, 0.65,"HF_LHC24g5_All"); // Derived data from LHC24d3a (MC)
-        //latex->DrawLatex(statBoxPos-0.3, 0.65, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax)); // Display jet pT cut applied
-        // latex->DrawLatex(statBoxPos-0.4, 0.58, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
+        latex->DrawLatex(statBoxPos-0.4, 0.72, Form("%.0f < p_{T,jet} < %.0f GeV/c",jetptMin,jetptMax)); // Display jet pT cut applied
+        latex->DrawLatex(statBoxPos-0.4, 0.58, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
 
         // Drawing 2D histograms
         //cSignals_2d->cd(iHist+1);
@@ -575,8 +601,8 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fittings, const
         histograms.reflections_1d[iHist]->SetLineColor(kBlack);
         histograms.reflections_1d[iHist]->GetYaxis()->SetTitle("counts");
         histograms.reflections_1d[iHist]->Draw();
-        // chi2 = fittings.reflections[iHist]->GetChisquare();
-        // degOfFreedom = fittings.reflections[iHist]->GetNDF();
+        chi2 = fittings.reflections[iHist]->GetChisquare();
+        degOfFreedom = fittings.reflections[iHist]->GetNDF();
         fittings.reflections[iHist]->SetLineColor(46); // pastel red
         fittings.reflections[iHist]->Draw("same");
         fittings.individualReflections[iHist].first->SetLineColor(46);
@@ -587,7 +613,7 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fittings, const
         fittings.individualReflections[iHist].second->Draw("same");
         latex->DrawLatex(statBoxPos-0.87, 0.40,"MC derived data:"); // Derived data from LHC24d3a (MC)
         latex->DrawLatex(statBoxPos-0.87, 0.35,"HF_LHC24g5_All"); // Derived data from LHC24d3a (MC)
-        //latex->DrawLatex(statBoxPos-0.87, 0.30, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
+        latex->DrawLatex(statBoxPos-0.87, 0.30, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
 
         //
         // Signal and reflections
@@ -600,12 +626,12 @@ void PlotHistograms(const HistogramGroup& histograms, FitsGroup& fittings, const
         histograms.signals_and_reflections_1d[iHist]->SetLineColor(kBlack); // kGray
         histograms.signals_and_reflections_1d[iHist]->GetYaxis()->SetTitle("counts");
         histograms.signals_and_reflections_1d[iHist]->Draw();
-        // chi2 = fittings.signals_and_reflections[iHist]->GetChisquare();
-        // degOfFreedom = fittings.signals_and_reflections[iHist]->GetNDF();
+        chi2 = fittings.signals_and_reflections[iHist]->GetChisquare();
+        degOfFreedom = fittings.signals_and_reflections[iHist]->GetNDF();
         fittings.signals_and_reflections[iHist]->SetLineColor(38); // pastel blue
         latex->DrawLatex(statBoxPos-0.87, 0.70,"MC derived data:"); // Derived data from LHC24d3a (MC)
         latex->DrawLatex(statBoxPos-0.87, 0.65,"HF_LHC24g5_All"); // Derived data from LHC24d3a (MC)
-        // latex->DrawLatex(statBoxPos-0.87, 0.60, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
+        latex->DrawLatex(statBoxPos-0.87, 0.60, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
 
         // Creating legend for the three components in the final fit
         TLegend* legend = new TLegend(0.6,0.57,0.85,0.77);
@@ -659,13 +685,67 @@ void SaveData(TFile* fOutput, const HistogramGroup& histograms, FitsGroup& fits,
     storeBinningInFile(fOutput, binning);
 }
 
-void JetPtIterator(const double jetptMin, const double jetptMax, const std::vector<double>& ptjetBinEdges, const bool useEmmaYeatsBins) {
+void JetPtIterator(const double jetptMin, const double jetptMax, const BinningStruct& binning) {
     std::cout << "============================================= " << jetptMin << " GeV/c < pT,jet < " << jetptMax << " GeV/c =============================================" << std::endl;
 
     // Lc mass in GeV/c^2
     double m_0_parameter = 2.28646;
     double sigmaInitial = 0.012;
 
+    // mass histogram
+    int massBins = 50; // default=50 
+    double minMass = 2.1; // default = 2.1
+    double maxMass = 2.49; // default = 2.49
+
+    // Opening data file
+    //TFile* fInputMC = new TFile("../../SimulatedData/Hyperloop_output/McEfficiency/New_with_reflections/Merged_AO2D_HF_LHC24d3a_All.root","read"); // previous file used
+    TFile* fInputMC = new TFile("../../Data/MonteCarlo/Train_607573/AO2D_mergedDFs.root","read");
+    if (!fInputMC || fInputMC->IsZombie()) {
+        std::cerr << "Error: Unable to open the input ROOT file." << std::endl;
+    }
+
+    TFile* fOutput = new TFile(Form("reflections_%.0f_to_%.0fGeV.root", jetptMin, jetptMax),"recreate");
+    if (!fOutput || fOutput->IsZombie()) {
+        std::cerr << "Error: Unable to open the output ROOT file." << std::endl;
+    }
+
+    // Create multiple histograms
+    HistogramGroup histograms = createHistograms(binning.ptHFBinEdges_detector,                                 // the pT,D edges will determine the number of mass histograms
+                                                     massBins, minMass, maxMass,              // mass histograms binning
+                                                     binning.deltaRBinEdges_detector);                         // deltaR histograms with asymmetrical bin widths
+
+    // Fill histograms
+    fillHistograms(fInputMC, histograms, jetptMin, jetptMax, binning);
+
+    // Perform fits
+    FitsGroup fittings = performFits(histograms, binning.ptHFBinEdges_detector, jetptMin, jetptMax, minMass, maxMass);
+
+    // signal/side-band region parameters
+    int signalSigmas = 2; // 2
+    int startingBackSigma = 4; // 4
+    int backgroundSigmas = 4; // 4
+    
+    // Plot histograms
+    PlotHistograms(histograms, fittings, jetptMin, jetptMax);
+
+    // Storing final histograms to output file
+    SaveData(fOutput, histograms, fittings, binning);
+
+}
+
+void ReflectionsTreatment() {
+    // Execution time calculation
+    time_t start, end;
+    time(&start); // initial instant of program execution
+    
+    // pT,jet cuts
+    std::vector<double> ptjetBinEdges = {5., 7., 10., 15., 30., 50.}; // default = {5., 7., 15., 30., 50.}
+    // std::vector<double> ptjetBinEdges = {5., 7.}; // default = {5., 7., 15., 30., 50.}, testing scenario
+    // Emma Yeats reported analysis bins:
+    bool useEmmaYeatsBins = false;
+    if (useEmmaYeatsBins) {
+        ptjetBinEdges = {5., 10., 15., 20., 30.}; // originally {10., 15., 20.}, need to add lower and higher bins for unfolding step
+    }
     // pT,jet cuts
     //std::vector<double> ptjetBinEdges = {5., 7., 15., 30., 50.};
     //const double jetptMin = ptjetBinEdges[0]; // GeV
@@ -691,10 +771,7 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     // higher bin size of last one: {1., 2., 3., 3.5, 4., 4.5, 5., 5.5, 6., 6.5, 7., 8., 10., 12., 15., 40.}
     // bins with plenty of statistics: 3-4, 4-5, 5-6, 6-7, 8-10
     // wide peak bins: 8-10, 10-12, 12-15, 15-30 (very wide)
-    // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.03 (from first of pair)
-    //std::vector<std::pair<double, double>> bdtPtCuts = {
-    //    {1, 0.03}, {2, 0.03}, {3, 0.05}, {4, 0.05}, {5, 0.08}, {6, 0.15}, {8, 0.22}, {12, 0.35}, {16, 0.47}, {24, 0.47}
-    //};
+    // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.05 (from first of pair)
     std::vector<std::pair<double, double>> bdtPtCuts = {
         {1, 0.05}, {2, 0.08}, {3, 0.08}, {4, 0.1}, {5, 0.2}, {6, 0.25}, {7, 0.3}, {8, 0.4}, {12, 0.5}, {24, 0.7}, {100, 0.7}
     }; // on dataset HF_LHC22o_pass7_minBias_small_2P3PDstar
@@ -708,74 +785,27 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const std::vect
     binning.deltaRBinEdges_particle = deltaRBinEdges;
     binning.ptHFBinEdges_particle = ptHFBinEdges;
 
-    // mass histogram
-    int massBins = 50; // default=50 
-    double minMass = 2.1; // default = 2.1
-    double maxMass = 2.49; // default = 2.49
-
-    // Opening data file
-    //TFile* fInputMC = new TFile("../../SimulatedData/Hyperloop_output/McEfficiency/New_with_reflections/Merged_AO2D_HF_LHC24d3a_All.root","read"); // previous file used
-    TFile* fInputMC = new TFile("../../Data/MonteCarlo/Train_607573/AO2D_mergedDFs.root","read");
-    if (!fInputMC || fInputMC->IsZombie()) {
-        std::cerr << "Error: Unable to open the input ROOT file." << std::endl;
-    }
-
-    TFile* fOutput = new TFile(Form("reflections_%.0f_to_%.0fGeV.root", jetptMin, jetptMax),"recreate");
-    if (!fOutput || fOutput->IsZombie()) {
-        std::cerr << "Error: Unable to open the output ROOT file." << std::endl;
-    }
-
-    // Create multiple histograms
-    HistogramGroup histograms = createHistograms(ptHFBinEdges,                                 // the pT,D edges will determine the number of mass histograms
-                                                     massBins, minMass, maxMass,              // mass histograms binning
-                                                     deltaRBinEdges);                         // deltaR histograms with asymmetrical bin widths
-
-    // Fill histograms
-    fillHistograms(fInputMC, histograms, jetptMin, jetptMax, ptHFBinEdges, deltaRBinEdges, bdtPtCuts);
-
-    // Perform fits
-    FitsGroup fittings = performFits(histograms, ptHFBinEdges, jetptMin, jetptMax, minMass, maxMass);
-
-    // signal/side-band region parameters
-    int signalSigmas = 2; // 2
-    int startingBackSigma = 4; // 4
-    int backgroundSigmas = 4; // 4
-    
-    // Plot histograms
-    PlotHistograms(histograms, fittings, jetptMin, jetptMax);
-
-    // Storing final histograms to output file
-    SaveData(fOutput, histograms, fittings, binning);
-
-}
-
-void ReflectionsTreatment() {
-    // Execution time calculation
-    time_t start, end;
-    time(&start); // initial instant of program execution
-    
-    // pT,jet cuts
-    std::vector<double> ptjetBinEdges = {5., 7., 10., 15., 30., 50.}; // default = {5., 7., 15., 30., 50.}
-    //std::vector<double> ptjetBinEdges = {30., 50.}; // default = {5., 7., 15., 30., 50.}
-    // Emma Yeats reported analysis bins:
-    bool useEmmaYeatsBins = false;
-    if (useEmmaYeatsBins) {
-        ptjetBinEdges = {5., 10., 15., 20., 30.}; // originally {10., 15., 20.}, need to add lower and higher bins for unfolding step
-    }
-
     for (size_t iJetPt = 0; iJetPt < ptjetBinEdges.size() - 1; iJetPt++) {
         
         // Apply side-band method to each pT,jet bin
         double jetptMin = ptjetBinEdges[iJetPt];
         double jetptMax = ptjetBinEdges[iJetPt+1];
 
-        JetPtIterator(jetptMin, jetptMax, ptjetBinEdges, useEmmaYeatsBins);
+        JetPtIterator(jetptMin, jetptMax, binning);
     }
 
     // Compute the entire range too
     double jetptMin = ptjetBinEdges[0];
     double jetptMax = ptjetBinEdges[ptjetBinEdges.size() - 1];
-    JetPtIterator(jetptMin, jetptMax, ptjetBinEdges, useEmmaYeatsBins);
+    JetPtIterator(jetptMin, jetptMax, binning);
+
+    // Store binning information in a separate file for later use
+    TFile* fBinning = new TFile("binningInfo.root", "recreate");
+    if (!fBinning || fBinning->IsZombie()) {
+        std::cerr << "Error: Unable to open the binning info ROOT file." << std::endl;
+    }
+    storeBinningInFile(fBinning, binning);
+    fBinning->Close();
 
     time(&end); // end instant of program execution
     // Calculating total time taken by the program. 
