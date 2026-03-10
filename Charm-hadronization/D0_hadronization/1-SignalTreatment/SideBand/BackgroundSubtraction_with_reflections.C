@@ -103,6 +103,11 @@ struct FitModel {
         return (Policies::eval(x, par) + ...); // fold expression in C++17
     }
 };
+// ROOT TF1 expects a regular function pointer
+template <typename Model>
+double fitWrapper(double* x, double* par) {
+    return Model::eval(x, par);
+}
 // Compile time polymorphism via policy-based design for fit models
 using FullModelPowerLaw = FitModel<SignalPolicy, ReflectionPolicy, PowerLawBackgroundPolicy>;               // Signal + Reflection + power law Background
 using FullModelPoly2 = FitModel<SignalPolicy, ReflectionPolicy, Poly2BackgroundPolicy>;                     // Signal + Reflection + 2nd order polynomial Background
@@ -498,6 +503,7 @@ FitContainer performFit(TFile* fReflectionsMC, const std::vector<TH2D*>& histogr
         fittings.fitTotal[iHisto]->SetParLimits(0, 0., TMath::Infinity()); // only accepts non-negative background fits
         fittings.fitTotal[iHisto]->SetParLimits(2, 0., TMath::Infinity()); // only accepts non-negative primary gaussian amplitude
         fittings.fitTotal[iHisto]->SetParLimits(4, 0.95 * m_0_reference, 1.05 * m_0_reference); // mean invariant mass should be around the one from literature
+        fittings.fitTotal[iHisto]->SetParLimits(4, m_0_reference, m_0_reference); // or fix it to the literature value
         fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 3.0 * sigma_reference);
         //---------Force polynomial fit to work with specific constrains to each pT,jet and pT,D bin
         if (modelToUse == FitModelType::FullPoly2) {
