@@ -48,6 +48,16 @@ WORKDIR=/home/christian/cernbox/Analyses/With_Nima/Charm_hadronization
   root -b -q Unfolding.C > log_unfolding.txt 2>&1
   echo "4 - Unfolding procedure done!"
   cd $WORKDIR
+  # 5.1 - First closure test: unfolding
+  cd $WORKDIR/5-ClosureTest
+  root -b -q FirstClosureTest.C > log_1st_closure_test.txt 2>&1
+  echo "5.1 - First closure test done!"
+  # 5.2 - Second closure test: background subtraction + efficiency correction + unfolding
+  root -b -q SecondClosureTest.C > log_2nd_closure_test.txt 2>&1
+  echo "5.2 - Second closure test done!"
+  # 5.4 - Fourth closure test: my run 3 measurement vs. Emma Yeats' run 2 measurement
+  root -b -q FourthClosureTest.C > log_4th_closure_test.txt 2>&1
+  echo "5.4 - Fourth closure test done!"
   # End
   echo "All done!"
 )
