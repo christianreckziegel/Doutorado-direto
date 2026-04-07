@@ -146,12 +146,16 @@ struct SubtractionResult {
     std::vector<TH1D*> sidebandHist;                                    // 1D sideband background histograms vector
     std::vector<TH1D*> signalHist;                                      // 1D signal histograms vector
     std::vector<TH1D*> subtractedHist;                                  // 1D sideband subtracted histograms vector
+    std::vector<TH1D*> subtractedHistCopy;                              // 1D sideband subtracted histograms vector copy for scaling factor variations
     TH1D* hSubtractedFullJetPt;                                         // final deltaR distribution for all pT,HF summed
     TH1D* hSignificance;                                                // final significance distribution for all pT,HF summed
     std::vector<std::pair<double, double>> signal_background_values;    // vector of signal and background values for each pT,HF bin
-    std::vector<std::array<double, 2>> scalingFactorsArrays;           // alpha and beta scaling factors for each pT,HF bin
+    std::vector<std::array<double, 2>> scalingFactorsArrays;            // alpha and beta scaling factors for each pT,HF bin
+    std::vector<TH1D*> sidebandHistDrawing;                             // histogram used for drawing the side-band shaded invariant mass distribution -in red
+    std::vector<TH1D*> signalHistDrawing;                               // histogram used for drawing the signal shaded invariant mass distribution - in blue
 };
 struct SidebandData {
+    double D0_reference_mass = 1.86484; // D0 mass in GeV/c^2
     std::vector<TH2D*> histograms2d;
     std::vector<TH1D*> histograms1d;
     FitContainer fittings;
@@ -226,7 +230,7 @@ void fillHistograms(TFile* fDist, SidebandData& dataContainer, double jetptMin, 
     tree->SetBranchAddress("fHfMlScore1",&hfMlScore1); // prompt D0 ML score
     tree->SetBranchAddress("fHfMlScore2",&hfMlScore2); // non-prompt D0 ML score
 
-    int nEntries = tree->GetEntries();
+    int nEntries = tree->GetEntries(); //  * 2 / 10
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
@@ -263,13 +267,15 @@ void fillHistograms(TFile* fDist, SidebandData& dataContainer, double jetptMin, 
     for (size_t iHist = 0; iHist < dataContainer.histograms2d.size(); iHist++) {
         //
         tempHist = dataContainer.histograms2d[iHist]->ProjectionX(Form("h_mass_proj_%zu", iHist));
+        double binWidth = tempHist->GetXaxis()->GetBinWidth(1);
+        tempHist->GetYaxis()->SetTitle(Form("Entries / %.0f MeV/#it{c}^{2}", binWidth*1000)); // Set y-axis title with bin width in MeV/c^2
         dataContainer.histograms1d.push_back(tempHist);
     }
 }
 
-FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, double& minMass, double& maxMass, const FitModelType& modelToUse, const double& jetptMin, const double& jetptMax) {
+FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, double& minMass, double& maxMass, const FitModelType& modelToUse, const double& jetptMin, const double& jetptMax, const double& signalSigmas) {
     
-    double m_0_reference = 1.86484; // D0 mass in GeV/c^2 (hard-coded)
+    double m_0_reference = dataContainer.D0_reference_mass; // D0 mass in GeV/c^2 (hard-coded)
     double sigma_reference = 0.012;
 
     // --- Total fits: loop through pT,HF intervals/histograms and perform fits
@@ -382,13 +388,18 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
         dataContainer.fittings.fitTotal[iHisto]->SetParLimits(0, 0.001, TMath::Infinity()); // only accepts positive background fits
         dataContainer.fittings.fitTotal[iHisto]->SetParLimits(1, -TMath::Infinity(), -1.01); // only descending inclination background fits
         dataContainer.fittings.fitTotal[iHisto]->SetParLimits(2, 3.0, TMath::Infinity()); // only accepts non-negative primary gaussian amplitude
-        dataContainer.fittings.fitTotal[iHisto]->SetParLimits(4, m_0_reference, m_0_reference); // mean invariant mass should be around the one from literature, between [0.995 * m_0_reference, 1.005 * m_0_reference]
-        // if (jetptMin == 30. && jetptMax == 50.) {
-        //     dataContainer.fittings.fitTotal[iHisto]->SetParLimits(4, m_0_reference, m_0_reference);
-        // } else {
-        //     dataContainer.fittings.fitTotal[iHisto]->SetParLimits(4, 0.995 * m_0_reference, 1.005 * m_0_reference);
-        // }
+        dataContainer.fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference); // mean invariant mass should be around the one from literature, between [0.995 * m_0_reference, 1.005 * m_0_reference]
         dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 4.0 * sigma_reference);
+        if (jetptMin == 5. && jetptMax == 7.) {
+            if (iHisto == 2) { // 3 < pT,D < 4 GeV/c
+                dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 3.0 * sigma_reference);
+            }
+        } else if (jetptMin == 15. && jetptMax == 30.) {
+            if (iHisto == 1) { // 2 < pT,D < 3 GeV/c
+                dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 2.0 * sigma_reference);
+            }
+        }
+        
 
         // Fix the parameters from MC fits
         dataContainer.fittings.fitTotal[iHisto]->FixParameter(3, A1toA2MCSignalRatio);   // A1toA2MCSignalRatio
@@ -407,15 +418,11 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
         // Check if signal gaussian acomodates the literature D0 rest mass
         double primaryMean = dataContainer.fittings.fitTotal[iHisto]->GetParameter(4);
         double primarySigma = dataContainer.fittings.fitTotal[iHisto]->GetParameter(5);
-        if ((m_0_reference < (primaryMean - 2*primarySigma)) || (m_0_reference > (primaryMean + 2*primarySigma))) { // fit failed: PDG mass outside of signal region
+        if (didFitFailed(dataContainer.histograms1d[iHisto], dataContainer.fittings.fitTotal[iHisto], m_0_reference, signalSigmas)) { // fit failed: PDG mass outside of signal region
             // if literature mass is outside, clear histogram as it should be excluded
             //histograms[iHisto]->Reset();
-            //histograms[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
-            dataContainer.histograms1d[iHisto]->SetTitle(TString(dataContainer.histograms1d[iHisto]->GetTitle()) + " (Fit failed)");
-            //histograms2d[iHisto]->Reset("ICES");
-            //histograms2d[iHisto]->Reset();
-            //histograms2d[iHisto]->SetTitle(TString(histograms[iHisto]->GetTitle()) + " (m_{D^{0}^{literature}} #notin [#bar{m}_{primary}-2#sigma_{primary};#bar{m}_{primary}+2#sigma_{primary}])");
-            dataContainer.histograms2d[iHisto]->SetTitle(TString(dataContainer.histograms1d[iHisto]->GetTitle()) + " (Fit failed)");
+            //dataContainer.histograms1d[iHisto]->SetTitle(TString(dataContainer.histograms1d[iHisto]->GetTitle()) + " (Fit failed)");
+            
             dataContainer.fittings.workingFits.push_back(false);
         } else { // fit worked: PDG mass inside of signal region
             dataContainer.fittings.workingFits.push_back(true);
@@ -512,6 +519,80 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
     return dataContainer.fittings;
 }
 
+void createShadedRegions(SidebandData& dataContainer, const std::pair<std::array<double, 2>, std::array<double, 2>>& sidebandRanges, const int& iHisto, const double& signalSigmas, const double& sigma) {
+    
+    // Create shaded regions for the sidebands
+    TH1D* hInvMassLeftSidebandDrawing;
+    TH1D* hInvMassSidebandDrawing;
+
+    // Left sideband
+    if (!(sidebandRanges.first[0] == 0.) && !(sidebandRanges.first[1] == 0.)) {
+        double leftSidebandLowBin = dataContainer.histograms1d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[0]);
+        double leftSidebandHighBin = dataContainer.histograms1d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[1]);
+        hInvMassLeftSidebandDrawing = (TH1D*)dataContainer.histograms1d[iHisto]->Clone(Form("hSidebandHistDrawingLeft_%d", iHisto));
+        hInvMassLeftSidebandDrawing->Reset();
+        for (int iBin = leftSidebandLowBin; iBin <= leftSidebandHighBin; ++iBin) {
+            hInvMassLeftSidebandDrawing->SetBinContent(iBin, dataContainer.histograms1d[iHisto]->GetBinContent(iBin));
+            hInvMassLeftSidebandDrawing->SetBinError(iBin, dataContainer.histograms1d[iHisto]->GetBinError(iBin));
+        }
+        hInvMassLeftSidebandDrawing->SetFillColorAlpha(kRed, 0.2);
+        hInvMassLeftSidebandDrawing->SetLineColor(kRed);
+
+        // Right sideband
+        if (!(sidebandRanges.second[0] == 0.) && !(sidebandRanges.second[1] == 0.)) {
+            double rightSidebandLowBin = dataContainer.histograms1d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
+            double rightSidebandHighBin = dataContainer.histograms1d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
+            hInvMassSidebandDrawing = (TH1D*)dataContainer.histograms1d[iHisto]->Clone(Form("hSidebandHistDrawingRight_%d", iHisto));
+            hInvMassSidebandDrawing->Reset();
+            for (int iBin = rightSidebandLowBin; iBin <= rightSidebandHighBin; ++iBin) {
+                hInvMassSidebandDrawing->SetBinContent(iBin, dataContainer.histograms1d[iHisto]->GetBinContent(iBin));
+                hInvMassSidebandDrawing->SetBinError(iBin, dataContainer.histograms1d[iHisto]->GetBinError(iBin));
+            }
+            hInvMassSidebandDrawing->SetFillColorAlpha(kRed, 0.2);
+            hInvMassSidebandDrawing->SetLineColor(kRed);
+
+            // Add both sidebands to the container for drawing
+            hInvMassSidebandDrawing->Add(hInvMassLeftSidebandDrawing);
+            dataContainer.subtractionResults.sidebandHistDrawing.push_back(hInvMassSidebandDrawing);
+        } else {
+            dataContainer.subtractionResults.sidebandHistDrawing.push_back(hInvMassLeftSidebandDrawing);
+        }
+
+    } else {
+        // Right sideband
+        if (!(sidebandRanges.second[0] == 0.) && !(sidebandRanges.second[1] == 0.)) {
+            double rightSidebandLowBin = dataContainer.histograms1d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
+            double rightSidebandHighBin = dataContainer.histograms1d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
+            hInvMassSidebandDrawing = (TH1D*)dataContainer.histograms1d[iHisto]->Clone(Form("hSidebandHistDrawingRight_%d", iHisto));
+            hInvMassSidebandDrawing->Reset();
+            for (int iBin = rightSidebandLowBin; iBin <= rightSidebandHighBin; ++iBin) {
+                hInvMassSidebandDrawing->SetBinContent(iBin, dataContainer.histograms1d[iHisto]->GetBinContent(iBin));
+                hInvMassSidebandDrawing->SetBinError(iBin, dataContainer.histograms1d[iHisto]->GetBinError(iBin));
+            }
+            hInvMassSidebandDrawing->SetFillColorAlpha(kRed, 0.2);
+            hInvMassSidebandDrawing->SetLineColor(kRed);
+            dataContainer.subtractionResults.sidebandHistDrawing.push_back(hInvMassSidebandDrawing);
+        } else {
+            std::cout << "Error: No valid sideband ranges provided for histogram index " << iHisto << ".\n";
+        }
+    }
+    
+    // Create shaded region for the signal
+    double m_0 = dataContainer.fittings.fitTotal[iHisto]->GetParameter(4); // Get the value of parameter 'm_0' from the total fit
+    double signalLowBin = dataContainer.histograms1d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
+    double signalHighBin = dataContainer.histograms1d[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
+    TH1D* hInvMassSignalDrawing = (TH1D*)dataContainer.histograms1d[iHisto]->Clone(Form("hSignalHistDrawing_%d", iHisto));
+    hInvMassSignalDrawing->Reset();
+    for (int iBin = signalLowBin; iBin <= signalHighBin; ++iBin) {
+        hInvMassSignalDrawing->SetBinContent(iBin, dataContainer.histograms1d[iHisto]->GetBinContent(iBin));
+        hInvMassSignalDrawing->SetBinError(iBin, dataContainer.histograms1d[iHisto]->GetBinError(iBin));
+    }
+    hInvMassSignalDrawing->SetFillColorAlpha(kBlue, 0.2);
+    hInvMassSignalDrawing->SetLineColor(kBlue);
+    dataContainer.subtractionResults.signalHistDrawing.push_back(hInvMassSignalDrawing);
+    
+}
+
 SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& modelToUse, const BinningStruct& binning, double& signalSigmas, int& startingBackSigma, int& backgroundSigmas) {
     
     // Creating histograms for collecting data
@@ -537,15 +618,17 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
             scallingFactors = {0., 0.};
         }
         
+        createShadedRegions(dataContainer,sidebandRanges, iHisto, signalSigmas, sigma);
+
         dataContainer.subtractionResults.scalingFactorsArrays.push_back(scallingFactors);
 
-        // Create signal histogram
+        // Create DeltaR signal histogram
         int lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
         int highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
         h_signal = dataContainer.histograms2d[iHisto]->ProjectionY(Form("h_signal_proj_%zu",iHisto), lowBin, highBin);
         dataContainer.subtractionResults.signalHist.push_back(h_signal);
 
-        // Create side-band histogram
+        // Create DeltaR side-band histogram
         if (sidebandRanges.first[0] == 0. && sidebandRanges.first[1] == 0.) {
             // Use only the right sideband
             std::cout << "Using only the right sideband..." << std::endl;
@@ -614,8 +697,17 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
         lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[0]);
         highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[1]);
         double leftBandHistoArea = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin, "width");
+        double leftBandHistoArea_no_width = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin);
+
+        TH1D* h_sideBand_left_test = dataContainer.histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_left_test_%zu",iHisto), lowBin, highBin);
+        std::cout << "Left areas: \t DeltaR_area = " << h_sideBand_left_test->Integral() << ";\t m_inv_area = " << leftBandHistoArea_no_width << std::endl;
+
         lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
-        highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
+        highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);// right sideband limit
+        if (highBin > dataContainer.histograms2d[iHisto]->GetXaxis()->GetNbins()) {
+            highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->GetNbins();
+        }
+        
         double rightBandHistoArea = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin, "width");
         lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
         highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
@@ -623,6 +715,26 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
         std::cout << "leftBandHistoArea=" << leftBandHistoArea << "\t rightBandHistoArea=" << rightBandHistoArea << "\t left+right=" << leftBandHistoArea+rightBandHistoArea << "\t signalregionHistoArea=" << signalregionHistoArea << std::endl;
         std::cout << "Ys / B (calculated from histograms) = " << signalregionHistoArea / (leftBandHistoArea+rightBandHistoArea) << std::endl;
         std::cout << "Y(x=2.28646) evaluated with the fit function = " << dataContainer.fittings.fitTotal[iHisto]->Eval(2.28646) << std::endl;
+        std::cout << "2nd attempt of area calculation:" << std::endl;
+        double totalFitIntegralLeft = dataContainer.fittings.fitTotal[iHisto]->Integral(sidebandRanges.first[0],sidebandRanges.first[1]);
+        double totalFitIntegralRight = dataContainer.fittings.fitTotal[iHisto]->Integral(sidebandRanges.second[0],sidebandRanges.second[1]);
+        double totalFitIntegralSignal = dataContainer.fittings.fitTotal[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+        // now individually each component of the fit
+        double signalOnlyIntegral = dataContainer.fittings.fitSignalOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+        double backgroundOnlyIntegral = dataContainer.fittings.fitBackgroundOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+        double reflectionsOnlyIntegral = dataContainer.fittings.fitReflectionsOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+        std::cout << "totalFitIntegralLeft = " << totalFitIntegralLeft << "\t totalFitIntegralRight = " << totalFitIntegralRight << "\t totalFitIntegralSignal = " << totalFitIntegralSignal << std::endl;
+        std::cout << "signalOnlyIntegral = " << signalOnlyIntegral << "\t backgroundOnlyIntegral = " << backgroundOnlyIntegral << "\t reflectionsOnlyIntegral = " << reflectionsOnlyIntegral << std::endl;
+        double backgroundOnlyLeft = dataContainer.fittings.fitBackgroundOnly[iHisto]->Integral(sidebandRanges.first[0],sidebandRanges.first[1]);
+        double backgroundOnlyRight = dataContainer.fittings.fitBackgroundOnly[iHisto]->Integral(sidebandRanges.second[0],sidebandRanges.second[1]);
+        std::cout << "backgroundOnlyLeft = " << backgroundOnlyLeft << "\t backgroundOnlyRight = " << backgroundOnlyRight << std::endl;
+        double reflectionsOnlyLeft = dataContainer.fittings.fitReflectionsOnly[iHisto]->Integral(sidebandRanges.first[0],sidebandRanges.first[1]);
+        double reflectionsOnlyRight = dataContainer.fittings.fitReflectionsOnly[iHisto]->Integral(sidebandRanges.second[0],sidebandRanges.second[1]);
+        std::cout << "reflectionsOnlyLeft = " << reflectionsOnlyLeft << "\t reflectionsOnlyRight = " << reflectionsOnlyRight << std::endl;
+        double signalOnlyMiddle = dataContainer.fittings.fitSignalOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+        double backgroundOnlyMiddle = dataContainer.fittings.fitBackgroundOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+        double reflectionsOnlyMiddle = dataContainer.fittings.fitReflectionsOnly[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+        std::cout << "signalOnlyMiddle = " << signalOnlyMiddle << "\t backgroundOnlyMiddle = " << backgroundOnlyMiddle << "\t reflectionsOnlyMiddle = " << reflectionsOnlyMiddle << std::endl;
 
         // Calculating significance
         // Get signal yield by integrating Gaussian in a 2σ window
@@ -654,6 +766,9 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
     // Final adjustments to subtracted histograms: cleaning and storage
     for (size_t iHisto = 0; iHisto < dataContainer.subtractionResults.subtractedHist.size(); iHisto++) {
         
+        // Copy for later comparison
+        dataContainer.subtractionResults.subtractedHistCopy.push_back((TH1D*)dataContainer.subtractionResults.subtractedHist[iHisto]->Clone(Form("hSubtractedFullJetPtCopy_%zu", iHisto)));
+
         // Check if histogram should be erased before storing based on fit performed
         bool eraseHist = eraseHistogram(dataContainer.fittings.workingFits, iHisto);
         if (eraseHist) {
@@ -709,10 +824,12 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
         dataContainer.histograms1d[iHisto]->SetMarkerStyle(kDot); //kFullDotMedium
         dataContainer.histograms1d[iHisto]->SetMarkerColor(kBlack);
         dataContainer.histograms1d[iHisto]->SetLineColor(kBlack);
-        dataContainer.histograms1d[iHisto]->GetYaxis()->SetTitle("counts");
+        // dataContainer.histograms1d[iHisto]->GetYaxis()->SetTitle("counts");
         dataContainer.histograms1d[iHisto]->SetMinimum(0);
         
         dataContainer.histograms1d[iHisto]->Draw();
+        dataContainer.subtractionResults.sidebandHistDrawing[iHisto]->Draw("hist same");
+        dataContainer.subtractionResults.signalHistDrawing[iHisto]->Draw("hist same");
         dataContainer.fittings.fitTotal[iHisto]->SetLineColor(kBlack);
         dataContainer.fittings.fitTotal[iHisto]->SetLineStyle(kSolid);
         dataContainer.fittings.fitTotal[iHisto]->SetLineWidth(1);
@@ -745,17 +862,13 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
     }
 
     // Plotting extracted raw yields DeltaR observable
-    TCanvas* cSideBand = new TCanvas("cSideBand", "delta R for side-band", 800, 600);
-    cSideBand->SetCanvasSize(1800,1000);
+    TCanvas* cSideBand = new TCanvas("cSideBand", "delta R for side-band", 1800,1000);
     cSideBand->Divide(nCols,nRows); // columns, lines
-    TCanvas* cSignal = new TCanvas("cSignal", "delta R for signal", 800, 600);
-    cSignal->SetCanvasSize(1800,1000);
+    TCanvas* cSignal = new TCanvas("cSignal", "delta R for signal", 1800,1000);
     cSignal->Divide(nCols,nRows); // columns, lines
-    TCanvas* cSubtracted = new TCanvas("cSubtracted", "delta R for side-band subtracted signal", 800, 600);
-    cSubtracted->SetCanvasSize(1800,1000);
+    TCanvas* cSubtracted = new TCanvas("cSubtracted", "delta R for side-band subtracted signal", 1800,1000);
     cSubtracted->Divide(nCols,nRows); // columns, lines
-    TCanvas* cSigPlusBack = new TCanvas("cSigPlusBack", "delta R for side-band and signal in the same plot", 800, 600);
-    cSigPlusBack->SetCanvasSize(1800,1000);
+    TCanvas* cSigPlusBack = new TCanvas("cSigPlusBack", "delta R for side-band and signal in the same plot", 1800,1000);
     cSigPlusBack->Divide(nCols,nRows); // columns, lines
 
     TLegend* legend = new TLegend(0.6,0.57,0.9,0.77);
@@ -768,7 +881,7 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
         cSideBand->cd(iHisto+1);
         //dataContainer.subtractionResults.sidebandHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         dataContainer.subtractionResults.sidebandHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
-        dataContainer.subtractionResults.sidebandHist[iHisto]->GetYaxis()->SetTitle("yields");
+        // dataContainer.subtractionResults.sidebandHist[iHisto]->GetYaxis()->SetTitle("yields");
         dataContainer.subtractionResults.sidebandHist[iHisto]->SetMarkerStyle(kFullTriangleUp);
         dataContainer.subtractionResults.sidebandHist[iHisto]->SetMarkerColor(kAzure);
         dataContainer.subtractionResults.sidebandHist[iHisto]->SetLineColor(kAzure);
@@ -779,7 +892,7 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
         cSignal->cd(iHisto+1);
         //dataContainer.subtractionResults.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         dataContainer.subtractionResults.signalHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
-        dataContainer.subtractionResults.signalHist[iHisto]->GetYaxis()->SetTitle("yields");
+        // dataContainer.subtractionResults.signalHist[iHisto]->GetYaxis()->SetTitle("yields");
         dataContainer.subtractionResults.signalHist[iHisto]->SetMarkerStyle(kFullSquare);
         dataContainer.subtractionResults.signalHist[iHisto]->SetMarkerColor(kViolet);
         dataContainer.subtractionResults.signalHist[iHisto]->SetLineColor(kViolet);
@@ -789,22 +902,34 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
         cSubtracted->cd(iHisto+1);
         //dataContainer.subtractionResults.subtractedHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
         dataContainer.subtractionResults.subtractedHist[iHisto]->GetXaxis()->SetTitle("#DeltaR");
-        dataContainer.subtractionResults.subtractedHist[iHisto]->GetYaxis()->SetTitle("yields");
+        // dataContainer.subtractionResults.subtractedHist[iHisto]->GetYaxis()->SetTitle("yields");
         dataContainer.subtractionResults.subtractedHist[iHisto]->SetMarkerStyle(kFullCircle);
         dataContainer.subtractionResults.subtractedHist[iHisto]->SetMarkerColor(kPink);
         dataContainer.subtractionResults.subtractedHist[iHisto]->SetLineColor(kPink);
         dataContainer.subtractionResults.subtractedHist[iHisto]->Draw();
+        dataContainer.subtractionResults.subtractedHistCopy[iHisto]->GetXaxis()->SetTitle("#DeltaR");
+        // dataContainer.subtractionResults.subtractedHistCopy[iHisto]->GetYaxis()->SetTitle("yields");
+        dataContainer.subtractionResults.subtractedHistCopy[iHisto]->SetMarkerStyle(kFullCircle);
+        dataContainer.subtractionResults.subtractedHistCopy[iHisto]->SetMarkerColor(kPink);
+        dataContainer.subtractionResults.subtractedHistCopy[iHisto]->SetLineColor(kPink);
+        dataContainer.subtractionResults.subtractedHistCopy[iHisto]->Draw("same");
         latex->DrawLatex(statBoxPos-0.35, 0.65, Form("%.0f < p_{T, ch. jet} < %.0f GeV/#it{c}",jetptMin,jetptMax));
 
         cSigPlusBack->cd(iHisto+1);
         //dataContainer.subtractionResults.signalHist[iHisto]->GetXaxis()->SetRangeUser(0.0, 0.5);
+        double maxY = std::max(dataContainer.subtractionResults.signalHist[iHisto]->GetMaximum(), dataContainer.subtractionResults.sidebandHist[iHisto]->GetMaximum());
+        maxY = std::max(maxY, dataContainer.subtractionResults.subtractedHistCopy[iHisto]->GetMaximum());
+        double minY = std::min(dataContainer.subtractionResults.signalHist[iHisto]->GetMinimum(), dataContainer.subtractionResults.sidebandHist[iHisto]->GetMinimum());
+        minY = std::min(minY, dataContainer.subtractionResults.subtractedHistCopy[iHisto]->GetMinimum());
+        dataContainer.subtractionResults.signalHist[iHisto]->GetYaxis()->SetRangeUser(minY*0.9, maxY*1.1);
         dataContainer.subtractionResults.signalHist[iHisto]->Draw();
         dataContainer.subtractionResults.sidebandHist[iHisto]->Draw("same");
-        dataContainer.subtractionResults.subtractedHist[iHisto]->Draw("same");
+        //dataContainer.subtractionResults.subtractedHist[iHisto]->Draw("same");
+        dataContainer.subtractionResults.subtractedHistCopy[iHisto]->Draw("same");
         legend->Draw();
         latex->DrawLatex(statBoxPos-0.35, 0.5, Form("%.0f < p_{T, ch. jet} < %.0f GeV/#it{c}",jetptMin,jetptMax));
     }
-
+    
     // Plot scaling factors
     TCanvas* cscallingFactorsArrays = new TCanvas("cscallingFactorsArrays", "Scaling Factors Arrays", 1800, 1000);
     cscallingFactorsArrays->cd();
@@ -858,15 +983,15 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
     //
     // Storing in a single pdf file
     //
-    c1d_fit->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf(",jetptMin,jetptMax));
-    c_2d->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
-    cSigPlusBack->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf",jetptMin,jetptMax));
-    cscallingFactorsArrays->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV_withReflections.pdf)",jetptMin,jetptMax));
+    c1d_fit->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    c_2d->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cSigPlusBack->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cscallingFactorsArrays->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 }
 
 void SaveData(SidebandData& dataContainer, const BinningStruct& binning, double jetptMin, double jetptMax) {
     // Open output file
-    TFile* fOutput = new TFile(Form("backSub_%d_to_%d_jetpt_with_reflections.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
+    TFile* fOutput = new TFile(Form("backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
     if (!fOutput || fOutput->IsZombie()) {
         std::cerr << "Error: Unable to open the output ROOT file." << std::endl;
     }
@@ -888,17 +1013,13 @@ void SaveData(SidebandData& dataContainer, const BinningStruct& binning, double 
 void JetPtIterator(const double jetptMin, const double jetptMax, const BinningStruct& binning) {
     std::cout << "============================================= " << jetptMin << " GeV/c < pT,jet < " << jetptMax << " GeV/c =============================================" << std::endl;
 
-    // D0 mass in GeV/c^2 (hard-coded)
-    double m_0_parameter = 1.86484;
-    double sigmaInitial = 0.012;
-
     // mass histogram
     int massBins = 50; // default=50 
     double minMass = 1.72; // default = 2.1
     double maxMass = 2.06; // default = 2.49, due to drop of counts on last bin (of various pT,HF ranges) changed to 2.49-0.0078=2.4822
 
     // Opening data file
-    TFile* fDist = new TFile("../../Data/Experimental/Train_643652/AO2D_mergedDFs.root","read");
+    TFile* fDist = new TFile("../../Data/Experimental/Train_643652/AO2Ds_non_merged/AO2D_mergedDFs.root","read");
     if (!fDist || fDist->IsZombie()) {
         std::cerr << "Error: Unable to open the ROOT data file." << std::endl;
     }
@@ -922,14 +1043,14 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const BinningSt
     // Fill histograms
     fillHistograms(fDist, dataContainer, jetptMin, jetptMax, binning);
 
-    // Perform fits
-    FitModelType modelToUse = FitModelType::FullPowerLaw; // options: StandardSideBand, FullPowerLaw, FullPoly2, SignalReflectionsOnly, SignalOnly, ReflectionsOnly
-    FitContainer fittings = performFit(fReflectionsMC, dataContainer, minMass, maxMass, modelToUse, jetptMin, jetptMax);
-
     // signal/side-band region parameters
     double signalSigmas = 2; // default delta = 2
     int startingBackSigma = 4; // default position = 4
     int backgroundSigmas = 4; // default delta = 4
+
+    // Perform fits
+    FitModelType modelToUse = FitModelType::FullPowerLaw; // options: StandardSideBand, FullPowerLaw, FullPoly2, SignalReflectionsOnly, SignalOnly, ReflectionsOnly
+    FitContainer fittings = performFit(fReflectionsMC, dataContainer, minMass, maxMass, modelToUse, jetptMin, jetptMax, signalSigmas);
 
     // Subtract side-band from signal
     SubtractionResult subtractionResult = SideBand(dataContainer, modelToUse, binning, signalSigmas, startingBackSigma, backgroundSigmas);
@@ -957,9 +1078,9 @@ void create3DBackgroundSubtracted(const BinningStruct& binning) {
     h3D->Sumw2();
 
     for (size_t iJetBin = 0; iJetBin < binning.ptjetBinEdges_detector.size() - 1; iJetBin++) {
-        TFile* fJetRange = new TFile(Form("backSub_%0.f_to_%0.f_jetpt_with_reflections.root",binning.ptjetBinEdges_detector[iJetBin],binning.ptjetBinEdges_detector[iJetBin+1]),"read");
+        TFile* fJetRange = new TFile(Form("backSub_%0.f_to_%0.f_jetpt.root",binning.ptjetBinEdges_detector[iJetBin],binning.ptjetBinEdges_detector[iJetBin+1]),"read");
         if (!fJetRange || fJetRange->IsZombie()) {
-            std::cerr << "Error opening file " << Form("backSub_%0.f_to_%0.f_jetpt_with_reflections.root",binning.ptjetBinEdges_detector[iJetBin],binning.ptjetBinEdges_detector[iJetBin+1]) << std::endl;
+            std::cerr << "Error opening file " << Form("backSub_%0.f_to_%0.f_jetpt.root",binning.ptjetBinEdges_detector[iJetBin],binning.ptjetBinEdges_detector[iJetBin+1]) << std::endl;
             continue;
         }
 

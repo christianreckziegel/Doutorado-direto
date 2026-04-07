@@ -82,7 +82,7 @@ struct ReflectionPolicy {
 using SigRefModel = FitModel<SignalPolicy, ReflectionPolicy>;                                               // Signal + Reflection only
 using SingleGausRefModel = FitModel<SignalSinglePolicy, ReflectionPolicy>;                                  // Single Gaussian Signal + Reflection
 using PureSignalModel = FitModel<SignalPolicy>;                                                             // Single Gaussian Signal only
-using PureReflectionsModel = FitModel<ReflectionPolicy>;                                                     // Reflection only
+using PureReflectionsModel = FitModel<ReflectionPolicy>;                                                    // Reflection only
 //-----------------------------------------------------------------------------Structs---------------------------------------------------------------------------------------------------------
 // Histograms containers for each case (each container has a number of histograms corresponding to the invariant mass intervals)
 struct HistogramGroup {
@@ -250,6 +250,7 @@ void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& j
     float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
     float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
     bool MCPhfprompt;
+    float MCPjetNConst;
     // defining variables for accessing detector level data on TTree
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
@@ -257,12 +258,13 @@ void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& j
     int MCDhfMatchedFrom, MCDhfSelectedAs;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
-
+    int MCDjetNConst;
     // particle level branches
     tree->SetBranchAddress("fMcJetHfDist",&MCPaxisDistance);
     tree->SetBranchAddress("fMcJetPt",&MCPjetPt);
     tree->SetBranchAddress("fMcJetEta",&MCPjetEta);
     tree->SetBranchAddress("fMcJetPhi",&MCPjetPhi);
+    tree->SetBranchAddress("fMcJetNConst",&MCPjetNConst); // float
     tree->SetBranchAddress("fMcHfPt",&MCPhfPt);
     tree->SetBranchAddress("fMcHfEta",&MCPhfEta);
     tree->SetBranchAddress("fMcHfPhi",&MCPhfPhi);
@@ -274,6 +276,7 @@ void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& j
     tree->SetBranchAddress("fJetPt",&MCDjetPt);
     tree->SetBranchAddress("fJetEta",&MCDjetEta);
     tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
+    tree->SetBranchAddress("fJetNConst",&MCDjetNConst); // int
     tree->SetBranchAddress("fHfPt",&MCDhfPt);
     tree->SetBranchAddress("fHfEta",&MCDhfEta);
     tree->SetBranchAddress("fHfPhi",&MCDhfPhi);
@@ -290,6 +293,11 @@ void fillHistograms(TFile* fInputMC, HistogramGroup& histograms, const double& j
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
+        // only matched detector level entries
+        if (MCPjetNConst < 0) {
+            continue;
+        }
+        
         // correct selection BIT shift info: Checks whether BIT(i) is set, regardless of other bits
         /*if (hfSelectedAs & BIT(0)) { // CandidateSelFlag == BIT(0) -> selected as Lc
             hfSelectedAs = 1;
@@ -700,7 +708,7 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const BinningSt
 
     // Opening data file
     //TFile* fInputMC = new TFile("../../SimulatedData/Hyperloop_output/McEfficiency/New_with_reflections/Merged_AO2D_HF_LHC24d3a_All.root","read"); // previous file used
-    TFile* fInputMC = new TFile("../../Data/MonteCarlo/Train_000000/AO2D_mergedDFs.root","read");
+    TFile* fInputMC = new TFile("../../Data/MonteCarlo/Train_645447/AO2D_mergedDFs.root","read");
     if (!fInputMC || fInputMC->IsZombie()) {
         std::cerr << "Error: Unable to open the input ROOT file." << std::endl;
     }

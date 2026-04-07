@@ -2,7 +2,7 @@
  * D0 meson analysis
  * @file Efficiency_run2_style.C
  * @brief Calculates pT dependent efficiency of HF selections using methodology from run 2
- * Input: series of backSub_%.jetptMin_to_%.jetptMax_jetpt_with_reflections.root files -> contain histograms such that the background+reflections contribution was removed
+ * Input: series of backSub_%.jetptMin_to_%.jetptMax_jetpt.root files -> contain histograms such that the background+reflections contribution was removed
  * Outputs: one run2_style_efficiency_%.jetptMin_to_%.jetptMax_jetpt.root -> contain pT,HF dependent run 2 style efficiency, to be used by Efficiency_run3_Style.C
  * 
  * @author: Christian Reckziegel
@@ -325,8 +325,8 @@ void PlotHistograms(const EfficiencyData& dataContainer, double jetptMin, double
     //
     // Storing in a single pdf file
     //
-    cEff_1->Print(Form(imagePath + "pT_efficiency_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
-    cEff_2->Print(Form(imagePath + "pT_efficiency_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cEff_1->Print(Form(imagePath + "pT_efficiency_%.0f_to_%.0fGeV_run2_style.pdf(",jetptMin,jetptMax));
+    cEff_2->Print(Form(imagePath + "pT_efficiency_%.0f_to_%.0fGeV_run2_style.pdf)",jetptMin,jetptMax));
 
     std::cout << "Histograms plotted.\n";
 }
@@ -367,7 +367,7 @@ void Efficiency_run2_style(){
     double jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
 
     // Opening files
-    TFile* fSimulated = new TFile("../Data/MonteCarlo/Train_000000/AO2D_mergedDFs.root","read","read");
+    TFile* fSimulated = new TFile("../Data/MonteCarlo/Train_645447/AO2D_mergedDFs.root","read","read");
 
     EfficiencyData dataContainer = createHistograms(binning); // pT histograms
 

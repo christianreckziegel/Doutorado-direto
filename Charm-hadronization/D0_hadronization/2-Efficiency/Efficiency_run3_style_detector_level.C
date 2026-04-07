@@ -3,7 +3,7 @@
  * @file Efficiency_run3_style_detector_level.C
  * @brief Calculates pT dependent efficiency of HF selections using methodology from run 3
  * Input: 
- *      - series of backSub_%.jetptMin_to_%.jetptMax_jetpt_with_reflections.root files -> contain histograms such that the background+reflections contribution was removed
+ *      - series of backSub_%.jetptMin_to_%.jetptMax_jetpt.root files -> contain histograms such that the background+reflections contribution was removed
  *      - run2_style_efficiency_%.jetptMin_to_%.jetptMax_jetpt.root
  * Outputs: one run3_style_efficiency_%.jetptMin_to_%.jetptMax_jetpt.root -> contain pT,HF dependent run 2 style efficiency, to be used by Efficiency_run3_Style.C
  * 
@@ -254,8 +254,8 @@ void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dat
         }
         // only compute matched detector level candidates, but compute all particle level ones
         bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
-        // bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false; // there is no reflection for channel D0->KPi
-        if (!MCDhfmatch) { // !MCDhfmatch || isReflection
+        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+        if (!MCDhfmatch || isReflection) { // !MCDhfmatch || isReflection
             continue;
         }
         // Fill histograms considering jet pT and detector acceptance
@@ -638,13 +638,21 @@ void PlotHistograms(const EfficiencyData& dataContainer, double jetptMin, double
     cPtCorrectionComparison->cd(4);
     dataContainer.hHfPtYieldTruthCorrected.second->Draw("colz");
 
-    TCanvas* cSelectionEfficiency = new TCanvas("cSelectionEfficiency","Efficiency histograms");
-    cSelectionEfficiency->SetCanvasSize(1800,1000);
-    cSelectionEfficiency->Divide(2,2);
-    cSelectionEfficiency->cd(1);
+    TCanvas* cSelectionEfficiency = new TCanvas("cSelectionEfficiency","Efficiency histograms",1800,1000);
+    cSelectionEfficiency->cd();
+    dataContainer.hSelectionEfficiency.first->SetMarkerStyle(kFullCircle);
+    dataContainer.hSelectionEfficiency.first->SetMarkerColor(30+1*10);
+    dataContainer.hSelectionEfficiency.first->SetLineColor(30+1*10);
+    dataContainer.hSelectionEfficiency.second->SetMarkerStyle(kFullCircle);
+    dataContainer.hSelectionEfficiency.second->SetMarkerColor(30+2*10);
+    dataContainer.hSelectionEfficiency.second->SetLineColor(30+2*10);
     dataContainer.hSelectionEfficiency.first->Draw();
-    cSelectionEfficiency->cd(2);
-    dataContainer.hSelectionEfficiency.second->Draw();
+    dataContainer.hSelectionEfficiency.second->Draw("same");
+    TLegend* legendEff = new TLegend(0.65,0.25,0.8,0.38);
+    legendEff->AddEntry(dataContainer.hSelectionEfficiency.first,"Prompt D^{0}", "lpe");
+    legendEff->AddEntry(dataContainer.hSelectionEfficiency.second,"Non-prompt D^{0}", "lpe");
+    legendEff->Draw();
+
     // Separating in two canvases
     TCanvas* cSelectionEfficiencyPrompt = new TCanvas("cSelectionEfficiencyPrompt","Efficiency histograms for prompt D^{0}'s");
     cSelectionEfficiencyPrompt->SetCanvasSize(1800,1000);
@@ -683,7 +691,8 @@ void PlotHistograms(const EfficiencyData& dataContainer, double jetptMin, double
     cYieldTruthCorrected->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cPtCorrectionComparison->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cSelectionEfficiency->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cCorrectedData->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cCorrectedData->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cCorrectedData2DOnly->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
     // in separate .pdf files
     cKEffAll->Print(imagePath + "Efficiency_run3style_kinematic_efficiency.pdf");
 
@@ -751,7 +760,7 @@ void Efficiency_run3_style_detector_level(){
     if (!fEffRun2Style || fEffRun2Style->IsZombie()) {
         std::cerr << "Error: Unable to open run 2 style efficiency data ROOT file." << std::endl;
     }
-    TFile* fSimulated = new TFile("../Data/MonteCarlo/Train_000000/AO2D_mergedDFs.root","read","read");
+    TFile* fSimulated = new TFile("../Data/MonteCarlo/Train_645447/AO2D_mergedDFs.root","read","read");
     TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/full_merged_ranges_back_sub.root"),"read");
     if (!fSimulated || fSimulated->IsZombie()) {
         std::cerr << "Error: Unable to open full (not matched) simulated data ROOT file." << std::endl;
