@@ -237,6 +237,7 @@ struct FitContainer {
     std::vector<TF1*> fitBackgroundOnly;        // background only fits
     std::vector<TF1*> fitSignalOnly;            // Pure signal only fits
     std::vector<TF1*> fitReflectionsOnly;       // Pure reflections only fits (obtained from constrains from MC templates)
+    std::vector<TF1*> fitSignalsAndReflections; // Signal + Reflections only fits
     std::vector<TF1*> fitTotal;                 // Total fit: signal + reflections + background
 
     // list of working fits (PDG mass inside of signal range)
@@ -246,6 +247,17 @@ struct FitContainer {
     std::vector<std::pair<TF1*,TF1*>> individualSignals;
     std::vector<std::pair<TF1*,TF1*>> individualReflections;
 };
+template <typename HistT>
+int safeLowBin(HistT* histogram, double x) {
+    int bin = histogram->GetXaxis()->FindFixBin(x);
+    return std::max(bin, 1);
+}
+
+template <typename HistT>
+int safeHighBin(HistT* histogram, double x) {
+    int bin = histogram->GetXaxis()->FindFixBin(x);
+    return std::min(bin, histogram->GetXaxis()->GetNbins());
+}
 // Calculate sidebands' region limits
 std::pair<std::array<double, 2>, std::array<double, 2>> calculateSidebandRegions(const size_t iHisto, const FitContainer& fittings, const TH1D* hInvMass, const int startingBackSigma, const int backgroundSigmas) {
     // Define output arrays
@@ -460,31 +472,119 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
 // Criteria for fit failure could be:
 // - PDG mass value outside of signal range (e.g., m_0 < mPDG - n*sigma GeV/c^2 or m_0 > mPDG + n*sigma GeV/c^2)
 // - Fit did not converge (e.g., chi2/ndf > 5)
-bool didFitFailed() {
+// - ToDo: if mean value is outside of the histogram range (e.g., m_0 < histogram min or m_0 > histogram max)
+bool didFitFailed(TH1D* hInvMass, TF1* fitTotal, const double mPDG, const double signalSigmas) {
     //
+    double m_0 = fitTotal->GetParameter(4); // Get the value of parameter 'm_0'
+    double signalSigma1 = fitTotal->GetParameter(5); // Get the value of parameter 'sigma1'
+    double signalSigma2 = fitTotal->GetParameter(5) / fitTotal->GetParameter(6); // signalSigma2 = sigma1 / sigmaRatio12
+    double sigma = signalSigma1;
+    // Check if m_0 is within the signal range defined by mPDG +/- signalSigmas * sigma
+    if ((m_0 < mPDG - signalSigmas * sigma) || (m_0 > mPDG + signalSigmas * sigma)) {
+        std::cout << "Fit failed: m_0 = " << m_0 << " is outside of the signal range [" << mPDG - signalSigmas * sigma << ", " << mPDG + signalSigmas * sigma << "].\n";
+        hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
+        return true;
+    }
+    // Check if fit converged by looking at chi2/ndf    double chi2 = fitTotal->GetChisquare();
+    int ndf = fitTotal->GetNDF();
+    if (ndf > 0) {
+        double chi2PerNdf = fitTotal->GetChisquare() / ndf;
+        if (chi2PerNdf > 300.) {
+            std::cout << "Fit failed: chi2/ndf = " << chi2PerNdf << " is greater than 300.\n";
+            hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
+            return true;
+        }
+    } else {
+        std::cout << "Fit failed: ndf = " << ndf << " is not greater than 0.\n";
+        hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
+        return true;
+    }
+    // Check if mean value is within the histogram range
+    double histoMin = hInvMass->GetBinLowEdge(1);
+    double histoMax = hInvMass->GetBinLowEdge(hInvMass->GetNbinsX() + 1);
+    if (m_0 < histoMin || m_0 > histoMax) {
+        std::cout << "Fit failed: m_0 = " << m_0 << " is outside of the histogram range [" << histoMin << ", " << histoMax << "].\n";
+        hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
+        return true;
+    }
     return false;
 }
 // Check if histogram should be erased before storing (in case the fit failed)
-bool eraseHistogram(const std::vector<bool>& workingFits, size_t& histoIndex) {
-    bool doEraseHistogram = false;
-
-    // was it stored as sucessfull fit?
-    if (workingFits[histoIndex]) {
-
-        // are upper indices all true?
-        for (size_t iHisto = histoIndex; iHisto < workingFits.size(); iHisto++) {
-            if (!workingFits[iHisto]) {
-                doEraseHistogram = true;
-                break;
-            }
-            
-        }
-        
-    } else {
-        doEraseHistogram = true;
-    }
+bool eraseHistogram(const std::vector<bool>& workingFits, const size_t& histoIndex) {
     
-    return doEraseHistogram;
+    // --- Find largest contiguous block of "true"
+    size_t bestStart = 0, bestEnd = 0;
+    size_t maxLength = 0;
+
+    for (size_t i = 0; i < workingFits.size(); ++i) {
+        if (workingFits[i]) {
+            size_t j = i;
+
+            while (j < workingFits.size() && workingFits[j]) {
+                ++j;
+            }
+
+            size_t length = j - i;
+            // Prioritize longer blocks, and in case of ties, the one starting at a higher index
+            if (length > maxLength || (length == maxLength && i > bestStart)) {
+                maxLength = length;
+                bestStart = i;
+                bestEnd = j - 1;
+            }
+
+            i = j; // skip checked region
+        }
+    }
+
+    // --- If no valid block exists → erase everything
+    if (maxLength == 0) {
+        return true;
+    }
+
+    // --- Keep only histograms inside the best block
+    return !(histoIndex >= bestStart && histoIndex <= bestEnd);
+}
+// Emma's work applied specific cuts to certain pT,jet bins
+bool passEmmaCut(double jetPt, double hfPt) {
+    
+    // Define bins: {jetPt_min, jetPt_max, hfPt_min}
+    const std::vector<std::tuple<double,double,double>> cuts = {
+        {5., 7., 2.},
+        {7., 10., 3.},
+        {10., 20., 5.},
+        {20., 50., 12.}
+    };
+
+    for (const auto& [jetMin, jetMax, hfMin] : cuts) {
+        if (jetPt >= jetMin && jetPt < jetMax) {
+            return hfPt >= hfMin;
+        }
+    }
+
+    return false; // outside defined ranges → reject
+}
+void cleanNaNs(TH3D* histogram) {
+    int xBins = histogram->GetXaxis()->GetNbins();
+    int yBins = histogram->GetYaxis()->GetNbins();
+    int zBins = histogram->GetZaxis()->GetNbins();
+
+    for (int x = 1; x <= xBins; x++) {
+        for (int y = 1; y <= yBins; y++) {
+            for (int z = 1; z <= zBins; z++) {
+
+                double content = histogram->GetBinContent(x, y, z);
+                double error   = histogram->GetBinError(x, y, z);
+
+                // Check content
+                if (std::isnan(content)) {
+                    std::cerr << "Cleaning NaN content at (" << x << "," << y << "," << z << ")\n";
+
+                    histogram->SetBinContent(x, y, z, 0.0);
+                    histogram->SetBinError(x, y, z, 0.0);
+                }
+            }
+        }
+    }
 }
 /*___________________________________________________Background subtraction (end)______________________________________________________________________________________________*/
 
@@ -571,3 +671,93 @@ TH2D* manualFolding(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
     return hFolded;
 }
 /*___________________________________________________Matching (end)______________________________________________________________________________________*/
+
+/*___________________________________________________Feed-down (end)______________________________________________________________________________________*/
+// Get POWHEG and data luminosities
+// std::vector<double> getLuminosities(TFile* fPowheg, TFile* fData) {
+//     // Accessing total cross section value stored in first bin (in mb)
+//     TH1D* xSection_powheg = dynamic_cast<TH1D*>(fPowheg->Get("fHistXsection"));
+//     double crossSecPowheg = xSection_powheg->GetBinContent(1);
+
+//     // Accessing number of events
+//     TTree* tree_D0 = dynamic_cast<TTree*>(fPowheg->Get("tree_D0"));
+//     double numOfEventsPowheg = tree_D0->GetEntries();
+
+//     // integrated POWHEG luminosity 
+//     double luminosity_powheg = numOfEventsPowheg/crossSecPowheg;
+//     double lumiMC = luminosity_powheg; // Store in dataContainer for later use
+//     std::cout << "POWHEG luminosity = " << luminosity_powheg << " mb^-1" << std::endl;
+
+//     // Calculating measured luminosity
+//     // folder: jet-luminosity-calculator
+//     // Histogram name: counter
+//     // bin labels: "BC+TVX", "Coll+TVX", "Coll+TVX+VtxZ+Sel8"
+//     TH1D* hDataLumi = (TH1D*)fData->Get("jet-luminosity-calculator/counter");
+//     int bin = hDataLumi->GetXaxis()->FindBin("BC+TVX");
+//     double bcTVX = hDataLumi->GetBinContent(bin); // BC+TVX
+//     std::cout << "On bin number " << bin <<", BC+TVX = " << bcTVX << std::endl;
+//     bin = hDataLumi->GetXaxis()->FindBin("Coll+TVX+VtxZ+Sel8");
+//     double selection = hDataLumi->GetBinContent(bin); // Coll+TVX+VtxZ+Sel8
+//     std::cout << "On bin number " << bin <<", Coll+TVX+VtxZ+Sel8 = " << selection << std::endl;
+//     bin = hDataLumi->GetXaxis()->FindBin("Coll+TVX");
+//     double collTVX = hDataLumi->GetBinContent(bin); // Coll+TVX
+//     std::cout << "On bin number " << bin <<", Coll+TVX = " << collTVX << std::endl;
+//     double triggered = bcTVX * selection / collTVX; // number of TVX triggered BC that correspond to your selections and your train efficiencies
+//     double runLuminosity = 1.0/0.0594e6; // luminosity value for the runs (// in mb⁻¹?)
+//     double dataLuminosity = triggered * runLuminosity;
+//     std::cout << "triggered = " << triggered << "; runLuminosity = " << runLuminosity << std::endl;
+//     std::cout << "BC+TVX = " << bcTVX << ", Coll+TVX = " << collTVX << ", Selection = " << selection << ", runLuminosity = " << runLuminosity << std::endl;
+//     double lumiData = dataLuminosity; // Store in dataContainer for later use
+//     std::cout << "Measured luminosity = " << dataLuminosity << " mb^-1" << std::endl;
+
+//     std::vector<double> luminosities = {luminosity_powheg, dataLuminosity};
+//     return luminosities;
+// }
+/*___________________________________________________Feed-down (end)______________________________________________________________________________________*/
+/*___________________________________________________Debugging (start)______________________________________________________________________________________*/
+void checkCanvas(TCanvas* canvas) {
+    if (!canvas) {
+        std::cout << "canvas is NULL!" << std::endl;
+        return;
+    }
+
+    TList* prims = canvas->GetListOfPrimitives();
+    if (!prims || prims->GetSize() == 0) {
+        std::cout << "canvas has NO primitives!" << std::endl;
+        return;
+    }
+
+    std::cout << "Canvas: " << canvas->GetName() << std::endl;
+
+    int ipad = 0;
+    for (TObject* obj : *prims) {
+
+        if (obj->InheritsFrom(TPad::Class())) {
+            TPad* pad = (TPad*)obj;
+            ipad++;
+
+            TList* padPrims = pad->GetListOfPrimitives();
+
+            if (!padPrims || padPrims->GetSize() == 0) {
+                std::cout << "  Pad " << ipad << " (" << pad->GetName() << ") is EMPTY\n";
+            } else {
+                std::cout << "  Pad " << ipad << " (" << pad->GetName() << ") has "
+                          << padPrims->GetSize() << " objects:\n";
+
+                for (TObject* pobj : *padPrims) {
+                    std::cout << "    - " << pobj->GetName()
+                              << " (" << pobj->ClassName() << ")\n";
+                }
+            }
+        }
+    }
+}
+bool usingEmmasBinning(TH1D* hIsEmmaYeatsBinning) {
+    if (hIsEmmaYeatsBinning->GetBinContent(1) > 0.) {
+        return false; // using standard binning
+    } else if (hIsEmmaYeatsBinning->GetBinContent(2) > 0.) {
+        return true; // using Emma Yeats binning
+    }
+    return false; // default case
+}
+/*___________________________________________________Debugging (end)______________________________________________________________________________________*/

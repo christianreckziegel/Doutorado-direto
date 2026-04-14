@@ -623,8 +623,10 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
         dataContainer.subtractionResults.scalingFactorsArrays.push_back(scallingFactors);
 
         // Create DeltaR signal histogram
-        int lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
-        int highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
+        // int lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
+        // int highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
+        int lowBin = safeLowBin(dataContainer.histograms2d[iHisto], m_0 - signalSigmas * sigma);
+        int highBin = safeHighBin(dataContainer.histograms2d[iHisto], m_0 + signalSigmas * sigma);
         h_signal = dataContainer.histograms2d[iHisto]->ProjectionY(Form("h_signal_proj_%zu",iHisto), lowBin, highBin);
         dataContainer.subtractionResults.signalHist.push_back(h_signal);
 
@@ -632,29 +634,37 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
         if (sidebandRanges.first[0] == 0. && sidebandRanges.first[1] == 0.) {
             // Use only the right sideband
             std::cout << "Using only the right sideband..." << std::endl;
-            lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
-            highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
+            // lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
+            // highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
+            lowBin = safeLowBin(dataContainer.histograms2d[iHisto], sidebandRanges.second[0]);
+            highBin = safeHighBin(dataContainer.histograms2d[iHisto], sidebandRanges.second[1]);
             h_sideBand = dataContainer.histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_%zu",iHisto), lowBin, highBin); // sum the right sideband
             double rightSBHistogram = dataContainer.histograms1d[iHisto]->Integral(lowBin, highBin); // integral of sideband regions of mass histogram
 
             double rightSB = dataContainer.fittings.fitTotal[iHisto]->Integral(sidebandRanges.second[0],sidebandRanges.second[1]);
             double fitSigIntegral = dataContainer.fittings.fitTotal[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
 
-            lowBin = dataContainer.histograms1d[iHisto]->FindBin(m_0 - signalSigmas * sigma);
-            highBin = dataContainer.histograms1d[iHisto]->FindBin(m_0 + signalSigmas * sigma);
+            // lowBin = dataContainer.histograms1d[iHisto]->FindBin(m_0 - signalSigmas * sigma);
+            // highBin = dataContainer.histograms1d[iHisto]->FindBin(m_0 + signalSigmas * sigma);
+            lowBin = safeLowBin(dataContainer.histograms1d[iHisto], m_0 - signalSigmas * sigma);
+            highBin = safeHighBin(dataContainer.histograms1d[iHisto], m_0 + signalSigmas * sigma);
             double signalHistogram = dataContainer.histograms1d[iHisto]->Integral(lowBin, highBin);
         } else {
             // Use both sidebands
             std::cout << "Using both sidebands..." << std::endl;
-            lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[0]);
-            highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[1]);
+            // lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[0]);
+            // highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[1]);
+            lowBin = safeLowBin(dataContainer.histograms2d[iHisto], sidebandRanges.first[0]);
+            highBin = safeHighBin(dataContainer.histograms2d[iHisto], sidebandRanges.first[1]);
             h_sideBand = dataContainer.histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_left_%zu",iHisto), lowBin, highBin); // sum the left sideband
             double leftSBHistogram = dataContainer.histograms1d[iHisto]->Integral(lowBin, highBin); // integral of sideband regions of mass histogram
             // std::cout << "Sideband integral (only left) = " << h_sideBand->Integral() << std::endl;
             // std::cout << "leftSBHistogram = " << leftSBHistogram << std::endl;
 
-            lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
-            highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
+            // lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
+            // highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);
+            lowBin = safeLowBin(dataContainer.histograms2d[iHisto], sidebandRanges.second[0]);
+            highBin = safeHighBin(dataContainer.histograms2d[iHisto], sidebandRanges.second[1]);
             h_sideBand->Add(dataContainer.histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_%zu",iHisto), lowBin, highBin)); // sum the right sideband
             double rightSBHistogram = dataContainer.histograms1d[iHisto]->Integral(lowBin, highBin); // integral of sideband regions of mass histogram
 
@@ -662,8 +672,10 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
             double rightSB = dataContainer.fittings.fitTotal[iHisto]->Integral(sidebandRanges.second[0],sidebandRanges.second[1]);
             double fitSigIntegral = dataContainer.fittings.fitTotal[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
 
-            lowBin = dataContainer.histograms1d[iHisto]->FindBin(m_0 - signalSigmas * sigma);
-            highBin = dataContainer.histograms1d[iHisto]->FindBin(m_0 + signalSigmas * sigma);
+            // lowBin = dataContainer.histograms1d[iHisto]->FindBin(m_0 - signalSigmas * sigma);
+            // highBin = dataContainer.histograms1d[iHisto]->FindBin(m_0 + signalSigmas * sigma);
+            lowBin = safeLowBin(dataContainer.histograms1d[iHisto], m_0 - signalSigmas * sigma);
+            highBin = safeHighBin(dataContainer.histograms1d[iHisto], m_0 + signalSigmas * sigma);
             double signalHistogram = dataContainer.histograms1d[iHisto]->Integral(lowBin, highBin);
         }
 
@@ -694,23 +706,29 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
         dataContainer.subtractionResults.subtractedHist.push_back(h_back_subtracted);
 
         // Calculate areas for the invariant mass distribution
-        lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[0]);
-        highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[1]);
+        // lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[0]);
+        // highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.first[1]);
+        lowBin = safeLowBin(dataContainer.histograms2d[iHisto], sidebandRanges.first[0]);
+        highBin = safeHighBin(dataContainer.histograms2d[iHisto], sidebandRanges.first[1]);
         double leftBandHistoArea = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin, "width");
         double leftBandHistoArea_no_width = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin);
 
         TH1D* h_sideBand_left_test = dataContainer.histograms2d[iHisto]->ProjectionY(Form("h_sideband_proj_temp_left_test_%zu",iHisto), lowBin, highBin);
         std::cout << "Left areas: \t DeltaR_area = " << h_sideBand_left_test->Integral() << ";\t m_inv_area = " << leftBandHistoArea_no_width << std::endl;
 
-        lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
-        highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);// right sideband limit
-        if (highBin > dataContainer.histograms2d[iHisto]->GetXaxis()->GetNbins()) {
-            highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->GetNbins();
-        }
+        // lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[0]);
+        // highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(sidebandRanges.second[1]);// right sideband limit
+        lowBin = safeLowBin(dataContainer.histograms2d[iHisto], sidebandRanges.second[0]);
+        highBin = safeHighBin(dataContainer.histograms2d[iHisto], sidebandRanges.second[1]);
+        // if (highBin > dataContainer.histograms2d[iHisto]->GetXaxis()->GetNbins()) {
+        //     highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->GetNbins();
+        // }
         
         double rightBandHistoArea = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin, "width");
-        lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
-        highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
+        // lowBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 - signalSigmas * sigma);
+        // highBin = dataContainer.histograms2d[iHisto]->GetXaxis()->FindBin(m_0 + signalSigmas * sigma);
+        lowBin = safeLowBin(dataContainer.histograms2d[iHisto], m_0 - signalSigmas * sigma);
+        highBin = safeHighBin(dataContainer.histograms2d[iHisto], m_0 + signalSigmas * sigma);
         double signalregionHistoArea = dataContainer.histograms1d[iHisto]->Integral(lowBin,highBin, "width");
         std::cout << "leftBandHistoArea=" << leftBandHistoArea << "\t rightBandHistoArea=" << rightBandHistoArea << "\t left+right=" << leftBandHistoArea+rightBandHistoArea << "\t signalregionHistoArea=" << signalregionHistoArea << std::endl;
         std::cout << "Ys / B (calculated from histograms) = " << signalregionHistoArea / (leftBandHistoArea+rightBandHistoArea) << std::endl;
@@ -1127,8 +1145,14 @@ void create3DBackgroundSubtracted(const BinningStruct& binning) {
                 double content = hDeltaR->GetBinContent(iBin);
                 double error = hDeltaR->GetBinError(iBin);
 
+                if (std::isnan(content)) {
+                    content = 0.;
+                    error = 0.;
+                }
+
                 // Fill the TH3D using centers
-                h3D->Fill(ptJetCenter, deltaRcenter, ptHFCenter, content);
+                // h3D->Fill(ptJetCenter, deltaRcenter, ptHFCenter, content);
+                h3D->SetBinContent(h3D->GetXaxis()->FindBin(ptJetCenter), h3D->GetYaxis()->FindBin(deltaRcenter), h3D->GetZaxis()->FindBin(ptHFCenter), content);
                 // Optionally, if you want to preserve error propagation:
                 int binX = h3D->GetXaxis()->FindBin(ptJetCenter);
                 int binY = h3D->GetYaxis()->FindBin(deltaRcenter);
@@ -1142,6 +1166,11 @@ void create3DBackgroundSubtracted(const BinningStruct& binning) {
 
     TFile* fOutput = new TFile(Form("full_merged_ranges_back_sub.root"), "RECREATE");
     h3D->Write();
+
+    // Storing images
+    TString imagePath = "../../Images/1-SignalTreatment/SideBand/";
+    // Storing in a single pdf file
+    h3D->Print(imagePath + Form("3d_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
 
     // Store binning information in the output file for later use
     storeBinningInFile(fOutput, binning);
