@@ -274,14 +274,14 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
             // Response matrix and kinematic efficiencies numerators
             if (genLevelRange && recoLevelRange && passBDTcut) {
                 // Fetch prompt D0 run 3 style detector level selection efficiency value corresponding to the given pT,D from the histogram
-                //int bin = dataContainer.hSelEffRun3Style_detectorLevel.first->FindBin(MCDhfPt);
-                //double efficiency_prompt = dataContainer.hSelEffRun3Style_detectorLevel.first->GetBinContent(bin);
-                // Obs.: previously a weigth of 1./efficiency_prompt was used, probably mistakenly
+                int bin = dataContainer.hSelEffRun3Style_detectorLevel.first->FindBin(MCDhfPt);
+                double efficiency_prompt = dataContainer.hSelEffRun3Style_detectorLevel.first->GetBinContent(bin);
+                // Obs.: previously a weigth of 1./efficiency_prompt was used, is that correct?
                 // Fill 4D RooUnfoldResponse object (jet pT shape is influenced by D0 pT efficiency)
-                dataContainer.response.Fill(MCDjetPt, MCDDeltaR, MCDhfPt, MCPjetPt, MCPDeltaR, MCPhfPt);
-                dataContainer.hResponseDeltaR->Fill(MCDDeltaR,MCPDeltaR);
-                dataContainer.hResponsePtJet->Fill(MCDjetPt,MCPjetPt);
-                dataContainer.hResponsePtHF->Fill(MCDhfPt,MCPhfPt);
+                dataContainer.response.Fill(MCDjetPt, MCDDeltaR, MCDhfPt, MCPjetPt, MCPDeltaR, MCPhfPt, 1./ efficiency_prompt);
+                dataContainer.hResponseDeltaR->Fill(MCDDeltaR,MCPDeltaR, 1./ efficiency_prompt);
+                dataContainer.hResponsePtJet->Fill(MCDjetPt,MCPjetPt, 1./ efficiency_prompt);
+                dataContainer.hResponsePtHF->Fill(MCDhfPt,MCPhfPt, 1./ efficiency_prompt);
 
                 // Fill kinematic efficiency numerator histograms
                 dataContainer.hKineEffParticle[0]->Fill(MCPjetPt, MCPDeltaR, MCPhfPt);
@@ -301,52 +301,6 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
 
 }
 
-std::vector<double> oldRetrieveLuminosityFromFile(TFile* fPowhegNonPrompt, TFile* fLumi, FeedDownData& dataContainer) {
-    
-    // Define temporary histogram to access luminosity values from file
-    TH1D* hLumi = nullptr;
-    //
-    // ----- POWHEG luminosity calculation
-    //
-    hLumi = (TH1D*) fPowhegNonPrompt->Get("fHistXsection");
-    double crossSecPowheg = hLumi->GetBinContent(1);
-    TTree* tree_D0 = dynamic_cast<TTree*>(fPowhegNonPrompt->Get("tree_D0")); // number of events in POWHEG file
-    double numOfEventsPowheg = tree_D0->GetEntries();
-    double powhegLuminosity = numOfEventsPowheg / crossSecPowheg;
-    dataContainer.lumiMC = powhegLuminosity; // Store in dataContainer for later use
-    //
-    // ----- Data luminosity calculation
-    //
-    // Bunch crossings counting
-    TTree* tLumiBunchCrossing = (TTree*) fLumi->Get("DF_merged/O2bccount"); // branch -> fCountsWithTVX
-    Int_t bcTVX = 0, bcTVXSum = 0;
-    tLumiBunchCrossing->SetBranchAddress("fCountsWithTVX", &bcTVX);
-    std::cout << "Entries in BC+TVX tree: " << tLumiBunchCrossing->GetEntries() << std::endl;
-    for (size_t iEntry = 0; iEntry < tLumiBunchCrossing->GetEntries(); iEntry++) {
-        tLumiBunchCrossing->GetEntry(iEntry);
-        bcTVXSum += bcTVX; // Sum over all entries to get total number of TVX triggered BC
-    }
-    // Collisions counting
-    TTree* tLumiCollision = (TTree*) fLumi->Get("DF_merged/O2collcount");
-    Int_t selection, collTVX = 0;
-    Int_t selectionSum = 0, collTVXSum = 0;
-    tLumiCollision->SetBranchAddress("fCountsWithTVXAndZVertexAndSel8", &selection);
-    tLumiCollision->SetBranchAddress("fCountsWithTVX", &collTVX);
-    for (size_t iEntry = 0; iEntry < tLumiCollision->GetEntries(); iEntry++) {
-        tLumiCollision->GetEntry(iEntry);
-        selectionSum += selection; // Sum over all entries to get total number of selected collisions
-        collTVXSum += collTVX; // Sum over all entries to get total number of TVX triggered BC
-    }
-
-    // Number of TVX triggered BC that correspond to your selections and your train efficiencies
-    double triggered = bcTVXSum * ((double)selectionSum / collTVXSum);
-    double runLuminosity = 1.0 / 0.0595e6; // luminosity value for the runs (// in mb⁻¹?)
-    double dataLuminosity = triggered * runLuminosity;
-    dataContainer.lumiData = dataLuminosity; // Store in dataContainer for later use
-
-    std::cout << "Luminosities calculated." << std::endl;
-    return {powhegLuminosity, dataLuminosity};
-}
 std::vector<double> retrieveLuminosityFromFile(TFile* fPowhegNonPrompt, TFile* fLumi, FeedDownData& dataContainer) {
     
     // Define temporary histogram to access luminosity values from file
@@ -552,7 +506,7 @@ void smearGeneratorData(FeedDownData& dataContainer, TFile* fEfficiency) {
                 double weightEmmaCut = passEmmaCut(jetPtCenter, ptDcenter) ? 1.0 : 0.0; // ToDo: remove Emma correspondent bins only at detector level, after all corrections, before luminosity scaling
                 binContent *= weightEmmaCut;
                 binError *= weightEmmaCut;
-                
+
                 // Rescale the bin content by the ratio of efficiencies
                 if (effPrompt > 0) {
                     dataContainer.hFinalPromptSelEffCorrected->SetBinContent(xBin, yBin, zBin, binContent / effPrompt);
@@ -792,19 +746,19 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     //
     // Storing in a single pdf file
     //
-    cPowheg->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
-    cResponse->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cResponseDeltaR->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cResponsePtJet->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cResponsePtHF->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cKinEffParticle->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cKinEffDetector->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cFolded->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cFedDownData->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cPowheg->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    cResponse->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cResponseDeltaR->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cResponsePtJet->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cResponsePtHF->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cKinEffParticle->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cKinEffDetector->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cFolded->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cFedDownData->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     for (size_t iJetptBin = 0; iJetptBin < cNonpromptFraction.size() - 1; iJetptBin++) {
-        cNonpromptFraction[iJetptBin]->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+        cNonpromptFraction[iJetptBin]->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     }
-    cNonpromptFraction.back()->Print(imagePath + Form("newBremoval_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cNonpromptFraction.back()->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 
 }
 
@@ -831,7 +785,7 @@ void saveData(const FeedDownData& dataContainer, const double& jetptMin, const d
     cout << "Data stored in file" << Form("outputFeedDown_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)) << endl;
 }
 
-void newBRemoval(){
+void FeedDownSubtraction(){
 
     // Execution time calculation
     time_t start, end;
@@ -898,6 +852,6 @@ void newBRemoval(){
 }
 
 int main(){
-    newBRemoval();
+    FeedDownSubtraction();
     return 0;
 }
