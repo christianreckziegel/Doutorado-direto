@@ -1,5 +1,5 @@
 /*
- * .h file containing common utilities and functions used in the closure tests
+ * .h file containing common utilities and functions used throughout the analysis
  * 
  * 
  * 
@@ -9,7 +9,20 @@
 
 using namespace std;
 
-// (Matched from) / (selected as)...:Lc = +1, Lcbar = -1, neither = 0
+enum DecayChannelMain : int8_t {
+  // D0
+  D0ToPiK = 1,      // π+ K−
+  D0ToPiKPi0 = 2,   // π+ K− π0
+  D0ToPiPi = 3,     // π+ π−
+  D0ToPiPiPi0 = 4,  // π+ π− π0
+  D0ToKK = 5,       // K+ K−
+  // J/ψ
+  JpsiToEE = 6,     // e+ e−
+  JpsiToMuMu = 7,   // μ+ μ−
+  //
+  NChannelsMain = JpsiToMuMu // last channel
+};
+// Selected as...:D0 = +1, D0bar = -1, neither = 0
 enum class D0Species : int {
     D0BAR = -1,
     NEITHER = 0,
@@ -23,6 +36,25 @@ D0Species intToD0Species(int value) {
         case 1:  return D0Species::D0;
         default: return D0Species::NEITHER; // Handle unexpected values
     }
+}
+bool isReflection(const int& MCDhfMatchedFrom, const int& MCDhfSelectedAs) {
+    bool isReflectedD0 = (MCDhfMatchedFrom == static_cast<int>(DecayChannelMain::D0ToPiK)) && (MCDhfSelectedAs == static_cast<int>(D0Species::D0BAR));
+    bool isReflectedD0bar = (MCDhfMatchedFrom == -static_cast<int>(DecayChannelMain::D0ToPiK)) && (MCDhfSelectedAs == static_cast<int>(D0Species::D0));
+    bool isReflection = isReflectedD0 || isReflectedD0bar;
+    
+    return isReflection;
+}
+bool isTrueSignal(const int& MCDhfMatchedFrom, const int& MCDhfSelectedAs) {
+    bool isD0 = (MCDhfMatchedFrom == static_cast<int>(DecayChannelMain::D0ToPiK)) && (MCDhfSelectedAs == static_cast<int>(D0Species::D0));
+    bool isD0bar = (MCDhfMatchedFrom == -static_cast<int>(DecayChannelMain::D0ToPiK)) && (MCDhfSelectedAs == static_cast<int>(D0Species::D0BAR));
+    bool isTrueSignal = isD0 || isD0bar;
+
+    return isTrueSignal;
+}
+bool isD0ToKPiPi0(const int& MCDhfMatchedFrom, const int& MCDhfSelectedAs) {
+    bool cameFromD0ToPiKPi0 = (MCDhfMatchedFrom == static_cast<int>(DecayChannelMain::D0ToPiKPi0));
+
+    return cameFromD0ToPiKPi0;
 }
 // Calculate delta phi such that 0 < delta phi < 2*pi
 double DeltaPhi(double phi1, double phi2) {
@@ -39,7 +71,7 @@ double DeltaPhi(double phi1, double phi2) {
 // Get the optimal BDT score cut for the corresponding pT,D of the entry
 double GetBkgProbabilityCut(double pT, const std::vector<std::pair<double, double>>& bdtPtCuts) {
     for (size_t i = 0; i < bdtPtCuts.size() - 1; ++i) {
-        if (pT >= bdtPtCuts[i].first && pT < bdtPtCuts[i + 1].first) {
+        if (pT >= bdtPtCuts[i].first && pT < bdtPtCuts[i + 1].first) { // if pT \in [ptmin; ptmax]
             return bdtPtCuts[i].second;
         }
     }
@@ -52,15 +84,43 @@ struct BinningStruct {
     std::vector<double> ptjetBinEdges_detector;
     std::vector<double> deltaRBinEdges_detector;
     std::vector<double> ptHFBinEdges_detector;
-    // BDT cut values for each pT,HF bin
-    std::vector<std::pair<double, double>> bdtPtCuts;
-    std::vector<std::pair<double, double>> bdtPtCutsMC;
-
+    
     // Particle level binning
     std::vector<double> ptjetBinEdges_particle;
     std::vector<double> deltaRBinEdges_particle;
     std::vector<double> ptHFBinEdges_particle;
+
+    // BDT cut values for each pT,HF bin
+    std::vector<std::pair<double, double>> bdtPtCuts;
+    std::vector<double> ptHfBfDTBinEdges;
+    // Efficiency binning (comes from the BDT cuts binning)
+    std::vector<double> ptHFEfficiencyBinEdges_particle;
+    std::vector<double> ptHFEfficiencyBinEdges_detector;
+
+    // Flag to indicate whether Emma Yeats binning is used
+    bool useEmmaYeatsBins = false;
+
+    // Mass histogram configuration
+    double massBinDensity = 50.0 / (2.06 - 1.72);       // bins per GeV/c² → keeps bin width constant
+    std::vector<double> minMass;                        // global lower mass edge (same for all pT,D bins)
+    std::vector<double> maxMass;                        // per pT,D upper mass edge
+
+    TString dataPeriod;                                 // year
+    std::pair<TString, TString> inputMC;                // first = name, second = path
+    std::pair<TString, TString> inputDATA;              // first = name, second = path
 };
+void efficiencyBinEdges(BinningStruct& binning) {
+
+    // Reserve space, 0-1 interval is excluded
+    binning.ptHFEfficiencyBinEdges_particle.reserve(binning.bdtPtCuts.size()-1);
+    binning.ptHFEfficiencyBinEdges_detector.reserve(binning.bdtPtCuts.size()-1);
+
+    // Loop through intervals  of pT,HF
+    for (size_t iInterval = 1; iInterval < binning.bdtPtCuts.size(); iInterval++) {
+        binning.ptHFEfficiencyBinEdges_particle.emplace_back(binning.bdtPtCuts[iInterval].first);
+    }
+    binning.ptHFEfficiencyBinEdges_detector = binning.ptHFEfficiencyBinEdges_particle;
+}
 std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
     auto* vec = (TVectorD*)fInput->Get(pathInFile);
     if (!vec) {
@@ -124,8 +184,54 @@ void storeBinningInFile(TFile* fOutput, const BinningStruct& binning) {
         ptEdges[i] = binning.bdtPtCuts[i].first;
         bdtCuts[i] = binning.bdtPtCuts[i].second;
     }
-    ptEdges.Write("ptBinEdges");
+    ptEdges.Write("ptHfBDTBinEdges");
     bdtCuts.Write("bdtCutValues");
+
+    // Return to root directory
+    fOutput->cd();
+    TParameter<bool> useEmmaYeatsBins("useEmmaYeatsBins", binning.useEmmaYeatsBins);
+    useEmmaYeatsBins.Write();
+
+    // Return to root directory
+    fOutput->cd();
+
+    // Store mass range configuration
+    fOutput->mkdir("massBins");
+    fOutput->cd("massBins");
+    
+
+    TVectorD vMassBinDensity(1);
+    vMassBinDensity[0] = binning.massBinDensity;
+    vMassBinDensity.Write("massBinDensity");
+
+    TVectorD vMinMass(binning.minMass.size());
+    for (size_t i = 0; i < binning.minMass.size(); ++i) {
+        vMinMass[i] = binning.minMass[i];
+    }
+    vMinMass.Write("minMass");
+
+    TVectorD vMaxMass(binning.maxMass.size());
+    for (size_t i = 0; i < binning.maxMass.size(); ++i) {
+        vMaxMass[i] = binning.maxMass[i];
+    }
+    vMaxMass.Write("maxMass");
+
+    // Return to root directory
+    fOutput->cd();
+
+    // Store data period used and local storage address
+    fOutput->mkdir("DataPeriod");
+    fOutput->cd("DataPeriod");
+    TObjString(binning.dataPeriod).Write("dataPeriod");
+    fOutput->mkdir("DataPeriod/DATA");
+    fOutput->cd("DataPeriod/DATA");
+    TObjString(binning.inputDATA.first).Write("name");
+    TObjString(binning.inputDATA.second).Write("path");
+    fOutput->cd("DataPeriod");
+    fOutput->mkdir("DataPeriod/MC");
+    fOutput->cd("DataPeriod/MC");
+    TObjString(binning.inputMC.first).Write("name");
+    TObjString(binning.inputMC.second).Write("path");
 
     // Return to root directory
     fOutput->cd();
@@ -177,7 +283,8 @@ BinningStruct retrieveBinningFromFile(TFile* fInput) {
     //
     // --- Load BDT cut values
     //
-    TVectorD* vecPt = (TVectorD*)fInput->Get("bdt/ptBinEdges");
+    fInput->cd(); // return to root directory before accessing bdt directory
+    TVectorD* vecPt = (TVectorD*)fInput->Get("bdt/ptHfBDTBinEdges");
     TVectorD* vecCut = (TVectorD*)fInput->Get("bdt/bdtCutValues");
     if (!vecPt || !vecCut) {
         throw std::runtime_error("Could not find BDT cut vectors in file");
@@ -185,10 +292,62 @@ BinningStruct retrieveBinningFromFile(TFile* fInput) {
     if (vecPt->GetNoElements() != vecCut->GetNoElements()) {
         throw std::runtime_error("BDT pT bins and cut vectors have different sizes");
     }
+    
     binning.bdtPtCuts.clear();
+    binning.ptHfBfDTBinEdges.clear();
     for (int i = 0; i < vecPt->GetNoElements(); ++i) {
         binning.bdtPtCuts.emplace_back((*vecPt)[i], (*vecCut)[i]);
+        binning.ptHfBfDTBinEdges.emplace_back((*vecPt)[i]);
     }
+    binning.ptHFEfficiencyBinEdges_particle = std::vector<double>(binning.ptHfBfDTBinEdges.begin() + 1, binning.ptHfBfDTBinEdges.end());
+    binning.ptHFEfficiencyBinEdges_detector = binning.ptHFEfficiencyBinEdges_particle;
+
+    // Retrieve boolean flag
+    TParameter<bool>* fileUseEmmaYeatsBins = (TParameter<bool>*)fInput->Get("useEmmaYeatsBins");
+    if (fileUseEmmaYeatsBins) {
+        binning.useEmmaYeatsBins = fileUseEmmaYeatsBins->GetVal();
+    } else {
+        std::cerr << "Warning: 'useEmmaYeatsBins' boolean flag not found in file, setting to false" << std::endl;
+        binning.useEmmaYeatsBins = false;
+    }
+
+    //
+    // --- Retrieve mass range configuration
+    //
+    TVectorD* vMassBinDensity = (TVectorD*)fInput->Get("massBins/massBinDensity");
+    if (vMassBinDensity) binning.massBinDensity = (*vMassBinDensity)[0];
+
+    TVectorD* vMinMass = (TVectorD*)fInput->Get("massBins/minMass");
+    if (vMinMass) {
+        binning.minMass.resize(vMinMass->GetNrows());
+        for (int i = 0; i < vMinMass->GetNrows(); ++i) {
+            binning.minMass[i] = (*vMinMass)[i];
+        }
+    }
+
+    TVectorD* vMaxMass = (TVectorD*)fInput->Get("massBins/maxMass");
+    if (vMaxMass) {
+        binning.maxMass.resize(vMaxMass->GetNrows());
+        for (int i = 0; i < vMaxMass->GetNrows(); ++i) {
+            binning.maxMass[i] = (*vMaxMass)[i];
+        }
+    }
+
+    //
+    // --- Load data period and path
+    //
+    TObjString* objDataPeriod = (TObjString*)fInput->Get("DataPeriod/dataPeriod");
+    binning.dataPeriod = objDataPeriod->GetString();
+
+    TObjString *objName = (TObjString*)fInput->Get("DataPeriod/DATA/name");
+    TObjString *objPath = (TObjString*)fInput->Get("DataPeriod/DATA/path");
+    binning.inputDATA.first = objName->GetString();
+    binning.inputDATA.second = objPath->GetString();
+
+    TObjString *objMCName = (TObjString*)fInput->Get("DataPeriod/MC/name");
+    TObjString *objMCPath = (TObjString*)fInput->Get("DataPeriod/MC/path");
+    binning.inputMC.first = objMCName->GetString();
+    binning.inputMC.second = objMCPath->GetString();
 
     return binning;
 }
@@ -246,6 +405,11 @@ struct FitContainer {
     // Individual components (primary and secondary Gaussians)
     std::vector<std::pair<TF1*,TF1*>> individualSignals;
     std::vector<std::pair<TF1*,TF1*>> individualReflections;
+
+    // Optimal BDT evaluation
+    std::vector<double> significance;    // S/sqrt(S+B) per pT,D bin
+    std::vector<double> signalYield;     // S per pT,D bin
+    std::vector<double> backgroundYield; // B per pT,D bin
 };
 template <typename HistT>
 int safeLowBin(HistT* histogram, double x) {
@@ -391,8 +555,8 @@ std::pair<std::array<double, 2>, std::array<double, 2>> calculateSidebandRegions
         rightRange[1] = m_0 + (startingBackSigma + rightSigmas) * sigma;
     }
     
-    std::cout << "Left sideband: [" << leftRange[0] << ", " << leftRange[1] << "]\n";
-    std::cout << "Right sideband: [" << rightRange[0] << ", " << rightRange[1] << "]\n";
+    std::cout << "Left sideband: [" << leftRange[0] << ", " << leftRange[1] << "],\t " << abs(leftRange[1] - leftRange[0]) / sigma << " sigmas used." << std::endl;
+    std::cout << "Right sideband: [" << rightRange[0] << ", " << rightRange[1] << "],\t " << abs(rightRange[0] - rightRange[1]) / sigma << " sigmas used." << std::endl;
     std::cout << "Sideband regions calculated.\n";
 
     return std::make_pair(leftRange, rightRange);
@@ -473,44 +637,115 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
 // - PDG mass value outside of signal range (e.g., m_0 < mPDG - n*sigma GeV/c^2 or m_0 > mPDG + n*sigma GeV/c^2)
 // - Fit did not converge (e.g., chi2/ndf > 5)
 // - ToDo: if mean value is outside of the histogram range (e.g., m_0 < histogram min or m_0 > histogram max)
-bool didFitFailed(TH1D* hInvMass, TF1* fitTotal, const double mPDG, const double signalSigmas) {
-    //
+bool didFitFailed(TH1D* hInvMass, TF1* fitTotal, const double mPDG, const double signalSigmas, const int& startingBackSigma) {
+    // The fit can be considered failed for many reasons
+    
     double m_0 = fitTotal->GetParameter(4); // Get the value of parameter 'm_0'
+    std::cout << "m_0 = " << m_0 << std::endl;
     double signalSigma1 = fitTotal->GetParameter(5); // Get the value of parameter 'sigma1'
     double signalSigma2 = fitTotal->GetParameter(5) / fitTotal->GetParameter(6); // signalSigma2 = sigma1 / sigmaRatio12
     double sigma = signalSigma1;
-    // Check if m_0 is within the signal range defined by mPDG +/- signalSigmas * sigma
+    
+    // 1 - Check if m_0 is within the signal range defined by mPDG +/- signalSigmas * sigma
     if ((m_0 < mPDG - signalSigmas * sigma) || (m_0 > mPDG + signalSigmas * sigma)) {
-        std::cout << "Fit failed: m_0 = " << m_0 << " is outside of the signal range [" << mPDG - signalSigmas * sigma << ", " << mPDG + signalSigmas * sigma << "].\n";
+        std::cout << "Fit failed (reason 1): m_0 = " << m_0 << " is outside of the signal range [" << mPDG - signalSigmas * sigma << ", " << mPDG + signalSigmas * sigma << "].\n";
         hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
         return true;
     }
-    // Check if fit converged by looking at chi2/ndf    double chi2 = fitTotal->GetChisquare();
+    
+    // 2 - Check if fit converged by looking at chi2/ndf    double chi2 = fitTotal->GetChisquare();
     int ndf = fitTotal->GetNDF();
     if (ndf > 0) {
         double chi2PerNdf = fitTotal->GetChisquare() / ndf;
-        if (chi2PerNdf > 300.) {
-            std::cout << "Fit failed: chi2/ndf = " << chi2PerNdf << " is greater than 300.\n";
+        if (chi2PerNdf > 320.) {
+            std::cout << "Fit failed (reason 2): chi2/ndf = " << chi2PerNdf << " is greater than 320.\n";
             hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
             return true;
         }
     } else {
-        std::cout << "Fit failed: ndf = " << ndf << " is not greater than 0.\n";
+        std::cout << "Fit failed (reason 2): ndf = " << ndf << " is not greater than 0.\n";
         hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
         return true;
     }
-    // Check if mean value is within the histogram range
+    
+    // 3 - Check if mean value is within the histogram range
     double histoMin = hInvMass->GetBinLowEdge(1);
     double histoMax = hInvMass->GetBinLowEdge(hInvMass->GetNbinsX() + 1);
     if (m_0 < histoMin || m_0 > histoMax) {
-        std::cout << "Fit failed: m_0 = " << m_0 << " is outside of the histogram range [" << histoMin << ", " << histoMax << "].\n";
+        std::cout << "Fit failed (reason 3): m_0 = " << m_0 << " is outside of the histogram range [" << histoMin << ", " << histoMax << "].\n";
         hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
         return true;
     }
+    
+    // 4 - Check if background fit and total fit are too similar on the signal region (e.g., if the ratio of their integrals in the signal region is close to 1, signal quantity is negligible compared to the background)
+    // double backgroundIntegral = fitBackgroundOnly->Integral(m_0 - signalSigmas * sigma, m_0 + signalSigmas * sigma);
+    // double yieldIntegral = fitTotal->Integral(m_0 - signalSigmas * sigma, m_0 + signalSigmas * sigma);
+    // double signal = yieldIntegral - backgroundIntegral;
+    // if (yieldIntegral > 0) {
+    //     double signalFraction = signal / yieldIntegral;
+    //     if (signalFraction < 0.05) {  // <5% signal
+    //         std::cout << "Fit failed (reason 4): signal fraction too small (" << signalFraction << ")\n";
+    //         hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
+    //         return true;
+    //     }
+    // }
+    
+    // 5 - Check if at least 3 bins with non-zero content exist in any sideband
+    bool leftOutsideOfInvRange = (m_0 - startingBackSigma * signalSigma1) < hInvMass->GetBinLowEdge(1);
+    bool rightOutsideOfInvRange = (m_0 + startingBackSigma * signalSigma1) > hInvMass->GetBinLowEdge(hInvMass->GetNbinsX() + 1);
+
+    if (leftOutsideOfInvRange && rightOutsideOfInvRange) {
+        std::cout << "Fit failed (reason 5): both sidebands are outside histogram range.\n";
+        hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
+        return true;
+    }
+
+    // Helper lambda: count bins with non-zero content between two x values
+    auto countFilledBins = [&](double xLow, double xHigh) -> int {
+        int lowBin  = safeLowBin(hInvMass, xLow);
+        int highBin = safeHighBin(hInvMass, xHigh);
+        int count = 0;
+        for (int iBin = lowBin; iBin <= highBin; ++iBin) {
+            if (hInvMass->GetBinContent(iBin) > 0) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    // Check sidebands - at least ONE must have >= 3 filled bins
+    int filledLeft  = 0;
+    int filledRight = 0;
+
+    if (!leftOutsideOfInvRange) {
+        double leftSBlow  = hInvMass->GetBinLowEdge(1);
+        double leftSBhigh = m_0 - startingBackSigma * signalSigma1;
+        filledLeft = countFilledBins(leftSBlow, leftSBhigh);
+        std::cout << "Left sideband filled bins: " << filledLeft << "\n";
+    }
+
+    if (!rightOutsideOfInvRange) {
+        double rightSBlow  = m_0 + startingBackSigma * signalSigma1;
+        double rightSBhigh = hInvMass->GetBinLowEdge(hInvMass->GetNbinsX() + 1);
+        filledRight = countFilledBins(rightSBlow, rightSBhigh);
+        std::cout << "Right sideband filled bins: " << filledRight << "\n";
+    }
+
+    // Fail only if NEITHER sideband has enough bins
+    bool leftOK  = (!leftOutsideOfInvRange)  && (filledLeft  >= 3);
+    bool rightOK = (!rightOutsideOfInvRange) && (filledRight >= 3);
+
+    if (!leftOK && !rightOK) {
+        std::cout << "Fit failed (reason 5): neither sideband has >= 3 filled bins "
+                << "(left=" << filledLeft << ", right=" << filledRight << ").\n";
+        hInvMass->SetTitle(TString(hInvMass->GetTitle()) + " (Fit failed)");
+        return true;
+    }
+    
     return false;
 }
 // Check if histogram should be erased before storing (in case the fit failed)
-bool eraseHistogram(const std::vector<bool>& workingFits, const size_t& histoIndex) {
+bool eraseHistogram(std::vector<bool>& workingFits, const size_t& histoIndex) {
     
     // --- Find largest contiguous block of "true"
     size_t bestStart = 0, bestEnd = 0;
@@ -542,22 +777,50 @@ bool eraseHistogram(const std::vector<bool>& workingFits, const size_t& histoInd
     }
 
     // --- Keep only histograms inside the best block
-    return !(histoIndex >= bestStart && histoIndex <= bestEnd);
+
+    bool shouldErase = !((histoIndex >= bestStart) && (histoIndex <= bestEnd));
+    // Make sure to mark the workingFits vector
+    if (shouldErase) {
+        workingFits[histoIndex] = false;
+    }
+    
+    return shouldErase;
 }
 // Emma's work applied specific cuts to certain pT,jet bins
 bool passEmmaCut(double jetPt, double hfPt) {
     
-    // Define bins: {jetPt_min, jetPt_max, hfPt_min}
-    const std::vector<std::tuple<double,double,double>> cuts = {
-        {5., 7., 2.},
-        {7., 10., 3.},
-        {10., 20., 5.},
-        {20., 50., 12.}
+    // Define bins: {jetPt_min, jetPt_max, hfPt_min, hfPt_max}
+    const std::vector<std::tuple<double,double,double,double>> cuts = {
+        {5., 7., 2., 7.},
+        {7., 10., 3., 10.},
+        {10., 20., 5., 20.},
+        {20., 50., 12., 20.},
+        // {5., 50., 1., 36.} // allow full range for the inclusive distribution (5 < jetPt < 50)
     };
 
-    for (const auto& [jetMin, jetMax, hfMin] : cuts) {
+    for (const auto& [jetMin, jetMax, hfMin, hfMax] : cuts) {
         if (jetPt >= jetMin && jetPt < jetMax) {
-            return hfPt >= hfMin;
+            return (hfPt >= hfMin) && (hfPt < hfMax);
+        }
+    }
+
+    return false; // outside defined ranges → reject
+}
+bool passChrisCut(double jetPt, double hfPt) {
+    
+    // Define bins: {jetPt_min, jetPt_max, hfPt_min, hfPt_max}
+    const std::vector<std::tuple<double,double,double,double>> cuts = {
+        {5., 7., 1., 7.},
+        {7., 10., 1., 10.},
+        {10., 16., 1., 16.},
+        {16., 36., 2., 36.},
+        {36., 50., 12., 36.},
+        {5., 50., 1., 36.} // allow full range for the inclusive distribution (5 < jetPt < 50)
+    };
+
+    for (const auto& [jetMin, jetMax, hfMin, hfMax] : cuts) {
+        if (jetPt >= jetMin && jetPt < jetMax) {
+            return (hfPt >= hfMin) && (hfPt < hfMax);
         }
     }
 
@@ -618,7 +881,7 @@ int HistogramCounter(TFile* file) {
 
 /*___________________________________________________Matching (start)______________________________________________________________________________________*/
 // Multiply hTruth and response matrix, The result will the the folded histogram
-TH2D* manualFolding(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
+TH2D* manualFoldingOld(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
     
     // Create empty histogram for the folded data
     TH2D* hFolded = (TH2D*)hMeasured->Clone("hFolded");
@@ -669,6 +932,141 @@ TH2D* manualFolding(RooUnfoldResponse response, TH2D* hTruth, TH2D* hMeasured) {
     std::cout << "Manual folding performed." << std::endl;
 
     return hFolded;
+}
+template<typename T>
+T manualFolding(RooUnfoldResponse response, T hTruth, T hMeasured) {
+
+    // Check if T is TH1 or TH2 or TH3
+    if constexpr (std::is_same_v<T, TH1D*>) {
+        TH1D* hFolded = (TH1D*)hMeasured->Clone("hFolded");
+        hFolded->Reset();
+        hFolded->Sumw2();
+
+        int nBinsXMeasured = hFolded->GetNbinsX();
+        int nBinsXTruth = hTruth->GetNbinsX();
+
+        for (int iMeasured = 0; iMeasured < nBinsXMeasured; iMeasured++) {
+            double foldedValue = 0;
+            double foldedError2 = 0;
+
+            for (int iTruth = 0; iTruth < nBinsXTruth; iTruth++) {
+                double truthValue = hTruth->GetBinContent(iTruth + 1);
+                double responseValue = response(iMeasured, iTruth);
+                
+                foldedValue += truthValue * responseValue;
+                foldedError2 += std::pow(hTruth->GetBinError(iTruth + 1), 2) * std::pow(responseValue, 2);
+            }
+            hFolded->SetBinContent(iMeasured + 1, foldedValue);
+            hFolded->SetBinError(iMeasured + 1, std::sqrt(foldedError2));
+        }
+        std::cout << "Manual 1D folding performed." << std::endl;
+        return hFolded;
+    } else if constexpr (std::is_same_v<T, TH2D*>) {
+        // Create empty histogram for the folded data
+        TH2D* hFolded = (TH2D*)hMeasured->Clone("hFolded");
+        hFolded->Reset();
+        hFolded->Sumw2();
+
+        // Get the number of bins in measured and truth histograms
+        int nBinsXMeasured = hFolded->GetNbinsX();
+        int nBinsYMeasured = hFolded->GetNbinsY();
+        int nBinsXTruth = hTruth->GetNbinsX();
+        int nBinsYTruth = hTruth->GetNbinsY();
+        
+        // Debug: print a few values from the response matrix
+        bool debug = false;
+        if (debug) {
+            std::cout << "Measured histogram: " << nBinsXMeasured << " x " << nBinsYMeasured << std::endl;
+            std::cout << "Response matrix dimensions: " << response.GetNbinsMeasured() << " x " << response.GetNbinsTruth() << std::endl;
+        }
+
+        // loop through detector level bins
+        for (int iMeasured = 0; iMeasured < nBinsXMeasured; iMeasured++) {
+            for (int jMeasured = 0; jMeasured < nBinsYMeasured; jMeasured++) {
+                double foldedValue = 0;
+                double foldedError2 = 0;
+
+                // obtaining flattened 1D index through row-major ordering
+                int index_x_measured = iMeasured + nBinsXMeasured*jMeasured;
+
+                // calculating element iMeasured,jMeasured of folded 2D matrix
+                for (int iTruth = 0; iTruth < nBinsXTruth; iTruth++) {
+                    for (int jTruth = 0; jTruth < nBinsYTruth; jTruth++) {
+                        // obtaining flattened 1D index through row-major ordering
+                        int index_x_truth = iTruth + nBinsXTruth*jTruth;
+                        // calculating matrix element product
+                        double truthValue = hTruth->GetBinContent(iTruth + 1,jTruth + 1);
+                        double responseValue = response(index_x_measured, index_x_truth);
+                        foldedValue += truthValue*responseValue;
+                        foldedError2 += std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1),2) * std::pow(response(index_x_measured, index_x_truth),2);
+                    }
+                }
+                hFolded->SetBinContent(iMeasured + 1, jMeasured + 1, foldedValue);
+                hFolded->SetBinError(iMeasured + 1, jMeasured + 1, std::sqrt(foldedError2));
+            }
+        }
+        
+        std::cout << "Manual 2D folding performed." << std::endl;
+
+        return hFolded;
+    }
+    else if constexpr (std::is_same_v<T, TH3D*>) {
+        // Create empty histogram for the folded data
+        TH3D* hFolded = (TH3D*)hMeasured->Clone("hFolded");
+        hFolded->Reset();
+        hFolded->Sumw2();
+
+        // Get the number of bins in measured and truth histograms
+        int nBinsXMeasured = hFolded->GetNbinsX();
+        int nBinsYMeasured = hFolded->GetNbinsY();
+        int nBinsZMeasured = hFolded->GetNbinsZ();
+        int nBinsXTruth = hTruth->GetNbinsX();
+        int nBinsYTruth = hTruth->GetNbinsY();
+        int nBinsZTruth = hTruth->GetNbinsZ();
+
+        // Debug: print a few values from the response matrix
+        bool debug = false;
+        if (debug) {
+            std::cout << "Measured histogram: " << nBinsXMeasured << " x " << nBinsYMeasured << " x " << nBinsZMeasured << std::endl;
+            std::cout << "Response matrix dimensions: " << response.GetNbinsMeasured() << " x " << response.GetNbinsTruth() << std::endl;
+        }
+
+        // loop through detector level bins
+        for (int iMeasured = 0; iMeasured < nBinsXMeasured; iMeasured++) {
+            for (int jMeasured = 0; jMeasured < nBinsYMeasured; jMeasured++) {
+                for (int kMeasured = 0; kMeasured < nBinsZMeasured; kMeasured++) {
+                    double foldedValue = 0;
+                    double foldedError2 = 0;
+
+                    // obtaining flattened 1D index through row-major ordering
+                    int index_x_measured = iMeasured + (nBinsXMeasured * jMeasured) + (nBinsXMeasured * nBinsYMeasured * kMeasured);
+
+                    // calculating element iMeasured,jMeasured of folded 2D matrix
+                    for (int iTruth = 0; iTruth < nBinsXTruth; iTruth++) {
+                        for (int jTruth = 0; jTruth < nBinsYTruth; jTruth++) {
+                            for (int kTruth = 0; kTruth < nBinsZTruth; kTruth++) {
+                                // obtaining flattened 1D index through row-major ordering
+                                int index_x_truth = iTruth + (nBinsXTruth * jTruth) + (nBinsXTruth * nBinsYTruth * kTruth);
+                                // calculating matrix element product
+                                double truthValue = hTruth->GetBinContent(iTruth + 1,jTruth + 1, kTruth + 1);
+                                double responseValue = response(index_x_measured, index_x_truth);
+                                foldedValue += truthValue*responseValue;
+                                foldedError2 += std::pow(hTruth->GetBinError(iTruth + 1,jTruth + 1, kTruth + 1),2) * std::pow(response(index_x_measured, index_x_truth),2);
+                            }
+                        }
+                    }
+                    hFolded->SetBinContent(iMeasured + 1, jMeasured + 1, kMeasured + 1, foldedValue);
+                    hFolded->SetBinError(iMeasured + 1, jMeasured + 1, kMeasured + 1, std::sqrt(foldedError2));
+                }
+            }
+        }
+        
+        std::cout << "Manual 3D folding performed." << std::endl;
+
+        return hFolded;
+    } else {
+        static_assert(sizeof(T) == 0, "Unsupported histogram type! Only TH1D*, TH2D*, and TH3D* are accepted.");
+    }
 }
 /*___________________________________________________Matching (end)______________________________________________________________________________________*/
 

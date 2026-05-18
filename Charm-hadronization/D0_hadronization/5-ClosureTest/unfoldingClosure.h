@@ -20,43 +20,50 @@ struct UnfoldData {
     // Step 4: bayesian unfolding
     std::vector<TH2D*> hKineEffParticle = {nullptr, nullptr, nullptr};      // particle level (addition): [0] = numerator, [1] = denominator, [2] = efficiency
     std::vector<TH2D*> hKineEffDetector = {nullptr, nullptr, nullptr};      // detector level (removal): [0] = numerator, [1] = denominator, [2] = efficiency
-    RooUnfoldResponse* response;                                             // response matrix for folding
-    std::vector<RooUnfoldBayes*> unfold;                                     // unfolding objects, there are iterationNumber unfolding objects
+    RooUnfoldResponse* response;                                            // response matrix for folding
+    std::vector<TH2D*> hResponse2D = {nullptr, nullptr};                    // response projections matrix: first = DeltaR, second = pT,jet
+    std::vector<RooUnfoldBayes*> unfold;                                    // unfolding objects, there are iterationNumber unfolding objects
     TH2D* hMeasuredTemplate = nullptr;                                      // template for measured data (jet pT vs DeltaR), used for hUnfolded binning
     TH2D* hTruthTemplate = nullptr;
-    std::vector<TH2D*> hUnfolded;                                         // unfolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
-    std::vector<TH2D*> hUnfoldedKinCorrected;                             // unfolded 2D histogram with detector level kinematic correction, there are iterationNumber unfolding objects
+    std::vector<TH2D*> hUnfolded;                                           // unfolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
+    std::vector<TH2D*> hUnfoldedKinCorrected;                               // unfolded 2D histogram with detector level kinematic correction, there are iterationNumber unfolding objects
 
     // Refolding test
     std::vector<TH2D*> hRefolded;                                           // refolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
 };
 
-UnfoldData calculateKinematics(TFile* fClosureInputMatched, std::vector<TH1D*>& hSelEff_run3style, const BinningStruct& binningStruct, const std::vector<std::pair<double, double>>& bdtPtCuts, int& iterationNumber) {
+UnfoldData calculateKinematics(TFile* fClosureInput, const std::vector<TH1D*>& hSelEff_run3style, const BinningStruct& binning, int& iterationNumber) {
     UnfoldData dataContainer;
     
     // 1 ----- Create histograms
     // Create kinematic efficiency histograms
     dataContainer.hKineEffParticle[0] = new TH2D("hKineEffParticleNumerator", "Particle level kinematic efficiency numerator (prompt D^{0}'s);p_{T,jet}^{gen ch} (GeV/#it{c});#DeltaR", 
-                                                                                  binningStruct.ptjetBinEdges_particle.size() - 1, binningStruct.ptjetBinEdges_particle.data(), 
-                                                                                  binningStruct.deltaRBinEdges_particle.size() - 1, binningStruct.deltaRBinEdges_particle.data());
+                                                                                  binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
+                                                                                  binning.deltaRBinEdges_particle.size() - 1, binning.deltaRBinEdges_particle.data());
     dataContainer.hKineEffParticle[1] = new TH2D("hKineEffParticleDenominator", "Particle level kinematic efficiency denominator (prompt D^{0}'s);p_{T,jet}^{gen ch} (GeV/#it{c});#DeltaR", 
-                                                                                  binningStruct.ptjetBinEdges_particle.size() - 1, binningStruct.ptjetBinEdges_particle.data(), 
-                                                                                  binningStruct.deltaRBinEdges_particle.size() - 1, binningStruct.deltaRBinEdges_particle.data());
+                                                                                  binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
+                                                                                  binning.deltaRBinEdges_particle.size() - 1, binning.deltaRBinEdges_particle.data());
     dataContainer.hKineEffDetector[0] = new TH2D("hKineEffDetectorNumerator", "Detector level kinematic efficiency numerator (prompt D^{0}'s);p_{T,jet}^{reco ch} (GeV/#it{c});#DeltaR", 
-                                                                                  binningStruct.ptjetBinEdges_detector.size() - 1, binningStruct.ptjetBinEdges_detector.data(), 
-                                                                                  binningStruct.deltaRBinEdges_detector.size() - 1, binningStruct.deltaRBinEdges_detector.data());
+                                                                                  binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
+                                                                                  binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data());
     dataContainer.hKineEffDetector[1] = new TH2D("hKineEffDetectorDenominator", "Detector level kinematic efficiency denominator (prompt D^{0}'s);p_{T,jet}^{reco ch} (GeV/#it{c});#DeltaR", 
-                                                                                  binningStruct.ptjetBinEdges_detector.size() - 1, binningStruct.ptjetBinEdges_detector.data(), 
-                                                                                  binningStruct.deltaRBinEdges_detector.size() - 1, binningStruct.deltaRBinEdges_detector.data());
+                                                                                  binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
+                                                                                  binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data());
     // Create template histograms used for response matrix creation
     dataContainer.hMeasuredTemplate = new TH2D("hMeasuredTemplate", "Measured template;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}", 
-                                                                                  binningStruct.ptjetBinEdges_detector.size() - 1, binningStruct.ptjetBinEdges_detector.data(), 
-                                                                                  binningStruct.deltaRBinEdges_detector.size() - 1, binningStruct.deltaRBinEdges_detector.data());
+                                                                                  binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
+                                                                                  binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data());
     dataContainer.hTruthTemplate = new TH2D("hTruthTemplate", "Truth template;p_{T,jet}^{gen} (GeV/#it{c});#DeltaR^{gen}", 
-                                                                                  binningStruct.ptjetBinEdges_detector.size() - 1, binningStruct.ptjetBinEdges_detector.data(), 
-                                                                                  binningStruct.deltaRBinEdges_detector.size() - 1, binningStruct.deltaRBinEdges_detector.data());
+                                                                                  binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
+                                                                                  binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data());
     // Create response matrices
     dataContainer.response = new RooUnfoldResponse(dataContainer.hKineEffDetector[0], dataContainer.hKineEffParticle[0]);
+    dataContainer.hResponse2D[0] = new TH2D("hResponseDeltaR", "Response matrix projection on #DeltaR;#DeltaR^{reco};#DeltaR^{gen}", 
+                                                                                  binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data(), 
+                                                                                  binning.deltaRBinEdges_particle.size() - 1, binning.deltaRBinEdges_particle.data());
+    dataContainer.hResponse2D[1] = new TH2D("hResponsePtJet", "Response matrix projection on p_{T,jet};p_{T,jet}^{reco} (GeV/#it{c});p_{T,jet}^{gen} (GeV/#it{c})", 
+                                                                                  binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
+                                                                                  binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data());
     // Reserve space for the unfolding objects with the number of iterations
     dataContainer.unfold.resize(iterationNumber);
     // Reserve space for the unfolded TH2D* histograms with the number of iterations (and point to nullptr)
@@ -71,34 +78,45 @@ UnfoldData calculateKinematics(TFile* fClosureInputMatched, std::vector<TH1D*>& 
     const double MCDetaCut = 0.9 - jetRadius; // on detector level jet
     const double MCPyCut = 0.8; // on particle level D0
     const double MCDyCut = 0.8; // on detector level D0
-    const double MCPDeltaRcut = binningStruct.deltaRBinEdges_particle[binningStruct.deltaRBinEdges_particle.size() - 1]; // on particle level delta R
-    const double MCDDeltaRcut = binningStruct.deltaRBinEdges_detector[binningStruct.deltaRBinEdges_detector.size() - 1]; // on detector level delta R
-    const double jetptMin = binningStruct.ptjetBinEdges_particle[0]; // on both levels jet
-    const double jetptMax = binningStruct.ptjetBinEdges_particle[binningStruct.ptjetBinEdges_particle.size() - 1]; // on both levels jet
-    const double MCPHfPtMincut = binningStruct.ptHFBinEdges_particle[0]; // on particle level D0
-    const double MCDHfPtMincut = binningStruct.ptHFBinEdges_detector[0]; // on detector level D0
-    const double MCPHfPtMaxcut = binningStruct.ptHFBinEdges_particle[binningStruct.ptHFBinEdges_particle.size() - 1]; // on particle level D0
-    const double MCDHfPtMaxcut = binningStruct.ptHFBinEdges_detector[binningStruct.ptHFBinEdges_detector.size() - 1]; // on detector level D0
+    const double MCPDeltaRcut = binning.deltaRBinEdges_particle[binning.deltaRBinEdges_particle.size() - 1]; // on particle level delta R
+    const double MCDDeltaRcut = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1]; // on detector level delta R
+    const double jetptMin = binning.ptjetBinEdges_particle[0]; // on both levels jet
+    const double jetptMax = binning.ptjetBinEdges_particle[binning.ptjetBinEdges_particle.size() - 1]; // on both levels jet
+    const double MCPHfPtMincut = binning.ptHFBinEdges_particle[0]; // on particle level D0
+    const double MCDHfPtMincut = binning.ptHFBinEdges_detector[0]; // on detector level D0
+    const double MCPHfPtMaxcut = binning.ptHFBinEdges_particle[binning.ptHFBinEdges_particle.size() - 1]; // on particle level D0
+    const double MCDHfPtMaxcut = binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1]; // on detector level D0
+    
     // Access prompt and non-prompt efficiency
     dataContainer.hSelectionEfficiency.first = hSelEff_run3style[0];
     dataContainer.hSelectionEfficiency.second = hSelEff_run3style[1];
-    TTree* tree = (TTree*)fClosureInputMatched->Get("CorrectionTree");
+
+    // Accessing TTree
+    TTree* tree = (TTree*)fClosureInput->Get("CorrectionTree");
+    // Check for correct access
+    if (!tree) {
+        cout << "Error opening O2 matching tree.\n";
+    }
     // defining variables for accessing particle level data on TTree
     float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
     float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
     bool MCPhfprompt;
+    int MCPjetNConst;
     // defining variables for accessing detector level data on TTree
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
     bool MCDhfprompt;
     int MCDhfMatchedFrom, MCDhfSelectedAs;
+    int MCDjetNConst;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
+
     // particle level branches
     tree->SetBranchAddress("fMcJetHfDist",&MCPaxisDistance);
     tree->SetBranchAddress("fMcJetPt",&MCPjetPt);
     tree->SetBranchAddress("fMcJetEta",&MCPjetEta);
     tree->SetBranchAddress("fMcJetPhi",&MCPjetPhi);
+    tree->SetBranchAddress("fMcJetNConst",&MCPjetNConst); // float
     tree->SetBranchAddress("fMcHfPt",&MCPhfPt);
     tree->SetBranchAddress("fMcHfEta",&MCPhfEta);
     tree->SetBranchAddress("fMcHfPhi",&MCPhfPhi);
@@ -110,6 +128,7 @@ UnfoldData calculateKinematics(TFile* fClosureInputMatched, std::vector<TH1D*>& 
     tree->SetBranchAddress("fJetPt",&MCDjetPt);
     tree->SetBranchAddress("fJetEta",&MCDjetEta);
     tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
+    tree->SetBranchAddress("fJetNConst",&MCDjetNConst); // int
     tree->SetBranchAddress("fHfPt",&MCDhfPt);
     tree->SetBranchAddress("fHfEta",&MCDhfEta);
     tree->SetBranchAddress("fHfPhi",&MCDhfPhi);
@@ -126,24 +145,32 @@ UnfoldData calculateKinematics(TFile* fClosureInputMatched, std::vector<TH1D*>& 
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
         
-        // Apply prompt selection (i.e., only c → D0, not B → D0)
-        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
-        if (!MCDhfprompt || isReflection) {
+        // Only prompt, real (not reflections) and matched candidates
+        bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
+        bool isPrompt = MCDhfprompt || MCPhfprompt;                                 // both need to be non-prompt in order to reject the candidate
+        if (!isPrompt || !isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs) || !MCDhfmatch) {
             continue;
         }
-
-        // calculating delta R
-        double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2));
-        double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
-
-        bool genLevelRange = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax)) && ((MCPDeltaR >= binningStruct.deltaRBinEdges_particle[0]) && (MCPDeltaR < MCPDeltaRcut)) && ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut));
-        bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax)) && ((MCDDeltaR >= binningStruct.deltaRBinEdges_detector[0]) && (MCDDeltaR < MCDDeltaRcut)) && ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut));
-        // Get the threshold for this pT range
-        double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, bdtPtCuts);
-        bool passBDTcut = (MCDhfMlScore0 < maxBkgProb) ? true : false;
+  
+        // Generator level selection cuts
+        double MCPDeltaR = MCPaxisDistance;
+        bool genJetPtRange = (MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax);
+        bool genHfPtRange = ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut));
+        bool genDeltaRRange = ((MCPaxisDistance >= binning.deltaRBinEdges_particle[0]) && (MCPaxisDistance < MCPDeltaRcut));
+        bool genAcceptance = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut);
+        bool genLevelRange = genAcceptance && genJetPtRange && genDeltaRRange && genHfPtRange; // --> this is new!
+        // Reconstruction level selection cuts
+        double MCDDeltaR = MCDaxisDistance;
+        double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
+        bool passBDTcut = (MCDhfMlScore0 < maxBkgProb);
+        bool recoJetPtRange = (MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax);
+        bool recoHfPtRange = ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut));
+        bool recoDeltaRRange = ((MCDaxisDistance >= binning.deltaRBinEdges_detector[0]) && (MCDaxisDistance < MCDDeltaRcut));
+        bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && recoJetPtRange && recoHfPtRange && recoDeltaRRange;
+        
         
         // Fill response matrix and kinematic efficiency histograms
-        if (genLevelRange && recoLevelRange && passBDTcut) {
+        if (genLevelRange && recoLevelRange) {
             
             // Find the bin corresponding to the given pT,D value
             int bin = dataContainer.hSelectionEfficiency.first->FindBin(MCDhfPt);
@@ -152,6 +179,10 @@ UnfoldData calculateKinematics(TFile* fClosureInputMatched, std::vector<TH1D*>& 
             // Fill 4D RooUnfoldResponse object (jet pT shape is influenced by D0 pT efficiency)
             dataContainer.response->Fill(MCDjetPt, MCDDeltaR, MCPjetPt, MCPDeltaR, 1./efficiency_prompt);
             
+            // Fill response matrix projections
+            dataContainer.hResponse2D[0]->Fill(MCDDeltaR, MCPDeltaR, 1./efficiency_prompt);
+            dataContainer.hResponse2D[1]->Fill(MCDjetPt, MCPjetPt, 1./efficiency_prompt);
+
             // Fill kinematic efficiency numerator histograms
             dataContainer.hKineEffParticle[0]->Fill(MCPjetPt, MCPDeltaR);
             dataContainer.hKineEffDetector[0]->Fill(MCDjetPt, MCDDeltaR);
@@ -160,7 +191,7 @@ UnfoldData calculateKinematics(TFile* fClosureInputMatched, std::vector<TH1D*>& 
             // Fill kinematic efficiency denominator histogram for full particle level range
             dataContainer.hKineEffParticle[1]->Fill(MCPjetPt, MCPDeltaR);
         }
-        if (recoLevelRange && passBDTcut) {
+        if (recoLevelRange) {
             // Fill kinematic efficiency denominator histogram for full detector level range
             dataContainer.hKineEffDetector[1]->Fill(MCDjetPt, MCDDeltaR);
         }
@@ -176,12 +207,12 @@ void removeOutsideData(UnfoldData& dataContainer) {
     dataContainer.hKineEffDetector[2]->Divide(dataContainer.hKineEffDetector[1]); // A = A / B:  A = A->Divide(B)
 
     // Copy background subtracted, efficiency corrected, fed-down subtracted 2D histogram
-    //dataContainer.hEfficiencyCorrected = (TH2D*)dataContainer.hEfficiencyCorrected->Clone("hEfficiencyCorrectedUnfoldingInput");
+    //dataContainer.hEfficiencyCorrectedData = (TH2D*)dataContainer.hEfficiencyCorrectedData->Clone("hEfficiencyCorrectedDataUnfoldingInput");
     dataContainer.hCorrectedInput->SetTitle("Fed-down with #varepsilon_{kin}^{detector} correction;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}");
 
     // Apply kinematic efficiency correction
     dataContainer.hCorrectedInput->Sumw2();
-    dataContainer.hCorrectedInput->Multiply(dataContainer.hKineEffDetector[2]);
+    dataContainer.hCorrectedInput->Multiply(dataContainer.hKineEffDetector[2]); // test with perfect kinematic efficiency
 
     std::cout << "Detector level kinematic efficiency applied (removal)." << std::endl;
 }
@@ -195,17 +226,17 @@ TH2D* addOutsideData(TH2D* hKineEffParticle, TH2D* hUnfolded, int& iterationNumb
     // Apply kinematic efficiency correction
     hUnfoldedKinCorrected->Sumw2();
     hKineEffParticle->Sumw2();
-    hUnfoldedKinCorrected->Divide(hKineEffParticle); // A = A / B:  A = A->Divide(B)
+    hUnfoldedKinCorrected->Divide(hKineEffParticle); // A = A / B:  A = A->Divide(B), // test with perfect kinematic efficiency
 
     std::cout << "Particle level kinematic efficiency applied (addition)." << std::endl;
     return hUnfoldedKinCorrected;
 
 }
 
-std::vector<TH2D*> performUnfolding(UnfoldData& dataContainer, TH2D* hEfficiencyCorrected, int& iterationNumber) {
+std::vector<TH2D*> performUnfolding(UnfoldData& dataContainer, TH2D* hEfficiencyCorrectedData, int& iterationNumber) {
     
     // Obtain input distribution
-    dataContainer.hCorrectedInput = (TH2D*)hEfficiencyCorrected->Clone("hUnfoldingInput");
+    dataContainer.hCorrectedInput = (TH2D*)hEfficiencyCorrectedData->Clone("hUnfoldingInput");
     // Correct distribution with detector level kinematic efficiency (remove entries)
     removeOutsideData(dataContainer);
 
@@ -272,7 +303,7 @@ std::vector<TH1D*> convergenceTest(const std::vector<TH2D*>& hUnfKinCorrected) {
     }
 
     // Plot
-    TCanvas* cRatio = new TCanvas("cRatioUnfoldingConvergence", "Unfolding Convergence Ratios", 1200, 800);
+    TCanvas* cRatio = new TCanvas("cRatioUnfoldingConvergence", "Unfolding Convergence Ratios",1920,1080);
     cRatio->cd();
 
     for (size_t iHisto = 0; iHisto < hConvergenceTest.size(); iHisto++) {
@@ -293,18 +324,93 @@ std::vector<TH1D*> convergenceTest(const std::vector<TH2D*>& hUnfKinCorrected) {
 
 }
 
-UnfoldData UnfoldingClosure(TFile* fClosureInputMatched, std::vector<TH1D*>& hSelEff_run3style, TH2D* hEfficiencyCorrected, const BinningStruct& binningStruct, const std::vector<std::pair<double, double>>& bdtPtCuts) {
+
+void plotHistograms(const UnfoldData& dataContainer, const BinningStruct& binning) {
+    double jetptMin = binning.ptjetBinEdges_detector[0];
+    double jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
+    
+    // Create a TLatex object to display text on the canvas
+    TLatex* latex = new TLatex();
+    latex->SetNDC(); // Set the coordinates to be normalized device coordinates
+    latex->SetTextSize(0.03);
+    
+    // Kinematic efficiencies
+    TCanvas* cKinematicEffPart = new TCanvas("cKinematicEffPart","Particle level kinematic efficiency",1920,1080);
+    cKinematicEffPart->cd();
+    dataContainer.hKineEffParticle[2]->SetTitle("Particle level kinematic efficiency (prompt D^{0}'s)");
+    dataContainer.hKineEffParticle[2]->Draw("text");
+    TCanvas* cKinematicEffDet = new TCanvas("cKinematicEffDet","Detector level kinematic efficiency",1920,1080);
+    cKinematicEffDet->cd();
+    dataContainer.hKineEffDetector[2]->SetTitle("Detector level kinematic efficiency (prompt D^{0}'s)");
+    dataContainer.hKineEffDetector[2]->Draw("text");
+
+    TCanvas* cReponseProjDeltaR = new TCanvas("cReponseProjDeltaR","DeltaR response matrix projection",1920,1080);
+    cReponseProjDeltaR->cd();
+    dataContainer.hResponse2D[0]->Draw("colz");
+    TCanvas* cReponseProjPtjet = new TCanvas("cReponseProjPtjet","Jet transverse momentum response matrix projection",1920,1080);
+    cReponseProjPtjet->cd();
+    dataContainer.hResponse2D[1]->Draw("colz");
+
+    TCanvas* cFullyCorrected2D = new TCanvas("cFullyCorrected2D","Fully corrected deltaR 2D distribution",1920,1080);
+    dataContainer.hUnfoldedKinCorrected[3]->Draw("colz"); // 4th iteration is considered good enough through convergence test result?
+
+    TCanvas* cFullyCorrected1D = new TCanvas("cFullyCorrected1D","Fully corrected deltaR 1D distribution iterations",1920,1080);
+    TLegend* lUnfoldedIter = new TLegend(0.6,0.57,0.7,0.77);
+    std::vector<TH1D*> hUnfoldedKinCorrectedProj(dataContainer.hUnfoldedKinCorrected.size());
+    int secondBin = 2;
+    int lastButOneBin = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetNbins() - 1; // penultimate bin
+    for (size_t iIter = 0; iIter < dataContainer.hUnfoldedKinCorrected.size(); iIter++) {
+        cFullyCorrected1D->cd();
+        hUnfoldedKinCorrectedProj[iIter] = dataContainer.hUnfoldedKinCorrected[iIter]->ProjectionY(Form("hUnfoldedKinCorrected_iter%zu",iIter), secondBin, lastButOneBin);
+        hUnfoldedKinCorrectedProj[iIter]->SetLineColor(kBlack + iIter);
+        lUnfoldedIter->AddEntry(hUnfoldedKinCorrectedProj[iIter],Form("Iteration %zu", iIter+1), "le");
+        if (iIter == 0) {
+            hUnfoldedKinCorrectedProj[iIter]->GetYaxis()->SetRangeUser(0.,hUnfoldedKinCorrectedProj[iIter]->GetMaximum()*1.2);
+            hUnfoldedKinCorrectedProj[iIter]->SetTitle("Fully corrected distribution projection");
+            hUnfoldedKinCorrectedProj[iIter]->GetYaxis()->SetTitle("dN");
+            hUnfoldedKinCorrectedProj[iIter]->Draw();
+        } else {
+            hUnfoldedKinCorrectedProj[iIter]->Draw("same");
+        }
+    }
+    double reportingJetPtMin = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetBinLowEdge(secondBin);
+    double reportingJetPtMax = dataContainer.hUnfoldedKinCorrected[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+
+    
+    //
+    // Storing images
+    //
+    TString sEmmaBins;
+    if (binning.useEmmaYeatsBins) {
+        sEmmaBins = "EmmaYeatsBins";
+    } else {
+        sEmmaBins = "";
+    }
+    TString imagePath = "../Images/5-ClosureTest/Second/" + sEmmaBins + "/" + binning.dataPeriod + "/";
+    cKinematicEffPart->Print(imagePath + Form("closureTest2_unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    cKinematicEffDet->Print(imagePath + Form("closureTest2_unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cReponseProjDeltaR->Print(imagePath + Form("closureTest2_unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cReponseProjPtjet->Print(imagePath + Form("closureTest2_unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cFullyCorrected2D->Print(imagePath + Form("closureTest2_unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cFullyCorrected1D->Print(imagePath + Form("closureTest2_unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+}
+
+UnfoldData UnfoldingClosure(TFile* fClosureInput, TH2D* hEfficiencyCorrectedData, const std::vector<TH1D*>& hSelEff_run3style, const BinningStruct& binning) {
 
     int iterationNumber = 8;
 
     // Calculate response matrix and kinematic efficiencies
-    UnfoldData dataContainer = calculateKinematics(fClosureInputMatched, hSelEff_run3style, binningStruct, bdtPtCuts, iterationNumber);
+    UnfoldData dataContainer = calculateKinematics(fClosureInput, hSelEff_run3style, binning, iterationNumber);
 
     // Unfold with "iterationNumber" iterations
-    std::vector<TH2D*> hUnfKinCorrected = performUnfolding(dataContainer, hEfficiencyCorrected, iterationNumber);
+    std::vector<TH2D*> hUnfKinCorrected = performUnfolding(dataContainer, hEfficiencyCorrectedData, iterationNumber);
 
-    //
+    // Convergence test
     std::vector<TH1D*> hConvergenceTest = convergenceTest(hUnfKinCorrected);
+
+    // Plot response matrix projectios and histograms
+    plotHistograms(dataContainer, binning);
 
     return dataContainer;
 }

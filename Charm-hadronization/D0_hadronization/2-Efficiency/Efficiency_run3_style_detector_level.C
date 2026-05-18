@@ -47,6 +47,13 @@ struct EfficiencyData {
     std::pair<TH1D*, TH1D*> hHfPtYieldTruth;
     std::pair<TH1D*, TH1D*> hHfPtYieldTruthCorrected;
 
+    // Run 3 style prompt particle level selection efficiency (fetched from file)
+    TH1D* hEfficiency_prompt_part_run3style;
+    TH1D* hEfficiency_nonprompt_part_run3style;
+    // Run 2 style prompt selection efficiency (fetched from file)
+    TH1D* hEfficiency_prompt_run2style;
+    TH1D* hEfficiency_nonprompt_run2style;
+
     //
     // Final efficiency histograms (numerator / denominator): first = prompt D^{0}, second = non-prompt D^{0}
     //
@@ -147,6 +154,14 @@ EfficiencyData createHistograms(const BinningStruct& binning) {
 // Modules to fill histograms (of matched data for response matrix and non-matched data for numerator and denominator distributions) from TFile data
 void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dataContainer, const BinningStruct& binning) {
     
+    // Get run 3 style particle level prompt selection efficiency
+    dataContainer.hEfficiency_prompt_part_run3style = (TH1D*) fEffRun2Style->Get("efficiency_prompt_run3style_particleLevel")->Clone("efficiency_prompt_run3style_particleLevelClone");
+    dataContainer.hEfficiency_nonprompt_part_run3style = (TH1D*) fEffRun2Style->Get("efficiency_nonprompt_run3style_particleLevel")->Clone("efficiency_nonprompt_run3style_particleLevelClone");
+
+    // Get run 2 style prompt selection efficiency
+    dataContainer.hEfficiency_prompt_run2style = (TH1D*) fEffRun2Style->Get("efficiency_run2style_prompt")->Clone("hEfficiency_prompt_run2styleClone");
+    dataContainer.hEfficiency_nonprompt_run2style = (TH1D*) fEffRun2Style->Get("efficiency_run2style_nonprompt")->Clone("hEfficiency_nonprompt_run2styleClone");
+
     // 0.1 - Accessing simulated data
     // Defining cuts
     const double jetRadius = 0.4;
@@ -175,8 +190,9 @@ void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dat
     }
     // defining variables for accessing particle level data on TTree
     float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
-    float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY, MCPjetNConst;
+    float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
     bool MCPhfprompt;
+    int MCPjetNConst;
     // defining variables for accessing detector level data on TTree
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
@@ -222,137 +238,142 @@ void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dat
         tree->GetEntry(entry);
 
         // calculating delta R
-        double MCPDeltaR = sqrt(pow(MCPjetEta-MCPhfEta,2) + pow(DeltaPhi(MCPjetPhi,MCPhfPhi),2)); // or use MCPaxisDistance
-        double MCDDeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2)); // or use MCDaxisDistance
+        double MCPDeltaR = MCPaxisDistance; // or use MCPaxisDistance
+        double MCDDeltaR = MCDaxisDistance; // or use MCDaxisDistance
+        
+        // Generator level selection cuts
+        bool genJetPtRange = (MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax);//, remove upper bound for particle level
+        bool genHfPtRange = ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut)); // remove entirely for particle level
+        bool genDeltaRRange = ((MCPaxisDistance >= binning.deltaRBinEdges_particle[0]) && (MCPaxisDistance < MCPDeltaRcut));
+        bool genAcceptance = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut);
+        bool genLevelRange = genJetPtRange && genDeltaRRange && genAcceptance && genHfPtRange;
 
-        bool genJetPtRange = (MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax);
-        bool genHfPtRange = (MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut);
-        bool genDeltaRRange = (MCPaxisDistance >= binning.deltaRBinEdges_particle[0]) && (MCPaxisDistance < MCPDeltaRcut);
-        bool genLevelRange = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut) && ((MCPaxisDistance >= binning.deltaRBinEdges_particle[0]) && (MCPaxisDistance < MCPDeltaRcut)); // currently used
         bool recoJetPtRange = (MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax);
         bool recoHfPtRange = (MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut);
         bool recoDeltaRRange = (MCDaxisDistance >= binning.deltaRBinEdges_detector[0]) && (MCDaxisDistance < MCDDeltaRcut);
-        bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDaxisDistance >= binning.deltaRBinEdges_detector[0]) && (MCDaxisDistance < MCDDeltaRcut)); // currently used
-
+        bool recoAcceptance = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut);
+        bool recoLevelRange = recoJetPtRange && recoHfPtRange && recoDeltaRRange && recoAcceptance;
+        
         // Get the threshold for this pT range: TODO - do NOT erase this, BDT cuts will be included in next hyperloop wagon
         double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
         bool passBDTcut = (MCDhfMlScore0 < maxBkgProb) ? true : false;
-
-        // 1 --- Selection efficiencies
-        // Fill histograms considering jet pT and ALICE's acceptance
-        if (genLevelRange) {
-            
-            // Fill inclusive histogram
-            //dataContainer.hMcpPt[0]->Fill(MCPhfPt);
-            // fill prompt efficiency histogram
-            if (MCPhfprompt) {
-                dataContainer.hYieldTruth.first->Fill(MCPjetPt, MCPhfPt);
-            } else{
-                // fill non-prompt efficiency histogram
-                dataContainer.hYieldTruth.second->Fill(MCPjetPt, MCPhfPt);
-            }
-        }
-        // only compute matched detector level candidates, but compute all particle level ones
         bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
-        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
-        if (!MCDhfmatch || isReflection) { // !MCDhfmatch || isReflection
-            continue;
-        }
-        // Fill histograms considering jet pT and detector acceptance
-        if (recoLevelRange) {
-            
-            // Get the threshold for this pT range
-            double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
+        bool isRealD0 = isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs);
+        
+        // 1 --- Selection efficiencies
+        if (genLevelRange) {
 
-            // Fill histogram only if the BDT cut is passed
-            if (MCDhfMlScore0 < maxBkgProb) {
-                // Fill inclusive histogram
-                //dataContainer.hMcdPt[0]->Fill(MCDhfPt);
-                // fill prompt efficiency histogram
-                if (MCDhfprompt) {
-                    dataContainer.hYieldMeasured.first->Fill(MCPjetPt, MCPhfPt);
-                } else{
-                    // fill non-prompt efficiency histogram
-                    dataContainer.hYieldMeasured.second->Fill(MCPjetPt, MCPhfPt);
+            // Matched entries must be of real D0s, not reflections or combinatorial background
+            if (MCDhfmatch) {
+                if (isRealD0) {
+                    // Fill particle level entry
+                    if (MCPhfprompt) {
+                        dataContainer.hYieldTruth.first->Fill(MCPjetPt, MCPhfPt); // prompt particle level denominator
+                    } else{
+                        dataContainer.hYieldTruth.second->Fill(MCPjetPt, MCPhfPt); // non-prompt particle level denonimator
+                    }
+                    // Fill detector level entry
+                    if (recoLevelRange && passBDTcut) {
+                        if (MCDhfprompt) {
+                            // prompt detector level numerator
+                            dataContainer.hYieldMeasured.first->Fill(MCDjetPt, MCDhfPt);
+                        } else{
+                            // non-prompt detector level numerator
+                            dataContainer.hYieldMeasured.second->Fill(MCDjetPt, MCDhfPt);
+                        }
+                    } else if (recoLevelRange && !passBDTcut) {
+                        dataContainer.hBDTBackgroundScore->Fill(MCDhfMlScore0);
+                    }
+                    
                 }
-            } else {
-                dataContainer.hBDTBackgroundScore->Fill(MCDhfMlScore0);
-            } 
+            } else {// fill particle level even if not matched
+                if (MCPhfprompt) {
+                    dataContainer.hYieldTruth.first->Fill(MCPjetPt, MCPhfPt); // prompt particle level denominator
+                } else{
+                    dataContainer.hYieldTruth.second->Fill(MCPjetPt, MCPhfPt); // non-prompt particle level denonimator
+                }
+            }   
         }
 
         // 2 --- Response matrix: fill histograms considering jet pT and detector acceptance (response range)
-        if (genLevelRange && recoLevelRange) {
+        if (MCDhfmatch && isRealD0) {
+            if (genLevelRange && recoLevelRange) {
 
-            // fill 2D yields histograms
-            if (MCPhfprompt) {
+                // fill 2D yields histograms
+                if (MCPhfprompt) {
 
-                // Get efficiency estimate to weight the response matrix
-                hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_prompt");
-                // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
-                int bin = hEffWeight->FindBin(MCDhfPt);
-                double estimatedEfficiency = hEffWeight->GetBinContent(bin);
-                if (estimatedEfficiency == 0) {
-                    std::cout << "Warning: Prompt efficiency is zero for pT,HF = " << MCDhfPt << " GeV/c with bin " << bin << " of efficiency_prompt run 2 histogram. Setting it to 1. How to properly deal with these entries?" << std::endl;
-                    estimatedEfficiency = 1; // Avoid division by zero
+                    // Get efficiency estimate to weight the response matrix
+                    hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_run2style_prompt");
+                    // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
+                    int bin = hEffWeight->FindBin(MCDhfPt);
+                    double estimatedEfficiency = hEffWeight->GetBinContent(bin);
+                    if (estimatedEfficiency == 0) {
+                        std::cout << "Warning: Prompt efficiency is zero for pT,HF = " << MCDhfPt << " GeV/c with bin " << bin << " of efficiency_prompt run 2 histogram. Setting it to 1. How to properly deal with these entries?" << std::endl;
+                        estimatedEfficiency = 1; // Avoid division by zero
+                    }
+
+                    // Fill 4D RooUnfoldResponse object
+                    dataContainer.response.first.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
+                    dataContainer.responseProjections.first[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, prompt D^{0}
+                    dataContainer.responseProjections.first[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,HF projection, prompt D^{0}
+                } else{
+
+                    // Get efficiency estimate to weight the response matrix
+                    hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_run2style_nonprompt");
+                    // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
+                    int bin = hEffWeight->FindBin(MCDhfPt);
+                    double estimatedEfficiency = hEffWeight->GetBinContent(bin);
+                    if (estimatedEfficiency == 0) {
+                        //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
+                        estimatedEfficiency = 1; // Avoid division by zero
+                    }
+
+                    // Fill 4D RooUnfoldResponse object
+                    dataContainer.response.second.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
+                    dataContainer.responseProjections.second[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, non-prompt D^{0}
+                    dataContainer.responseProjections.second[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,HF projection, non-prompt D^{0}
                 }
-
-                // Fill 4D RooUnfoldResponse object
-                dataContainer.response.first.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
-                dataContainer.responseProjections.first[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, prompt D^{0}
-                dataContainer.responseProjections.first[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,HF projection, prompt D^{0}
-            } else{
-
-                // Get efficiency estimate to weight the response matrix
-                hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_nonprompt");
-                // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
-                int bin = hEffWeight->FindBin(MCDhfPt);
-                double estimatedEfficiency = hEffWeight->GetBinContent(bin);
-                if (estimatedEfficiency == 0) {
-                    //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
-                    estimatedEfficiency = 1; // Avoid division by zero
-                }
-
-                // Fill 4D RooUnfoldResponse object
-                dataContainer.response.second.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
-                dataContainer.responseProjections.second[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, non-prompt D^{0}
-                dataContainer.responseProjections.second[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,HF projection, non-prompt D^{0}
-            }
-        }
-        // 3 --- Kinematic efficiencies
-        if (genLevelRange && MCPhfprompt) {
-            // fill prompt 2D yield: total particle range
-            dataContainer.hKEffTruthTotalParticle.first->Fill(MCPjetPt, MCPhfPt);
-            if (recoLevelRange) {
-                // fill prompt 2D yield: response range
-                dataContainer.hKEffResponseParticle.first->Fill(MCPjetPt, MCPhfPt);
-                
-            }
-        // non-prompt D^{0}    
-        } else if (genLevelRange && !MCPhfprompt) {
-            dataContainer.hKEffTruthTotalParticle.second->Fill(MCPjetPt, MCPhfPt);
-            if (recoLevelRange) {
-                // fill prompt 2D yield: particle level matched
-                dataContainer.hKEffResponseParticle.second->Fill(MCPjetPt, MCPhfPt);
-                
             }
         }
         
-        // Kinematic efficiency of reconstruction entries
-        if (recoLevelRange && MCPhfprompt) {
-            // fill prompt 2D yield: total detector range
-            dataContainer.hKEffRecoTotalDetector.first->Fill(MCDjetPt, MCDhfPt);
+        // 3 --- Kinematic efficiencies
+        if (MCDhfmatch && isRealD0) {
+            // Particle level kinematic efficiency
             if (genLevelRange) {
-                // fill prompt 2D yield: response range
-                dataContainer.hKEffResponseDetector.first->Fill(MCDjetPt, MCDhfPt);
-                
+                // prompt D0s
+                if (MCPhfprompt) {
+                    // fill prompt 2D yield: total particle range (denominator)
+                    dataContainer.hKEffTruthTotalParticle.first->Fill(MCPjetPt, MCPhfPt);
+                    if (recoLevelRange) {
+                        // fill prompt 2D yield: response range
+                        dataContainer.hKEffResponseParticle.first->Fill(MCPjetPt, MCPhfPt);
+                    }
+                } else {
+                    // non-prompt D0s
+                    dataContainer.hKEffTruthTotalParticle.second->Fill(MCPjetPt, MCPhfPt);
+                    if (recoLevelRange) {
+                        // fill prompt 2D yield: particle level matched
+                        dataContainer.hKEffResponseParticle.second->Fill(MCPjetPt, MCPhfPt);
+                    }
+                } 
             }
-        // non-prompt D^{0}    
-        } else if (recoLevelRange && !MCPhfprompt) {
-            dataContainer.hKEffRecoTotalDetector.second->Fill(MCDjetPt, MCDhfPt);
-            if (genLevelRange) {
-                // fill prompt 2D yield: detector level matched
-                dataContainer.hKEffResponseDetector.second->Fill(MCDjetPt, MCDhfPt);
-                
+
+            // Detector level kinematic efficiency
+            if (recoLevelRange) {
+                if (MCPhfprompt) {
+                    // fill prompt 2D yield: total detector range
+                    dataContainer.hKEffRecoTotalDetector.first->Fill(MCDjetPt, MCDhfPt);
+                    if (genLevelRange) {
+                        // fill prompt 2D yield: response range
+                        dataContainer.hKEffResponseDetector.first->Fill(MCDjetPt, MCDhfPt);
+                    }
+                } else {
+                    dataContainer.hKEffRecoTotalDetector.second->Fill(MCDjetPt, MCDhfPt);
+                    if (genLevelRange) {
+                        // fill prompt 2D yield: detector level matched
+                        dataContainer.hKEffResponseDetector.second->Fill(MCDjetPt, MCDhfPt);
+                    }
+                }
             }
         }
     }
@@ -438,8 +459,14 @@ void performEfficiencyCorrection(TFile* fBackSub, EfficiencyData& dataContainer,
     //
     // Correcting 3D background subtracted distribution with efficiency for each pT,HF bin
     //
+    // Clone for later comparison
+    TH3D* h3DBackgroundSubtractedCloneComparison = (TH3D*)fBackSub->Get("h3DBackgroundSubtracted")->Clone("h3DBackgroundSubtractedCloneComparison");
+    cleanNaNs(h3DBackgroundSubtractedCloneComparison);
+    TH2D* h2DBackgroundSubtractedCloneComparison = (TH2D*)h3DBackgroundSubtractedCloneComparison->Project3D("yx");
+    TH1D* h1DBackgroundSubtractedCloneComparison = (TH1D*)h2DBackgroundSubtractedCloneComparison->ProjectionY("h1DBackgroundSubtractedCloneComparison",1,h2DBackgroundSubtractedCloneComparison->GetXaxis()->GetNbins());
     // 1 - Clone background subtracted distribution
     dataContainer.hEfficiencyCorrected.first = (TH3D*)fBackSub->Get("h3DBackgroundSubtracted")->Clone("h3DEfficiencyCorrected");
+    cleanNaNs(dataContainer.hEfficiencyCorrected.first);
     dataContainer.hEfficiencyCorrected.first->SetTitle("Background subtracted, efficiency corrected");
     int xBins = dataContainer.hEfficiencyCorrected.first->GetXaxis()->GetNbins();
     int yBins = dataContainer.hEfficiencyCorrected.first->GetYaxis()->GetNbins();
@@ -451,9 +478,16 @@ void performEfficiencyCorrection(TFile* fBackSub, EfficiencyData& dataContainer,
                 // Get current content and error
                 double content = dataContainer.hEfficiencyCorrected.first->GetBinContent(xBin, yBin, zBin);
                 double error = dataContainer.hEfficiencyCorrected.first->GetBinError(xBin, yBin, zBin);
-
+                
                 // Get the pT,HF bin center from the Z axis of the 3D histogram
                 double ptDcenter = dataContainer.hEfficiencyCorrected.first->GetZaxis()->GetBinCenter(zBin);
+
+                // if (std::isnan(content)) {
+                //     std::cout << "Warning: nan value encountered on content of pT,HF center with " << ptDcenter << " GeV/c\t (xBin, yBin, zBin) = (" << xBin << "," << yBin << "," << zBin << ")" << std::endl;
+                //     std::cout << "Setting it to zero." << std::endl;
+                //     content = 0;
+                //     error = 0;
+                // }
                 
                 // Find corresponding bin in efficiency histogram
                 int effBin = dataContainer.hSelectionEfficiency.first->GetXaxis()->FindBin(ptDcenter);
@@ -469,7 +503,11 @@ void performEfficiencyCorrection(TFile* fBackSub, EfficiencyData& dataContainer,
                     std::cerr << "Zero or invalid efficiency at pT,HF = " << ptDcenter << " (eff bin = " << effBin << ")" << std::endl;
                     if (eff < 0) {
                         std::cout << "Warning: negative efficiencies!\tWhere do they come from?\tHow to deal with the corresponding entries?" << std::endl;
+                    } else if (eff == 0) {
+                        dataContainer.hEfficiencyCorrected.first->SetBinContent(xBin, yBin, zBin, 0.);
+                        dataContainer.hEfficiencyCorrected.first->SetBinError(xBin, yBin, zBin, 0.);
                     }
+                    
                     
                 }
             }
@@ -479,13 +517,23 @@ void performEfficiencyCorrection(TFile* fBackSub, EfficiencyData& dataContainer,
     // 2 - Project the z axis (pT,HF) in order to obtain a 2D distribution of pT,jet (x axis) vs DeltaR (y axis)
     TH2D* h2D = (TH2D*)dataContainer.hEfficiencyCorrected.first->Project3D("yx");
     dataContainer.hEfficiencyCorrected.second = (TH2D*)h2D->Clone("h2DEfficiencyCorrected");
-    delete h2D;
     dataContainer.hEfficiencyCorrected.second->SetTitle("Background subtracted, efficiency corrected");
+    TH1D* h1D = (TH1D*)h2D->ProjectionY("h1D",1,h2D->GetXaxis()->GetNbins());
+    TCanvas* cBefAftEfficiencyCorrection = new TCanvas("cBefAftEfficiencyCorrection","Before and after efficiency correction",1920,1080);
+    cBefAftEfficiencyCorrection->cd();
+    TLegend* legBefAft = new TLegend(0.6,0.6,0.8,0.75);
+    h1DBackgroundSubtractedCloneComparison->SetLineColor(kRed+1);
+    h1D->SetLineColor(kBlue+1);
+    h1D->Draw();
+    h1DBackgroundSubtractedCloneComparison->Draw("same");
+    legBefAft->AddEntry(h1DBackgroundSubtractedCloneComparison,"Before correction","lp");
+    legBefAft->AddEntry(h1D,"After correction","lp");
+    legBefAft->Draw();
 
     std::cout << "Efficiency correction performed.\n";
 }
 
-void PlotHistograms(const EfficiencyData& dataContainer, double jetptMin, double jetptMax) {
+void PlotHistograms(const EfficiencyData& dataContainer, double jetptMin, double jetptMax, const BinningStruct& binning) {
 
     //
     // 2D yield histograms
@@ -670,7 +718,7 @@ void PlotHistograms(const EfficiencyData& dataContainer, double jetptMin, double
     cCorrectedData->cd(2);
     dataContainer.hEfficiencyCorrected.second->Draw("colz");
     cCorrectedData->cd(3);
-    dataContainer.hEfficiencyCorrected.second->ProjectionY("hEfficiencyCorrectedProjectionDeltaRPrompt")->Draw();
+    dataContainer.hEfficiencyCorrected.second->ProjectionY("hEfficiencyCorrectedProjectionDeltaRPrompt",1,dataContainer.hEfficiencyCorrected.second->GetXaxis()->GetNbins())->Draw();
 
     TCanvas* cCorrectedData2DOnly = new TCanvas("cCorrectedData2DOnly","Background subtracted, efficiency corrected 2D data");
     cCorrectedData2DOnly->cd();
@@ -678,23 +726,104 @@ void PlotHistograms(const EfficiencyData& dataContainer, double jetptMin, double
     TCanvas* cCorrectedData1DOnly = new TCanvas("cCorrectedData1DOnly","Background subtracted, efficiency corrected 1D data");
     cCorrectedData1DOnly->cd();
     //dataContainer.hEfficiencyCorrected.second->SetMarkerStyle(kCircle);
-    dataContainer.hEfficiencyCorrected.second->ProjectionY("hEfficiencyCorrectedProjectionDeltaRPrompt")->Draw();
+    dataContainer.hEfficiencyCorrected.second->ProjectionY("hEfficiencyCorrectedProjectionDeltaRPrompt",1,dataContainer.hEfficiencyCorrected.second->GetXaxis()->GetNbins())->Draw();
+
+    // 2D efficiency
+    TCanvas* cSelectionEfficiencyPrompt2D = new TCanvas("cSelectionEfficiencyPrompt2D","2D prompt D0s efficiency", 1800, 1000);
+    cSelectionEfficiencyPrompt2D->Divide(2,2);
+    cSelectionEfficiencyPrompt2D->cd(1);
+    dataContainer.hYieldTruthCorrected.first->Draw("colz");
+    cSelectionEfficiencyPrompt2D->cd(2);
+    dataContainer.hYieldMeasured.first->Draw("colz");
+    cSelectionEfficiencyPrompt2D->cd(3);
+    TH2D* hEfficiency2D = (TH2D*) dataContainer.hYieldMeasured.first->Clone("hEfficiency2D");
+    hEfficiency2D->Divide(dataContainer.hYieldTruthCorrected.first);
+    hEfficiency2D->SetTitle("Prompt D^{0}s 2D efficiency");
+    hEfficiency2D->Draw("colz");
+    cSelectionEfficiencyPrompt2D->cd(4);
+    hEfficiency2D->Draw("text");
+
+    TCanvas* cEfficiencyPerJetPt = new TCanvas("cEfficiencyPerJetPt"," Efficiency per jet pT", 1800, 1000);
+    cEfficiencyPerJetPt->cd();
+    TLegend* leg_per_jetpt = new TLegend(0.7, 0.7, 0.9, 0.9);
+    for (size_t iPtJetBin = 0; iPtJetBin < binning.ptjetBinEdges_particle.size() - 1; iPtJetBin++) {
+        // Get numerator
+        TH1D* hNumerator = dataContainer.hYieldMeasured.first->ProjectionY(Form("hNumerator_%zu", iPtJetBin+1), iPtJetBin+1, iPtJetBin+1); // (x;y) = (pT,jet;pT,D0)
+        hNumerator->Sumw2();
+        // Get denominator
+        TH1D* hDenominator = dataContainer.hYieldTruthCorrected.first->ProjectionY(Form("hDenominator_%zu", iPtJetBin), iPtJetBin+1, iPtJetBin+1); // (x;y) = (pT,jet;pT,D0)
+        hDenominator->Sumw2();
+        // Divide them
+        TH1D* hEffJetPtInterval = (TH1D*) hNumerator->Clone(Form("hEffJetPtInterval_%zu",iPtJetBin+1));
+        hEffJetPtInterval->Divide(hDenominator);
+
+        // Set drawing style
+        hEffJetPtInterval->SetTitle("Run 3 style prompt D^{0}s efficiencies");
+        hEffJetPtInterval->SetLineColor(kBlack+iPtJetBin);
+        hEffJetPtInterval->SetMarkerColor(kBlack+iPtJetBin);
+        hEffJetPtInterval->SetMarkerStyle(kOpenCircle);
+        hEffJetPtInterval->SetLineWidth(1);
+        hEffJetPtInterval->GetYaxis()->SetRangeUser(0.,0.25);
+        hEffJetPtInterval->Draw(iPtJetBin == 0 ? "" : "same");
+
+        // Add to legend
+        double iJetptMin = binning.ptjetBinEdges_particle[iPtJetBin];
+        double iJetptMax = binning.ptjetBinEdges_particle[iPtJetBin+1];
+        leg_per_jetpt->AddEntry(hEffJetPtInterval,Form("p_{T,jet}#in[%.0f-%.0f] GeV/c",iJetptMin,iJetptMax),"ple");
+    }
+    leg_per_jetpt->Draw();
+
+    TLegend* legendEffTypes = new TLegend(0.65,0.45,0.9,0.68);
+    TCanvas* cEfficiencyTypes = new TCanvas("cEfficiencyTypes","Efficiency types comparison",1800,1000);
+    cEfficiencyTypes->cd();
+    // Run 3 style particle level
+    double minRangeY = std::min({dataContainer.hEfficiency_prompt_part_run3style->GetMinimum(), dataContainer.hEfficiency_prompt_run2style->GetMinimum(), dataContainer.hSelectionEfficiency.first->GetMinimum()});
+    double maxRangeY = std::max({dataContainer.hEfficiency_prompt_part_run3style->GetMaximum(), dataContainer.hEfficiency_prompt_run2style->GetMaximum(), dataContainer.hSelectionEfficiency.first->GetMaximum()});
+    dataContainer.hEfficiency_prompt_part_run3style->GetYaxis()->SetRangeUser(0.9 * minRangeY, 1.1 * maxRangeY);
+    dataContainer.hEfficiency_prompt_part_run3style->SetMarkerStyle(kOpenCircle);
+    dataContainer.hEfficiency_prompt_part_run3style->SetMarkerColor(kRed+2);
+    dataContainer.hEfficiency_prompt_part_run3style->SetLineColor(kRed+2);
+    dataContainer.hEfficiency_prompt_part_run3style->Draw();
+    legendEffTypes->AddEntry(dataContainer.hEfficiency_prompt_part_run3style,"Run 3 style prompt particle level efficiency", "lpe");
+    // Run 2 style
+    dataContainer.hEfficiency_prompt_run2style->SetMarkerStyle(kOpenCircle);
+    dataContainer.hEfficiency_prompt_run2style->SetMarkerColor(kBlue+2);
+    dataContainer.hEfficiency_prompt_run2style->SetLineColor(kBlue+2);
+    dataContainer.hEfficiency_prompt_run2style->Draw("same");
+    legendEffTypes->AddEntry(dataContainer.hEfficiency_prompt_run2style,"Run 2 style prompt efficiency", "lpe");
+    // Run 3 style detector level
+    dataContainer.hSelectionEfficiency.first->SetMarkerStyle(kOpenCircle);
+    dataContainer.hSelectionEfficiency.first->SetMarkerColor(kGreen+2);
+    dataContainer.hSelectionEfficiency.first->SetLineColor(kGreen+2);
+    dataContainer.hSelectionEfficiency.first->Draw("same");
+    legendEffTypes->AddEntry(dataContainer.hSelectionEfficiency.first,"Run 3 style prompt detector level efficiency", "lpe");
+    legendEffTypes->Draw();
 
     //
     // Storing in a single pdf file
     //
-    TString imagePath = "../Images/2-Efficiency/Run3Style/";
-    cYield->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
-    cResponse->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cResponseProjections->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cKEffAll->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cYieldTruthCorrected->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cPtCorrectionComparison->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cSelectionEfficiency->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cCorrectedData->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cCorrectedData2DOnly->Print(imagePath + Form("run3_style_efficiency_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    TString sEmmaBins;
+    if (binning.useEmmaYeatsBins) {
+        sEmmaBins = "EmmaYeatsBins";
+    } else {
+        sEmmaBins = "";
+    }
+    TString imagePath = "../Images/2-Efficiency/Run3Style/" + sEmmaBins + "/" + binning.dataPeriod + "/";
+    
+    cYield->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    cResponse->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cResponseProjections->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cKEffAll->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cYieldTruthCorrected->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cPtCorrectionComparison->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cSelectionEfficiency->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cCorrectedData->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cCorrectedData2DOnly->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cSelectionEfficiencyPrompt2D->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cEfficiencyPerJetPt->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cEfficiencyTypes->Print(imagePath + Form("run3_style_efficiency_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
     // in separate .pdf files
-    cKEffAll->Print(imagePath + "Efficiency_run3style_kinematic_efficiency.pdf");
+    cKEffAll->Print(imagePath + "Efficiency_run3style_kinematic_efficiency_" + sEmmaBins + ".pdf");
 
     std::cout << "Histograms plotted.\n";
 
@@ -703,7 +832,7 @@ void PlotHistograms(const EfficiencyData& dataContainer, double jetptMin, double
 void SaveData(const EfficiencyData& dataContainer, const BinningStruct& binning, double& jetptMin, double& jetptMax) {
     //
     // Open output file
-    TFile* fOutput = new TFile(Form("selection_efficiency_run3style_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
+    TFile* fOutput = new TFile(Form("selection_efficiency_run3style_%d_to_%d_jetpt_" + binning.dataPeriod + ".root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
     
     // Response matrices
     dataContainer.response.first.Write("hResponsePrompt");
@@ -717,9 +846,13 @@ void SaveData(const EfficiencyData& dataContainer, const BinningStruct& binning,
     dataContainer.hKEffResponseDetector_Over_TotalDetector.first->Write();
     dataContainer.hKEffResponseDetector_Over_TotalDetector.second->Write();
 
-    // Selection efficiency histograms
+    // Run 3 style detector level selection efficiency histograms
     dataContainer.hSelectionEfficiency.first->Write();
     dataContainer.hSelectionEfficiency.second->Write();
+
+    // Run 3 style particle level selection efficiency histograms
+    dataContainer.hEfficiency_prompt_part_run3style->Write("selEffRun3Style_particleLevelPrompt");
+    dataContainer.hEfficiency_nonprompt_part_run3style->Write("selEffRun3Style_particleLevelNonprompt");
 
     // Efficiency corrected data
     dataContainer.hEfficiencyCorrected.second->Write();
@@ -746,7 +879,7 @@ void Efficiency_run3_style_detector_level(){
     double BR = 0.0623; // D0 -> KPi decay channel branching ratio = (6.23 +- 0.33) %
 
     // Load binning information
-    TFile* fBinning = new TFile(Form("../1-SignalTreatment/SideBand/full_merged_ranges_back_sub.root"),"read");
+    TFile* fBinning = new TFile(Form("../1-SignalTreatment/Reflections/binningInfo.root"),"read");
     if (!fBinning || fBinning->IsZombie()) {
         std::cerr << "Error: Unable to open the first ROOT binning info file." << std::endl;
     }
@@ -756,12 +889,12 @@ void Efficiency_run3_style_detector_level(){
     double jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
 
     // Opening files
-    TFile* fEffRun2Style = new TFile(Form("run2_style_efficiency_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    TFile* fEffRun2Style = new TFile(Form("run2_style_efficiency_%d_to_%d_jetpt_%s.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax), binning.dataPeriod.Data()),"read");
     if (!fEffRun2Style || fEffRun2Style->IsZombie()) {
         std::cerr << "Error: Unable to open run 2 style efficiency data ROOT file." << std::endl;
     }
-    TFile* fSimulated = new TFile("../Data/MonteCarlo/Train_645447/AO2D_mergedDFs.root","read","read");
-    TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/full_merged_ranges_back_sub.root"),"read");
+    TFile* fSimulated = new TFile("../" + binning.inputMC.second + "/AO2D_mergedDFs.root","read","read");
+    TFile* fBackSub = new TFile(Form("../1-SignalTreatment/SideBand/full_merged_ranges_back_sub_%s.root",binning.dataPeriod.Data()),"read");
     if (!fSimulated || fSimulated->IsZombie()) {
         std::cerr << "Error: Unable to open full (not matched) simulated data ROOT file." << std::endl;
     }
@@ -779,7 +912,7 @@ void Efficiency_run3_style_detector_level(){
     performEfficiencyCorrection(fBackSub, dataContainer, jetptMin, jetptMax);
 
     // Plot the efficiency histogram and further corrected histograms
-    PlotHistograms(dataContainer, jetptMin, jetptMax);
+    PlotHistograms(dataContainer, jetptMin, jetptMax, binning);
 
     // Save corrected distributions to file
     SaveData(dataContainer, binning, jetptMin, jetptMax);
@@ -792,7 +925,8 @@ void Efficiency_run3_style_detector_level(){
          << time_taken/60 << setprecision(5); 
     cout << " min " << endl; 
 
-    
+    std::time_t now = std::time(nullptr);
+    std::cout << "Finished at: " << std::ctime(&now);
 }
 
 int main(){

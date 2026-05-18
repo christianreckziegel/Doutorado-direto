@@ -10,7 +10,7 @@
  * 
 **/
 
-#include "commonFunctions.h"
+#include "../commonUtilities.h"
 
 using namespace std;
 
@@ -93,7 +93,7 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
     float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
     float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
     bool MCPhfprompt;
-    float MCPjetNConst;
+    int MCPjetNConst;
     // defining variables for accessing detector level data on TTree
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
@@ -145,10 +145,9 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
         
-        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
-        
         // Apply prompt selection (i.e., only c → D0)
-        if (!MCDhfprompt || isReflection || (MCDjetNConst < 0)) {
+        bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
+        if (!MCDhfprompt || !isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs) || !MCDhfmatch) {
             continue;
         }
 
@@ -179,7 +178,7 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
             // }
             
         }
-        if (genLevelRange) {
+        if (genLevelRange && passBDTcut) {
             // Fill kinematic efficiency denominator histogram for full particle level range
             dataContainer.hKineEffParticle[1]->Fill(MCPjetPt, MCPDeltaR);
             
@@ -246,10 +245,9 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
-        bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
-
         // Apply prompt (excluding reflections) selection (i.e., only c → D0)
-        if (!MCDhfprompt || isReflection || (MCDjetNConst < 0)) {
+        bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
+        if (!MCDhfprompt || !isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs) || !MCDhfmatch) {
             continue;
         }
 
@@ -263,7 +261,7 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
         double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
         bool passBDTcut = (MCDhfMlScore0 < maxBkgProb) ? true : false;
 
-        if (genLevelRange) {
+        if (genLevelRange && passBDTcut) {
             // Fill input distribution for particle level
             dataContainer.hInputParticle->Fill(MCPjetPt, MCPDeltaR);
             //std::cout << "Filling particle level input: pT,jet = " << MCPjetPt << ", DeltaR = " << MCPDeltaR << std::endl;
@@ -301,7 +299,7 @@ void unfoldInputDetector(ClosureTestData1& dataContainer, int& iterationNumber) 
     }
 }
 
-void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMin, const double& jetptMax) {
+void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMin, const double& jetptMax, const BinningStruct& binning) {
     cout << "Plotting histograms...\n";
 
     gStyle->SetPalette(kRainbow);
@@ -312,70 +310,174 @@ void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMi
     latex->SetTextSize(0.03);
 
     TH1D* hUnfoldedProjNotNorm = nullptr; // to store the last iteration unfolded distribution before normalization for plotting
-    TCanvas* cFirstClosureTest = new TCanvas("cFirstClosureTest", "First Closure Test: Unfolding");
-    TCanvas* cFirstClosureTestNorm = new TCanvas("cFirstClosureTestNorm", "First Closure Test: Unfolding, all histograms self-normalized");
-    TLegend* lUnfoldedIter = new TLegend(0.6,0.57,0.7,0.77);
-    TLegend* lUnfoldedIterNorm = new TLegend(0.6,0.57,0.7,0.77);
+
+    // --- Raw counts canvas with ratio pad ---
+    TCanvas* cFirstClosureTest = new TCanvas("cFirstClosureTest", "First Closure Test: Unfolding", 1800, 1000);
+    TPad* padTop    = new TPad("padTop",    "top pad",    0, 0.3, 1, 1.0);
+    TPad* padBottom = new TPad("padBottom", "bottom pad", 0, 0.0, 1, 0.3);
+    padTop->SetBottomMargin(0.0);
+    padBottom->SetTopMargin(0.0);
+    padBottom->SetBottomMargin(0.35);
+    padTop->SetLeftMargin(0.12);
+    padBottom->SetLeftMargin(0.12);
+    padTop->SetTickx();    padTop->SetTicky();
+    padBottom->SetTickx(); padBottom->SetTicky();
+    padTop->Draw();
+    padBottom->Draw();
+
+    // --- Normalized canvas with ratio pad ---
+    TCanvas* cFirstClosureTestNorm = new TCanvas("cFirstClosureTestNorm", "First Closure Test: Unfolding, self-normalized", 1800, 1000);
+    TPad* padTopNorm    = new TPad("padTopNorm",    "top pad norm",    0, 0.3, 1, 1.0);
+    TPad* padBottomNorm = new TPad("padBottomNorm", "bottom pad norm", 0, 0.0, 1, 0.3);
+    padTopNorm->SetBottomMargin(0.0);
+    padBottomNorm->SetTopMargin(0.0);
+    padBottomNorm->SetBottomMargin(0.35);
+    padTopNorm->SetLeftMargin(0.12);
+    padBottomNorm->SetLeftMargin(0.12);
+    padTopNorm->SetTickx();    padTopNorm->SetTicky();
+    padBottomNorm->SetTickx(); padBottomNorm->SetTicky();
+    padTopNorm->Draw();
+    padBottomNorm->Draw();
+
+    TLegend* lUnfoldedIter     = new TLegend(0.6, 0.57, 0.88, 0.87);
+    TLegend* lUnfoldedIterNorm = new TLegend(0.6, 0.57, 0.88, 0.87);
     std::vector<TH1D*> hUnfoldedProj(dataContainer.hUnfolded.size());
     std::vector<TH1D*> hUnfoldedProjNorm(dataContainer.hUnfolded.size());
+
     int secondBin = 2;
-    int lastButOneBin = dataContainer.hUnfolded[0]->GetXaxis()->GetNbins() - 1; // penultimate bin
+    int lastButOneBin = dataContainer.hUnfolded[0]->GetXaxis()->GetNbins() - 1;
+
     for (size_t iIter = 0; iIter < dataContainer.hUnfolded.size(); iIter++) {
-        // Project Y axis (DeltaR) using X axis (pTjet) range [secondBin, oneBeforeLastBin] (excluding the padding bins)
-        hUnfoldedProj[iIter] = dataContainer.hUnfolded[iIter]->ProjectionY(Form("hProjIter_%zu", iIter),secondBin, lastButOneBin); // bins specified in X (pT,jet) dimension
+
+        hUnfoldedProj[iIter] = dataContainer.hUnfolded[iIter]->ProjectionY(Form("hProjIter_%zu", iIter), secondBin, lastButOneBin);
         hUnfoldedProj[iIter]->SetLineColor(kBlack + iIter);
-        lUnfoldedIter->AddEntry(hUnfoldedProj[iIter],Form("Iteration %zu", iIter+1), "le");
-        hUnfoldedProjNorm[iIter] = (TH1D*) hUnfoldedProj[iIter]->Clone(Form("hProjIterNorm_%zu", iIter));
-        lUnfoldedIterNorm->AddEntry(hUnfoldedProjNorm[iIter],Form("Iteration %zu", iIter+1), "le");
-        //std::cout << "hUnfoldedProj[" << iIter << "] has " << hUnfoldedProj[iIter]->GetEntries() << " entries." << std::endl;
+        lUnfoldedIter->AddEntry(hUnfoldedProj[iIter], Form("Iteration %zu", iIter+1), "le");
+
+        hUnfoldedProjNorm[iIter] = (TH1D*) hUnfoldedProj[iIter]->Clone(
+                                        Form("hProjIterNorm_%zu", iIter));
+        lUnfoldedIterNorm->AddEntry(hUnfoldedProjNorm[iIter], Form("Iteration %zu", iIter+1), "le");
+
+        double integral = hUnfoldedProjNorm[iIter]->Integral();
+        if (integral != 0) hUnfoldedProjNorm[iIter]->Scale(1.0 / integral, "width");
+
+        // suppress X axis labels on top pads
+        hUnfoldedProj[iIter]->GetXaxis()->SetLabelSize(0);
+        hUnfoldedProj[iIter]->GetXaxis()->SetTitleSize(0);
+        hUnfoldedProjNorm[iIter]->GetXaxis()->SetLabelSize(0);
+        hUnfoldedProjNorm[iIter]->GetXaxis()->SetTitleSize(0);
+
+        // save last iteration for use elsewhere if needed
+        if (iIter == dataContainer.hUnfolded.size() - 1) {
+            hUnfoldedProjNotNorm = (TH1D*) hUnfoldedProj[iIter]->Clone("hUnfoldedProjNotNorm");
+        }
+
+        padTop->cd();
         if (iIter == 0) {
             hUnfoldedProj[iIter]->SetTitle("Closure test 1: unfolding");
             hUnfoldedProj[iIter]->GetYaxis()->SetTitle("dN");
+            hUnfoldedProj[iIter]->Draw();
+        } else {
+            hUnfoldedProj[iIter]->Draw("same");
+        }
+
+        padTopNorm->cd();
+        if (iIter == 0) {
             hUnfoldedProjNorm[iIter]->SetTitle("Closure test 1: unfolding, all histograms self-normalized");
             hUnfoldedProjNorm[iIter]->GetYaxis()->SetTitle("#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}");
-            double integral = hUnfoldedProjNorm[iIter]->Integral();
-            if (integral != 0) {
-                hUnfoldedProjNorm[iIter]->Scale(1.0 / integral, "width");
-            }
-            cFirstClosureTest->cd();
-            hUnfoldedProj[iIter]->Draw();
-            cFirstClosureTestNorm->cd();
             hUnfoldedProjNorm[iIter]->Draw();
         } else {
-            if (iIter == dataContainer.hUnfolded.size() - 1) {
-                hUnfoldedProjNotNorm = (TH1D*) hUnfoldedProj[iIter]->Clone("hUnfoldedProjNotNorm");
-            }
-            
-            double integral = hUnfoldedProjNorm[iIter]->Integral();
-            if (integral != 0) {
-                hUnfoldedProjNorm[iIter]->Scale(1.0 / integral, "width");
-            }
-            cFirstClosureTest->cd();
-            hUnfoldedProj[iIter]->Draw("same");
-            cFirstClosureTestNorm->cd();
             hUnfoldedProjNorm[iIter]->Draw("same");
         }
     }
-    TH1D* hInputParticleProjNorm = dataContainer.hInputParticle->ProjectionY("hInputParticleProjNorm", secondBin, lastButOneBin);
-    hInputParticleProjNorm->SetLineColor(kRed);
-    hInputParticleProjNorm->SetLineStyle(2);
-    TH1D* hInputParticleProj = (TH1D*) hInputParticleProjNorm->Clone("hInputParticleProj");
-    double integral = hInputParticleProjNorm->Integral();
-    if (integral != 0) {
-        hInputParticleProjNorm->Scale(1.0 / integral, "width");
-    }
-    cFirstClosureTestNorm->cd();
+
+    // --- Truth reference ---
+    TH1D* hInputParticleProj = dataContainer.hInputParticle->ProjectionY(
+                                "hInputParticleProj", secondBin, lastButOneBin);
+    hInputParticleProj->SetLineColor(kRed);
+    hInputParticleProj->SetLineStyle(2);
+    hInputParticleProj->SetLineWidth(2);
+    hInputParticleProj->GetXaxis()->SetLabelSize(0);
+    hInputParticleProj->GetXaxis()->SetTitleSize(0);
+
+    TH1D* hInputParticleProjNorm = (TH1D*) hInputParticleProj->Clone("hInputParticleProjNorm");
+    double integralTruth = hInputParticleProjNorm->Integral();
+    if (integralTruth != 0) hInputParticleProjNorm->Scale(1.0 / integralTruth, "width");
+    hInputParticleProjNorm->GetXaxis()->SetLabelSize(0);
+    hInputParticleProjNorm->GetXaxis()->SetTitleSize(0);
+
+    double reportingJetPtMin = dataContainer.hUnfolded[0]->GetXaxis()->GetBinLowEdge(secondBin);
+    double reportingJetPtMax = dataContainer.hUnfolded[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
+
+    padTop->cd();
+    hInputParticleProj->Draw("same");
+    lUnfoldedIter->AddEntry(hInputParticleProj, "Input particle level", "le");
+    lUnfoldedIter->Draw();
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c",
+                                    reportingJetPtMin, reportingJetPtMax));
+
+    padTopNorm->cd();
     hInputParticleProjNorm->Draw("same");
     lUnfoldedIterNorm->AddEntry(hInputParticleProjNorm, "Input particle level", "le");
     lUnfoldedIterNorm->Draw();
-    double reportingJetPtMin = dataContainer.hUnfolded[0]->GetXaxis()->GetBinLowEdge(secondBin);
-    double reportingJetPtMax = dataContainer.hUnfolded[0]->GetXaxis()->GetBinUpEdge(lastButOneBin);
     latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
-    cFirstClosureTest->cd();
-    hInputParticleProj->Draw("same");
-    lUnfoldedIter->AddEntry(hInputParticleProjNorm, "Input particle level", "le");
-    lUnfoldedIter->Draw();
-    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+
+    // --- Ratio pads ---
+    auto drawRatioPad = [&](TPad* pad, const std::vector<TH1D*>& hVec, TH1D* hRef) {
+        pad->cd();
+        for (size_t iIter = 0; iIter < hVec.size(); iIter++) {
+            TH1D* hRatio = (TH1D*) hVec[iIter]->Clone(Form("hRatioCT1_iter%zu_%s", iIter+1, pad->GetName()));
+            hRatio->Divide(hRef);
+            hRatio->SetLineColor(kBlack + iIter);
+            hRatio->SetTitle("");
+            hRatio->GetYaxis()->SetTitle("#frac{Unfolded_{i}}{Truth}");
+            hRatio->GetYaxis()->SetTitleSize(0.10);
+            hRatio->GetYaxis()->SetLabelSize(0.09);
+            hRatio->GetXaxis()->SetTitleSize(0.12);
+            hRatio->GetXaxis()->SetLabelSize(0.10);
+            hRatio->GetYaxis()->SetTitleOffset(0.45);
+            hRatio->GetXaxis()->SetTitle("#DeltaR^{gen}");
+            if (iIter == 0) {
+                if (binning.useEmmaYeatsBins) {
+                    hRatio->GetYaxis()->SetRangeUser(0.9, 1.1);
+                } else {
+                    hRatio->GetYaxis()->SetRangeUser(0.5, 1.5);
+                }
+                //hRatio->GetYaxis()->SetRangeUser(0.5, 1.5);
+                hRatio->Draw("E");
+            } else {
+                hRatio->Draw("E same");
+            }
+        }
+        TLine* unity = new TLine(hRef->GetXaxis()->GetXmin(), 1.0,hRef->GetXaxis()->GetXmax(), 1.0);
+        unity->SetLineStyle(2);
+        unity->SetLineColor(kBlack);
+        unity->Draw("same");
+    };
+
+    drawRatioPad(padBottom,     hUnfoldedProj,     hInputParticleProj);
+    drawRatioPad(padBottomNorm, hUnfoldedProjNorm, hInputParticleProjNorm);
+
+    TCanvas* cRatiosTruthToUnfolded = new TCanvas("cRatiosTruthToUnfolded", "Ratios of truth and unfolded distributions", 1800, 1000);
+    TLegend* lRatios = new TLegend(0.2, 0.2, 0.3, 0.4);
+    for (size_t iIter = 0; iIter < hUnfoldedProj.size(); iIter++) {
+        // TH1D* hRatio = (TH1D*) hUnfoldedProj[iIter]->Clone(Form("hRatioTruthToUnfolded_iter%zu", iIter+1));
+        TH1D* hRatio = (TH1D*) hInputParticleProj->Clone(Form("hRatioTruthToUnfolded_iter%zu", iIter+1));
+        hRatio->Divide(hUnfoldedProj[iIter]);
+        hRatio->SetLineStyle(kSolid);
+        hRatio->SetLineWidth(1);
+        hRatio->SetTitle(Form("Ratio of input particle level to unfolded distribution, for each iteration;#DeltaR;Input particle level / Unfolded"));
+        hRatio->GetYaxis()->SetTitle("#frac{Input reference}{Fully corrected}");
+        hRatio->SetLineColor(kBlack + iIter);
+        lRatios->AddEntry(hRatio, Form("%zu iterations", iIter+1), "le");
+        cRatiosTruthToUnfolded->cd();
+        hRatio->Draw(iIter == 0 ? "" : "same");
+    }
+    TLine* lUnity = new TLine(hInputParticleProj->GetXaxis()->GetXmin(), 1.0,hInputParticleProj->GetXaxis()->GetXmax(), 1.0);
+    lUnity->SetLineStyle(2);
+    lUnity->SetLineColor(kBlack);
+    lUnity->Draw("same");
+    lRatios->Draw();
+
     
     TCanvas* cFullRange = new TCanvas("cFullRange", "Closure test 1: unfolding, projection in full pT,jet range");
     cFullRange->Divide(2,2);
@@ -405,21 +507,20 @@ void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMi
     hInputParticleProjBinwidth->Draw();
     hUnfoldedProjNotNormBinwidth->Draw("same");
     latex->DrawLatex(0.15, 0.85,Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c",reportingJetPtMin, reportingJetPtMax));
-    cFullRange->cd(6);
     
 
     TCanvas* cCorrectionObjects = new TCanvas("cCorrectionObjects", "Correction objects");
     cCorrectionObjects->Divide(2,2);
     dataContainer.hKineEffParticle[2]->SetTitle("Particle level kinematic efficiency;p_{T,jet}^{gen} (GeV/#it{c});#DeltaR^{gen}");
     cCorrectionObjects->cd(1);
-    dataContainer.hKineEffParticle[2]->Draw("colz");
+    dataContainer.hKineEffParticle[2]->Draw("text");
     dataContainer.hKineEffDetector[2]->SetTitle("Detector level kinematic efficiency;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco}");
     cCorrectionObjects->cd(2);
-    dataContainer.hKineEffDetector[2]->Draw("colz");
+    dataContainer.hKineEffDetector[2]->Draw("text");
     cCorrectionObjects->cd(3);
-    dataContainer.hResponseProj[0]->Draw("text");
+    dataContainer.hResponseProj[0]->Draw("colz");
     cCorrectionObjects->cd(4);
-    dataContainer.hResponseProj[1]->Draw("text");
+    dataContainer.hResponseProj[1]->Draw("colz");
 
     TCanvas* cResponseObjects = new TCanvas("cResponseObjects","Response matrices and projections");
     cResponseObjects->Divide(2,2);
@@ -468,26 +569,30 @@ void plotHistograms(const ClosureTestData1& dataContainer, const double& jetptMi
     //
     // Storing images
     //
-    TString imagePath = "../Images/5-ClosureTest/First/";
+    TString sEmmaBins;
+    if (binning.useEmmaYeatsBins) {
+        sEmmaBins = "EmmaYeatsBins";
+    } else {
+        sEmmaBins = "";
+    }
+    TString imagePath = "../Images/5-ClosureTest/First/" + sEmmaBins + "/" + binning.dataPeriod + "/";
     cFirstClosureTest->Update();
     cFirstClosureTest->SaveAs(imagePath + "ClosureTest1_unfolding.png");    
     
-    //
-    // Storing in a single pdf file
-    //
-    //cKinEff->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
-    cCorrectionObjects->Print(imagePath + Form("closureTest1_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
-    cFirstClosureTest->Print(imagePath + Form("closureTest1_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cFirstClosureTestNorm->Print(imagePath + Form("closureTest1_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cFullRange->Print(imagePath + Form("closureTest1_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cInputs->Print(imagePath + Form("closureTest1_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
-    //cUnfoldedIter->Print(imagePath + Form("unfolding_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    //cKinEff->Print(imagePath + Form("unfolding" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    cCorrectionObjects->Print(imagePath + Form("closureTest1_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    cFirstClosureTest->Print(imagePath + Form("closureTest1_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cFirstClosureTestNorm->Print(imagePath + Form("closureTest1_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cFullRange->Print(imagePath + Form("closureTest1_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cInputs->Print(imagePath + Form("closureTest1_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cRatiosTruthToUnfolded->Print(imagePath + Form("closureTest1_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    //cUnfoldedIter->Print(imagePath + Form("unfolding" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 
 }
 
 void saveData(const ClosureTestData1& dataContainer, const double& jetptMin, const double& jetptMax, const BinningStruct& binning) {
     // Open output file
-    TFile* outFile = new TFile(Form("FirstOutput/closure_test_1_results_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
+    TFile* outFile = new TFile(Form("FirstOutput/closure_test_1_results_%d_to_%d_jetpt_" + binning.dataPeriod + ".root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
 
     // store each histogram in file
     //dataContainer.hSBUnfolded->Write();
@@ -530,13 +635,13 @@ void FirstClosureTest(){
     double hfptMin = binning.ptHFBinEdges_detector[0]; //ptHFBinEdges[0] - should start from 0 or from the lowest pT,D value?
     double hfptMax = binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1];
 
-    TFile* fEfficiency = new TFile(Form("../2-Efficiency/selection_efficiency_run3style_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
+    TFile* fEfficiency = new TFile(Form("../2-Efficiency/selection_efficiency_run3style_%d_to_%d_jetpt_" + binning.dataPeriod + ".root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"read");
     if (!fEfficiency || fEfficiency->IsZombie()) {
         std::cerr << "Error: Unable to open estimated selection efficiency ROOT file." << std::endl;
     }
 
     // Opening files
-    TFile* fClosureInput = new TFile("mc_closure_input_data.root","read");
+    TFile* fClosureInput = new TFile("mc_closure_input_data_" + binning.dataPeriod + ".root","read");
     if (!fClosureInput || fClosureInput->IsZombie()) {
         std::cerr << "Error: Unable to open 1st closure input ROOT file." << std::endl;
     }
@@ -550,7 +655,7 @@ void FirstClosureTest(){
     // Compare the unfolded distribution with the particle level distribution
 
     // Plot the efficiency histogram and further corrected histograms
-    plotHistograms(dataContainer, jetptMin, jetptMax);
+    plotHistograms(dataContainer, jetptMin, jetptMax, binning);
 
     // Save corrected distributions to file
     saveData(dataContainer, jetptMin, jetptMax, binning);
@@ -563,7 +668,8 @@ void FirstClosureTest(){
          << time_taken/60 << setprecision(5); 
     cout << " min " << endl; 
 
-    
+    std::time_t now = std::time(nullptr);
+    std::cout << "Finished at: " << std::ctime(&now);
 }
 
 int main(){

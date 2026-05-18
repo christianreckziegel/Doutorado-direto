@@ -163,40 +163,116 @@ struct SidebandData {
 };
 
 // Module to create TH2D histograms including interest variable: VARIABLE bin sizes
-SidebandData createHistograms(const std::vector<double>& ptHFBinEdges, int xbins, double xmin, double xmax, const std::vector<double>& yBinEdges, const double& jetptMin) {
-    // Change binning to low statistics range [30,50] GeV/c
-    if (jetptMin >= 30.) {
-        xbins = xbins / 2;
+SidebandData createHistograms(const BinningStruct& binning, const double& massBinDensity, 
+                               const double& minMass, const std::vector<double>& maxMass) {
+
+    // Validate that maxMass vector has the correct size
+    if (maxMass.size() != binning.ptHFBinEdges_detector.size() - 1) {
+        std::cerr << "Error: maxMass vector size (" << maxMass.size() 
+                  << ") does not match number of pT,D bins (" 
+                  << binning.ptHFBinEdges_detector.size() - 1 << ").\n";
+        return SidebandData();
     }
-    
+
     SidebandData dataContainer;
-    for (size_t i = 0; i < ptHFBinEdges.size() - 1; ++i) {
-        // So that the title adapts to fractional binning title
-        if (std::fmod(ptHFBinEdges[i], 1.0) != 0) { // if the first bin edge is not an integer
-            if (std::fmod(ptHFBinEdges[i+1], 1.0) != 0) {
-                dataContainer.histograms2d.push_back(new TH2D(Form("histMass%zu",i+1), Form("%.1f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), xbins, xmin, xmax, yBinEdges.size() - 1, yBinEdges.data()));
-        
+
+    for (size_t i = 0; i < binning.ptHFBinEdges_detector.size() - 1; ++i) {
+
+        double ptDlow  = binning.ptHFBinEdges_detector[i];
+        double ptDhigh = binning.ptHFBinEdges_detector[i + 1];
+        double massMax = maxMass[i];
+
+        // Compute number of bins from density and mass range
+        // massBinDensity = nBins / (maxMass - minMass) → nBins = density * range
+        int nMassBins = std::max(1, static_cast<int>(std::round(massBinDensity * (massMax - minMass))));
+
+        std::cout << "pT,D bin [" << ptDlow << ", " << ptDhigh << "] GeV/c: "
+                  << "mass range [" << minMass << ", " << massMax << "] GeV/c^2, "
+                  << "nMassBins = " << nMassBins 
+                  << " (bin width = " << (massMax - minMass) / nMassBins << " GeV/c^2)\n";
+
+        // Build title string handling integer/fractional bin edges
+        auto formatEdge = [](double val) -> std::string {
+            if (std::fmod(val, 1.0) == 0.0) {
+                return Form("%.0f", val);
             } else {
-                dataContainer.histograms2d.push_back(new TH2D(Form("histMass%zu",i+1), Form("%.1f < #it{p}_{T, D^{0}} < %.0f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), xbins, xmin, xmax, yBinEdges.size() - 1, yBinEdges.data()));
-        
+                return Form("%.1f", val);
             }
-        } else {
-            if (std::fmod(ptHFBinEdges[i+1], 1.0) != 0) {
-                dataContainer.histograms2d.push_back(new TH2D(Form("histMass%zu",i+1), Form("%.0f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), xbins, xmin, xmax, yBinEdges.size() - 1, yBinEdges.data()));
-        
-            } else {
-                dataContainer.histograms2d.push_back(new TH2D(Form("histMass%zu",i+1), Form("%.0f < #it{p}_{T, D^{0}} < %.0f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",ptHFBinEdges[i],ptHFBinEdges[i+1]), xbins, xmin, xmax, yBinEdges.size() - 1, yBinEdges.data()));
-        
-            }
-        }
+        };
+
+        TString title = Form("%s < #it{p}_{T, D^{0}} < %s GeV/#it{c};"
+                             "#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",
+                             formatEdge(ptDlow).c_str(),
+                             formatEdge(ptDhigh).c_str());
+
+        dataContainer.histograms2d.push_back(
+            new TH2D(Form("histMass%zu", i + 1), title, nMassBins, minMass, massMax, binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data()));
+
         dataContainer.histograms2d[i]->Sumw2();
     }
 
     return dataContainer;
 }
-//__________________________________________________________________________________________________________________________
+// Overloaded version with histogram name as argument for more flexibility
+SidebandData createHistograms(const BinningStruct& binning, TString histName = "") {
 
-void fillHistograms(TFile* fDist, SidebandData& dataContainer, double jetptMin, double jetptMax, const BinningStruct& binning) {
+    // Validate that maxMass vector has the correct size
+    if (binning.maxMass.size() != binning.ptHFBinEdges_detector.size() - 1) {
+        std::cerr << "Error: maxMass vector size (" << binning.maxMass.size() 
+                  << ") does not match number of pT,D bins (" 
+                  << binning.ptHFBinEdges_detector.size() - 1 << ").\n";
+        return SidebandData();
+    }
+
+    SidebandData dataContainer;
+
+    for (size_t i = 0; i < binning.ptHFBinEdges_detector.size() - 1; ++i) {
+
+        double ptDlow  = binning.ptHFBinEdges_detector[i];
+        double ptDhigh = binning.ptHFBinEdges_detector[i + 1];
+        double massMin = binning.minMass[i];
+        double massMax = binning.maxMass[i];
+
+        // Compute number of bins from density and mass range
+        // massBinDensity = nBins / (maxMass - minMass) → nBins = density * range
+        int nMassBins = std::max(1, static_cast<int>(std::round(binning.massBinDensity * (massMax - massMin))));
+
+        std::cout << "pT,D bin [" << ptDlow << ", " << ptDhigh << "] GeV/c: "
+                  << "mass range [" << massMin << ", " << massMax << "] GeV/c^2, "
+                  << "nMassBins = " << nMassBins 
+                  << " (bin width = " << (massMax - massMin) / nMassBins << " GeV/c^2)\n";
+
+        // Build title string handling integer/fractional bin edges
+        auto formatEdge = [](double val) -> std::string {
+            if (std::fmod(val, 1.0) == 0.0) {
+                return Form("%.0f", val);
+            } else {
+                return Form("%.1f", val);
+            }
+        };
+
+        TString title = Form("%s < #it{p}_{T, D^{0}} < %s GeV/#it{c};"
+                             "#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",
+                             formatEdge(ptDlow).c_str(),
+                             formatEdge(ptDhigh).c_str());
+
+        dataContainer.histograms2d.push_back(
+            new TH2D(Form("%s_histMass%zu", histName.Data(), i + 1),
+                     title,
+                     nMassBins, massMin, massMax,
+                     binning.deltaRBinEdges_detector.size() - 1,
+                     binning.deltaRBinEdges_detector.data()));
+
+        dataContainer.histograms2d[i]->Sumw2();
+    }
+
+    return dataContainer;
+}
+
+
+//__________________________________________________________________________________________________________________________
+void fillHistograms(TFile* fDist, SidebandData& dataContainer, const double& jetptMin, const double& jetptMax, const BinningStruct& binning,
+                    const std::vector<std::pair<double,double>>& bdtPtCustomCuts = {}) {
     
     // Defining cuts
     const double jetRadius = 0.4;
@@ -235,7 +311,7 @@ void fillHistograms(TFile* fDist, SidebandData& dataContainer, double jetptMin, 
         tree->GetEntry(entry);
 
         // calculating delta R
-        double deltaR = sqrt(pow(jetEta-hfEta,2) + pow(DeltaPhi(jetPhi,hfPhi),2));
+        double deltaR = axisDistance;
         
         // Fill each histogram with their respective pT intervals
         if ((abs(hfEta) < etaCut) && (abs(hfY) < yCut) && ((jetPt >= jetptMin) && (jetPt < jetptMax)) && ((deltaR >= binning.deltaRBinEdges_detector[0]) && (deltaR < DeltaRcut))) {
@@ -245,11 +321,20 @@ void fillHistograms(TFile* fDist, SidebandData& dataContainer, double jetptMin, 
             for (size_t iEdge = 0; iEdge < binning.ptHFBinEdges_detector.size() - 1 && !filled; iEdge++) {
                 if ((hfPt >= binning.ptHFBinEdges_detector[iEdge]) && (hfPt < binning.ptHFBinEdges_detector[iEdge + 1])) {
                     // Get the threshold for this pT range
-                    double maxBkgProb = GetBkgProbabilityCut(hfPt, binning.bdtPtCuts);
+                    double maxBkgProb;
+                    if (!bdtPtCustomCuts.empty()) {
+                        maxBkgProb = GetBkgProbabilityCut(hfPt, bdtPtCustomCuts); // use custom cut for this pT,D bin
+                    } else {
+                        maxBkgProb = GetBkgProbabilityCut(hfPt, binning.bdtPtCuts); // normal behaviour
+                    }
 
                     // Fill histogram only if the cut is passed
                     if (hfMlScore0 < maxBkgProb) {
-                        dataContainer.histograms2d[iEdge]->Fill(hfMass, deltaR);
+                        // use Emma's run 2 cuts in case useEmmaYeatsBins is true
+                        if (!binning.useEmmaYeatsBins || passEmmaCut(jetPt, hfPt)) {
+                            dataContainer.histograms2d[iEdge]->Fill(hfMass, deltaR);
+                        }
+                        
                     }
                     filled = true; // Exit the loop once the correct histogram is found (alternative: break)
                 }
@@ -273,14 +358,16 @@ void fillHistograms(TFile* fDist, SidebandData& dataContainer, double jetptMin, 
     }
 }
 
-FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, double& minMass, double& maxMass, const FitModelType& modelToUse, const double& jetptMin, const double& jetptMax, const double& signalSigmas) {
+FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, const BinningStruct& binning, const FitModelType& modelToUse, const double& jetptMin, const double& jetptMax, const double& signalSigmas, const int& startingBackSigma, const int& backgroundSigmas) {
     
     double m_0_reference = dataContainer.D0_reference_mass; // D0 mass in GeV/c^2 (hard-coded)
     double sigma_reference = 0.012;
 
     // --- Total fits: loop through pT,HF intervals/histograms and perform fits
     for (size_t iHisto = 0; iHisto < dataContainer.histograms2d.size(); ++iHisto) {
-        
+        double minMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmin();
+        double maxMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmax();
+
         // Get TF1 objects from MC file
         TF1* fSignal = (TF1*)fReflectionsMC->Get(Form("signalFit_%zu", iHisto));
         TF1* fReflections = (TF1*)fReflectionsMC->Get(Form("reflectionsFit_%zu", iHisto));
@@ -385,22 +472,59 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
         dataContainer.fittings.fitTotal[iHisto]->SetParName(12, "Reflection Width Sigma_2");
 
         // Apply range limits to the parameters
-        dataContainer.fittings.fitTotal[iHisto]->SetParLimits(0, 0.001, TMath::Infinity()); // only accepts positive background fits
+        dataContainer.fittings.fitTotal[iHisto]->SetParLimits(0, 0.01, TMath::Infinity()); // only accepts positive background fits
         dataContainer.fittings.fitTotal[iHisto]->SetParLimits(1, -TMath::Infinity(), -1.01); // only descending inclination background fits
         dataContainer.fittings.fitTotal[iHisto]->SetParLimits(2, 3.0, TMath::Infinity()); // only accepts non-negative primary gaussian amplitude
         dataContainer.fittings.fitTotal[iHisto]->SetParLimits(4, 0.99 * m_0_reference, 1.01 * m_0_reference); // mean invariant mass should be around the one from literature, between [0.995 * m_0_reference, 1.005 * m_0_reference]
         dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 4.0 * sigma_reference);
-        if (jetptMin == 5. && jetptMax == 7.) {
-            if (iHisto == 2) { // 3 < pT,D < 4 GeV/c
-                dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 3.0 * sigma_reference);
+        
+        if (iHisto == 0) {          // 1 < pT,D < 2 GeV/c
+            sigma_reference = 0.0105;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0105
+        } else if (iHisto == 1) {   // 2 < pT,D < 3 GeV/c
+            sigma_reference = 0.0123;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0123
+        } else if (iHisto == 2) {   // 3 < pT,D < 4 GeV/c
+            sigma_reference = 0.0139;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0139
+        } else if (iHisto == 3) {   // 4 < pT,D < 5 GeV/c
+            sigma_reference = 0.0157;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0157
+        } else if (iHisto == 4) {   // 5 < pT,D < 6 GeV/c
+            sigma_reference = 0.0172;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0172
+        } else if (iHisto == 5) {   // 6 < pT,D < 7 GeV/c
+            sigma_reference = 0.0185;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0185
+        } else if (iHisto == 6) {   // 7 < pT,D < 8 GeV/c
+            sigma_reference = 0.0199;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0199
+        } else if (iHisto == 7) {   // 8 < pT,D < 12 GeV/c
+            sigma_reference = 0.0223;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0223
+        } else if (iHisto == 8) {   // 12 < pT,D < 16 GeV/c
+            sigma_reference = 0.0240;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.3 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0240
+        } else if (iHisto == 9) {   // 16 < pT,D < 24 GeV/c
+            sigma_reference = 0.0240;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.25 * sigma_reference); // sigma_1 = 0.0240
+        } else if (iHisto == 10) {  // 24 < pT,D < 36 GeV/c
+            sigma_reference = 0.0373;
+            dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.2 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0373
+        }
+        // sigma_reference = 0.012;
+        // dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 2.0 * sigma_reference);
+        
+        
+        if (binning.useEmmaYeatsBins) {
+            if (jetptMin == 5. && jetptMax == 7.) {
+                if (iHisto == 4) { // 1 < pT,D < 2 GeV/c
+                    dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 2.5 * sigma_reference);
+                }
             }
-        } else if (jetptMin == 15. && jetptMax == 30.) {
-            if (iHisto == 1) { // 2 < pT,D < 3 GeV/c
-                dataContainer.fittings.fitTotal[iHisto]->SetParLimits(5, 0.35 * sigma_reference, 2.0 * sigma_reference);
-            }
+            
         }
         
-
         // Fix the parameters from MC fits
         dataContainer.fittings.fitTotal[iHisto]->FixParameter(3, A1toA2MCSignalRatio);   // A1toA2MCSignalRatio
         dataContainer.fittings.fitTotal[iHisto]->FixParameter(6, Sigma1toSigma2MCSignalRatio);   // Sigma1toSigma2MCSignalRatio
@@ -412,20 +536,26 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
         dataContainer.fittings.fitTotal[iHisto]->FixParameter(12, sigma2Reflections); // sigma_2
 
         // Perform fit with "Q" (quiet) option: no drawing of the fit function
-        dataContainer.histograms1d[iHisto]->Fit(dataContainer.fittings.fitTotal[iHisto], "RQN"); // add "WIDTH"?
+        dataContainer.histograms1d[iHisto]->Fit(dataContainer.fittings.fitTotal[iHisto], "RQN");
         // dataContainer.fittings.fitTotal[iHisto]->Print("V");
 
         // Check if signal gaussian acomodates the literature D0 rest mass
         double primaryMean = dataContainer.fittings.fitTotal[iHisto]->GetParameter(4);
         double primarySigma = dataContainer.fittings.fitTotal[iHisto]->GetParameter(5);
-        if (didFitFailed(dataContainer.histograms1d[iHisto], dataContainer.fittings.fitTotal[iHisto], m_0_reference, signalSigmas)) { // fit failed: PDG mass outside of signal region
+        if (didFitFailed(dataContainer.histograms1d[iHisto], dataContainer.fittings.fitTotal[iHisto], m_0_reference, signalSigmas, startingBackSigma)) {
             // if literature mass is outside, clear histogram as it should be excluded
             //histograms[iHisto]->Reset();
             //dataContainer.histograms1d[iHisto]->SetTitle(TString(dataContainer.histograms1d[iHisto]->GetTitle()) + " (Fit failed)");
             
             dataContainer.fittings.workingFits.push_back(false);
-        } else { // fit worked: PDG mass inside of signal region
+        } else {
             dataContainer.fittings.workingFits.push_back(true);
+            std::cout << "Fit parameters for histogram " << iHisto << ": Background A = " << dataContainer.fittings.fitTotal[iHisto]->GetParameter(0) 
+                      << ", Background B = " << dataContainer.fittings.fitTotal[iHisto]->GetParameter(1) 
+                      << ", A1 Signal = " << dataContainer.fittings.fitTotal[iHisto]->GetParameter(2) 
+                      << ", m0 Signal = " << dataContainer.fittings.fitTotal[iHisto]->GetParameter(4) 
+                      << ", Sigma1 Signal = " << dataContainer.fittings.fitTotal[iHisto]->GetParameter(5) 
+                      << std::endl;
         }
     }
     std::cout << "Total fits performed.\n";
@@ -434,6 +564,8 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
     // Perform background only fit to each histogram
     int numberOfFits = dataContainer.fittings.fitTotal.size();
     for (size_t iHisto = 0; iHisto < numberOfFits; iHisto++) {
+        double minMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmin();
+        double maxMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmax();
         if (modelToUse == FitModelType::FullPowerLaw || modelToUse == FitModelType::StandardSideBand) { // backgroundFunctionPowerLaw
             // Getting total parameter values (f(x) = a * x^b)
             double a_par = dataContainer.fittings.fitTotal[iHisto]->GetParameter(0); // Get the value of parameter 'a'
@@ -465,6 +597,8 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
 
     // Perform signal only fit to each histogram
     for (size_t iHisto = 0; iHisto < numberOfFits; iHisto++) {
+        double minMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmin();
+        double maxMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmax();
         // Extract signal-related parameters from the total fit
         double a1Signal = dataContainer.fittings.fitTotal[iHisto]->GetParameter(2); // A1 signal
         double A1toA2MCSignalRatio = dataContainer.fittings.fitTotal[iHisto]->GetParameter(3); // A2 signal
@@ -486,8 +620,44 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
     }
     std::cout << "Signal only fits performed.\n";
 
+    // Significance calculation from fit integrals
+    for (size_t iHisto = 0; iHisto < dataContainer.fittings.fitSignalOnly.size(); ++iHisto) {
+        double sig = 0., S = 0., B = 0.;
+
+        // Only compute for working fits that have both total and background fits
+        bool hasSignalFit = (iHisto < dataContainer.fittings.fitSignalOnly.size()) && dataContainer.fittings.fitSignalOnly[iHisto];
+        bool hasBkgFit = (iHisto < dataContainer.fittings.fitBackgroundOnly.size()) && dataContainer.fittings.fitBackgroundOnly[iHisto];
+        bool isWorking = (iHisto < dataContainer.fittings.workingFits.size()) && dataContainer.fittings.workingFits[iHisto];
+
+        if (isWorking && hasSignalFit && hasBkgFit) {
+            TF1* fSignal = dataContainer.fittings.fitSignalOnly[iHisto];
+            TF1* fBkg = dataContainer.fittings.fitBackgroundOnly[iHisto];
+            double m0 = fSignal->GetParameter(2); // total->4, pure signal->2
+            double sigma = fSignal->GetParameter(3); // total->5, pure signal->3
+
+            // Calculate areas
+            double totalInSR = fSignal->Integral(m0 - signalSigmas*sigma, m0 + signalSigmas*sigma);
+            double bkgInSR = fBkg->Integral(  m0 - signalSigmas*sigma, m0 + signalSigmas*sigma);
+            S = totalInSR;
+            B = bkgInSR;
+            if (S > 0. && (S + B) > 0.) {
+                sig = S / std::sqrt(S + B);
+            }
+            std::cout << "  [Significance] pT,D bin " << iHisto << ": S=" << S << "  B=" << B << "  sig=" << sig << "\n";
+        } else {
+            std::cout << "  [Significance] pT,D bin " << iHisto << ": skipped (fit failed or missing)\n";
+        }
+
+        dataContainer.fittings.significance.push_back(sig);
+        dataContainer.fittings.signalYield.push_back(S);
+        dataContainer.fittings.backgroundYield.push_back(B);
+    }
+    std::cout << "Significance computed for all pT,D bins.\n";
+
     // Perform reflections only fit to each histogram
     for (size_t iHisto = 0; iHisto < numberOfFits; iHisto++) {
+        double minMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmin();
+        double maxMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmax();
         // Extract reflection-related parameters from the total fit
         double A1SignalToA1ReflectionMCRatios = dataContainer.fittings.fitTotal[iHisto]->GetParameter(7); // A1 signal / A1 reflection
         double A1Signal = dataContainer.fittings.fitTotal[iHisto]->GetParameter(2); // A1 signal
@@ -517,6 +687,516 @@ FitContainer performFit(TFile* fReflectionsMC, SidebandData& dataContainer, doub
     std::cout << "Reflections only fits performed.\n";
     
     return dataContainer.fittings;
+}
+
+//__________________________________________________________________________________________________________________________
+struct BDTScanResult {
+    int nPtDBins;
+    std::vector<std::vector<double>> bdtThresholds;   // [iScan][iPtD] ← change to 2D
+    std::vector<std::vector<double>> significance;    // [iScan][iPtD]
+    std::vector<double>              optimalCuts;     // [iPtD]
+    std::vector<double>              maxSignificance; // [iPtD]
+    std::vector<std::vector<double>> bdtThresholdsFine;  // [iScan][iPtD]
+    std::vector<std::vector<double>> significanceFine;   // [iScan][iPtD]
+};
+void plotBDTScanFits(const SidebandData& dataContainer, const FitContainer& fittings, const std::vector<std::pair<double,double>>& bdtCuts, const BinningStruct& binning,
+                     int scanStep, bool isFine, const TString& pdfDir, const FitModelType& modelToUse, double signalSigmas, int startingBackSigma) {
+
+    const int nPtDBins = dataContainer.histograms1d.size();
+    int nCols = std::min(4, nPtDBins);
+    int nRows = std::ceil((double)nPtDBins / nCols);
+
+    TString stepLabel = isFine ? Form("Fine step %d", scanStep+1)
+                               : Form("Coarse step %d", scanStep+1);
+
+    TCanvas* c = new TCanvas(Form("cBDTFits_%s_%d", isFine?"fine":"coarse", scanStep),
+                              stepLabel, 400*nCols, 350*nRows);
+    c->Divide(nCols, nRows);
+
+    TLatex* latex = new TLatex();
+    latex->SetNDC();
+    latex->SetTextSize(0.038);
+
+    for (int iPtD = 0; iPtD < nPtDBins; ++iPtD) {
+        c->cd(iPtD + 1);
+        gPad->SetLeftMargin(0.12);
+        gPad->SetBottomMargin(0.15);
+        gStyle->SetOptStat(0);
+
+        TH1D* h = dataContainer.histograms1d[iPtD];
+        if (!h) continue;
+
+        // Draw histogram
+        h->SetMarkerStyle(kDot);
+        h->SetMarkerColor(kBlack);
+        h->SetLineColor(kBlack);
+        h->SetMinimum(0);
+        h->Draw("E");
+
+        // Draw fits if working
+        bool isWorking = (iPtD < (int)fittings.workingFits.size())
+                       && fittings.workingFits[iPtD];
+
+        if (isWorking) {
+            TF1* fTotal = (iPtD < (int)fittings.fitTotal.size())
+                        ? fittings.fitTotal[iPtD] : nullptr;
+            TF1* fBkg   = (iPtD < (int)fittings.fitBackgroundOnly.size())
+                        ? fittings.fitBackgroundOnly[iPtD] : nullptr;
+            TF1* fSig   = (iPtD < (int)fittings.fitSignalOnly.size())
+                        ? fittings.fitSignalOnly[iPtD] : nullptr;
+            TF1* fRefl  = (iPtD < (int)fittings.fitReflectionsOnly.size())
+                        ? fittings.fitReflectionsOnly[iPtD] : nullptr;
+
+            // Compute shaded sideband and signal regions from fit parameters
+            if (fTotal) {
+                double m0    = fTotal->GetParameter(4);
+                double sigma = fTotal->GetParameter(5);
+                double binW  = h->GetBinWidth(1);
+                double yMax  = h->GetMaximum();
+
+                // Signal region shading (blue)
+                double srLow  = m0 - signalSigmas * sigma;
+                double srHigh = m0 + signalSigmas * sigma;
+                int srLowBin  = safeLowBin(h, srLow);
+                int srHighBin = safeHighBin(h, srHigh);
+                TH1D* hSigShade = (TH1D*)h->Clone(
+                    Form("hSigShade_%d_%d", iPtD, scanStep));
+                hSigShade->Reset();
+                for (int iBin = srLowBin; iBin <= srHighBin; ++iBin) {
+                    hSigShade->SetBinContent(iBin, h->GetBinContent(iBin));
+                }
+                hSigShade->SetFillColorAlpha(kBlue, 0.2);
+                hSigShade->SetLineColor(kBlue);
+                hSigShade->Draw("hist same");
+
+                // Sideband region shading (red)
+                // Left sideband: [m0 - sbEnd*sigma, m0 - startingBackSigma*sigma]
+                // Right sideband: [m0 + startingBackSigma*sigma, m0 + sbEnd*sigma]
+                // Clamp to histogram range
+                double sbLow1  = std::max(m0 - 9.*sigma, h->GetXaxis()->GetXmin());
+                double sbHigh1 = m0 - startingBackSigma * sigma;
+                double sbLow2  = m0 + startingBackSigma * sigma;
+                double sbHigh2 = std::min(m0 + 9.*sigma, h->GetXaxis()->GetXmax());
+
+                TH1D* hSBShade = (TH1D*)h->Clone(
+                    Form("hSBShade_%d_%d", iPtD, scanStep));
+                hSBShade->Reset();
+                int sb1Low  = safeLowBin(h, sbLow1);
+                int sb1High = safeHighBin(h, sbHigh1);
+                int sb2Low  = safeLowBin(h, sbLow2);
+                int sb2High = safeHighBin(h, sbHigh2);
+                for (int iBin = sb1Low; iBin <= sb1High; ++iBin) {
+                    hSBShade->SetBinContent(iBin, h->GetBinContent(iBin));
+                }
+                for (int iBin = sb2Low; iBin <= sb2High; ++iBin) {
+                    hSBShade->SetBinContent(iBin, h->GetBinContent(iBin));
+                }
+                hSBShade->SetFillColorAlpha(kRed, 0.2);
+                hSBShade->SetLineColor(kRed);
+                hSBShade->Draw("hist same");
+
+                // Draw fit components — same style as actual analysis
+                fTotal->SetLineColor(kBlack);
+                fTotal->SetLineStyle(kSolid);
+                fTotal->SetLineWidth(1);
+                fTotal->Draw("same");
+
+                if (fSig) {
+                    fSig->SetLineColor(kBlue);
+                    fSig->SetLineStyle(kDashed);
+                    fSig->SetLineWidth(1);
+                    fSig->Draw("same");
+                }
+                if (fBkg) {
+                    fBkg->SetLineColor(kRed);
+                    fBkg->SetLineStyle(kDashed);
+                    fBkg->SetLineWidth(1);
+                    fBkg->Draw("same");
+                }
+                if (fRefl && modelToUse != FitModelType::StandardSideBand) {
+                    fRefl->SetLineColor(kGreen+2);
+                    fRefl->SetLineStyle(kDashed);
+                    fRefl->SetLineWidth(1);
+                    fRefl->Draw("same");
+                }
+
+                // Annotations
+                double sigma2 = sigma / fTotal->GetParameter(6);
+                double chi2   = fTotal->GetChisquare();
+                int    ndf    = fTotal->GetNDF();
+                latex->SetTextColor(kBlack);
+                latex->DrawLatex(0.14, 0.89,
+                    Form("#Chi^{2}_{red} = %.3f", ndf > 0 ? chi2/ndf : -1.));
+                latex->DrawLatex(0.14, 0.84,
+                    Form("#sigma_{primary} = %.4f", sigma));
+                latex->DrawLatex(0.14, 0.79,
+                    Form("#sigma_{secondary} = %.4f", sigma2));
+            }
+
+            // Significance annotation
+            double cut = (iPtD < (int)bdtCuts.size()) ? bdtCuts[iPtD].second : 0.;
+            double sig = (iPtD < (int)fittings.significance.size())
+                       ? fittings.significance[iPtD] : 0.;
+            double S   = (iPtD < (int)fittings.signalYield.size())
+                       ? fittings.signalYield[iPtD] : 0.;
+            double B   = (iPtD < (int)fittings.backgroundYield.size())
+                       ? fittings.backgroundYield[iPtD] : 0.;
+            latex->SetTextColor(kBlue);
+            latex->DrawLatex(0.14, 0.73, Form("BDT cut = %.4f", cut));
+            latex->DrawLatex(0.14, 0.68, Form("S = %.0f, B = %.0f", S, B));
+            latex->DrawLatex(0.14, 0.63, Form("Sig = %.2f", sig));
+
+        } else {
+            // Fit failed annotation
+            double cut = (iPtD < (int)bdtCuts.size()) ? bdtCuts[iPtD].second : 0.;
+            latex->SetTextColor(kRed);
+            latex->DrawLatex(0.14, 0.73, Form("BDT cut = %.4f", cut));
+            latex->DrawLatex(0.14, 0.68, "Fit failed");
+        }
+
+        // pT,D label
+        latex->SetTextColor(kBlack);
+        latex->DrawLatex(0.14, 0.57,
+            Form("%.0f < p_{T,D} < %.0f GeV/c",
+                 binning.ptHFBinEdges_detector[iPtD],
+                 binning.ptHFBinEdges_detector[iPtD+1]));
+
+        // Redraw histogram on top of shading
+        h->Draw("E same");
+    }
+
+    // Save
+    TString scanType = isFine ? "fine" : "coarse";
+    TString fileName = pdfDir + Form("BDT_scan_%s_step%02d.pdf",
+                                      scanType.Data(), scanStep + 1);
+    for (int i = 1; i <= nCols * nRows; ++i) {
+        TVirtualPad* pad = c->GetPad(i);
+        if (pad) { pad->Modified(); pad->Update(); }
+    }
+    c->cd(0);
+    c->Modified();
+    c->Update();
+    c->SaveAs(fileName);
+    delete c;
+    delete latex;
+
+    std::cout << "[BDT Optimization] Saved: " << fileName << "\n";
+}
+void plotSignificanceScan(const BDTScanResult& scanResult, const BinningStruct& binning, const TString& pdfDir) { // ← directory, not file
+
+    const int nPtDBins = scanResult.nPtDBins;
+    const int nScans   = scanResult.bdtThresholds.size();
+
+    // One pad per pT,D bin
+    int nCols = std::min(4, nPtDBins);
+    int nRows = std::ceil((double)nPtDBins / nCols);
+    TCanvas* cOptimalBdtCuts = new TCanvas("cBDTScan", "BDT Significance Scan", 400*nCols, 350*nRows);
+    cOptimalBdtCuts->Divide(nCols, nRows);
+
+    for (int iPtD = 0; iPtD < nPtDBins; ++iPtD) {
+        cOptimalBdtCuts->cd(iPtD + 1);
+        gPad->SetLeftMargin(0.15);
+        gPad->SetBottomMargin(0.15);
+
+        // Build TGraph: x = BDT threshold, y = significance
+        TGraph* graph = new TGraph(nScans);
+        graph->SetName(Form("gBDTScan_ptD%d", iPtD));
+        graph->SetTitle(Form("%.0f < p_{T,D^{0}} < %.0f GeV/c;" "BDT background score threshold;" "S/#sqrt{S+B}", binning.ptHFBinEdges_detector[iPtD], binning.ptHFBinEdges_detector[iPtD+1]));
+
+        for (int iScan = 0; iScan < nScans; ++iScan) {
+            double threshold = scanResult.bdtThresholds[iScan][iPtD];
+            double sig = (iPtD < (int)scanResult.significance[iScan].size()) ? scanResult.significance[iScan][iPtD] : 0.;
+            graph->SetPoint(iScan, threshold, sig);
+        }
+
+        graph->SetMarkerStyle(20);
+        graph->SetMarkerSize(1.2);
+        graph->SetMarkerColor(kBlue+1);
+        graph->SetLineColor(kBlue+1);
+        graph->SetLineWidth(1);
+        graph->Draw("APL");
+
+        // Mark the optimal cut with a vertical line
+        double optCut = (iPtD < (int)scanResult.optimalCuts.size())
+                      ? scanResult.optimalCuts[iPtD] : 0.;
+        double maxSig = (iPtD < (int)scanResult.maxSignificance.size())
+                      ? scanResult.maxSignificance[iPtD] : 0.;
+
+        if (optCut > 0. && graph->GetHistogram()) {
+            double yMin = graph->GetHistogram()->GetMinimum();
+            double yMax = graph->GetHistogram()->GetMaximum() * 1.15;
+            graph->GetHistogram()->GetYaxis()->SetRangeUser(yMin, yMax);
+
+            TLine* lOpt = new TLine(optCut, yMin, optCut, yMax);
+            lOpt->SetLineColor(kRed);
+            lOpt->SetLineWidth(1);
+            lOpt->SetLineStyle(2);
+            lOpt->Draw("same");
+
+            // Label the optimal cut value
+            TLatex* tex = new TLatex();
+            tex->SetNDC();
+            tex->SetTextSize(0.04);
+            tex->SetTextColor(kRed);
+            tex->DrawLatex(0.18, 0.82, Form("Opt. cut = %.4f", optCut));
+            tex->DrawLatex(0.18, 0.74, Form("Max sig = %.2f", maxSig));
+        }
+
+        // After drawing coarse scan graph gCoarse:
+        int nFine = scanResult.bdtThresholdsFine.size();
+        if (nFine > 0) {
+            TGraph* gFine = new TGraph(nFine);
+            for (int j = 0; j < nFine; ++j) {
+                gFine->SetPoint(j,
+                    scanResult.bdtThresholdsFine[j][iPtD],
+                    scanResult.significanceFine[j][iPtD]);
+            }
+            gFine->SetMarkerStyle(21);
+            gFine->SetMarkerColor(kRed);
+            gFine->SetLineColor(kRed);
+            gFine->Draw("P same"); // points only, no connecting line
+        }
+    }
+
+    
+    //
+    // Storing in a single pdf file
+    //
+    TString imagePath = "../../Images/1-SignalTreatment/SideBand/";
+    double jetptMin = binning.ptjetBinEdges_detector.front();
+    double jetptMax = binning.ptjetBinEdges_detector.back();
+    TString fileName = pdfDir + "BDT_significance_scan.pdf";
+
+    for (int i = 1; i <= nCols * nRows; ++i) {
+        TVirtualPad* pad = cOptimalBdtCuts->GetPad(i);
+        if (pad) { pad->Modified(); pad->Update(); }
+    }
+    cOptimalBdtCuts->cd(0);
+    cOptimalBdtCuts->Modified();
+    cOptimalBdtCuts->Update();
+    cOptimalBdtCuts->SaveAs(fileName);
+    delete cOptimalBdtCuts;
+
+    std::cout << "[BDT Optimization] Saved: " << fileName << "\n";
+}
+
+BDTScanResult optimizeBDTCuts(TFile* fDist, TFile* fReflectionsMCFullRange, BinningStruct& binning, const FitModelType& modelToUse, double& signalSigmas, int& startingBackSigma, int& backgroundSigmas) {
+    
+    BDTScanResult scanResult;
+    
+    // 0 - Check if file with optimal BDT cuts already exists. If yes, read the cuts from the file and skip the optimization procedure. If not, proceed with the optimization and save the results in a file for future use.
+    // --- 0: Check if file already exists ---
+    const std::string resultFile = "bdtOptimalCuts.root"; // outputPath + "/bdtOptimalCuts.root"
+    if (!gSystem->AccessPathName(resultFile.c_str())) {
+        std::cout << "[BDT Optimization] Found existing file: " << resultFile << ". Loading cuts into binning struct...\n";
+        TFile* fCuts = TFile::Open(resultFile.c_str(), "READ");
+        TVectorD* vEdges = (TVectorD*)fCuts->Get("bdt/bdtPtEdges");
+        TVectorD* vCuts  = (TVectorD*)fCuts->Get("bdt/bdtCutValues");
+        if (!vCuts || !vEdges) {
+            std::cerr << "[BDT Optimization] Error: could not read optimal cuts from file.\n";
+            fCuts->Close();
+            return scanResult;
+        }
+        // Direct reconstruction — no special casing needed
+        int nFullEntries = vCuts->GetNoElements(); // = 13
+        binning.bdtPtCuts.clear();
+        for (int i = 0; i < nFullEntries; ++i) {
+            binning.bdtPtCuts.emplace_back((*vEdges)[i], (*vCuts)[i]);
+        }
+        std::cout << "[BDT Optimization] Loaded bdtPtCuts with "
+                << binning.bdtPtCuts.size() << " entries.\n";
+        fCuts->Close();
+        return scanResult;
+    }
+    std::cout << "[BDT Optimization] No existing file found. Running optimization...\n";
+    
+    // --- Configuration ---
+    const int nPtHFBins = binning.ptHFBinEdges_detector.size() - 1;
+    const int nCoarseScanSteps = 20;  // coarse scan first: 10 steps
+    const int nFineScan = 5;  // fine scan: 20 steps around the best region
+    // Use integrated pT,jet range for optimization
+    const double jetptMin = binning.ptjetBinEdges_detector.front();
+    const double jetptMax = binning.ptjetBinEdges_detector.back();
+
+    TString imagePath = "../../Images/1-SignalTreatment/SideBand/";
+    // Create directory if it doesn't exist
+    TString pdfDir = imagePath + Form("BDT_scan_%.0f_to_%.0fGeV/", jetptMin, jetptMax);
+    gSystem->Exec(Form("mkdir -p %s", pdfDir.Data()));
+
+    // 1 - Loop through course scan of BDT scores range
+    for (size_t iCoarseScore = 0; iCoarseScore < nCoarseScanSteps; iCoarseScore++) {
+        // 2 - Create histograms for this score cut
+        SidebandData dataContainer = createHistograms(binning, Form("bdt_optimal_%zu", iCoarseScore));
+
+        // 3 - Build custom BDT cuts
+        std::vector<std::pair<double,double>> bdtPtCustomCuts;
+        // loops over analysis pT,D bins (11 entries, starting from pT=1):
+        for (int iPtHFBin = 0; iPtHFBin < nPtHFBins; ++iPtHFBin) {
+            double ptDcenter = 0.5 * (binning.ptHFBinEdges_detector[iPtHFBin] + binning.ptHFBinEdges_detector[iPtHFBin+1]);
+            double maxCut = GetBkgProbabilityCut(ptDcenter, binning.bdtPtCuts);
+            // double cut = (iCoarseScore + 1) * (binning.bdtPtCuts[iPtHFBin].second / nCoarseScanSteps); // fraction varies with scan step
+            // fraction = (iCoarseScore + 1) / nCoarseScanSteps
+            double cut = (iCoarseScore + 1) * maxCut / nCoarseScanSteps;
+            bdtPtCustomCuts.push_back({binning.ptHFBinEdges_detector[iPtHFBin], cut});
+            //bdtPtCustomCuts.push_back({binning.bdtPtCuts[iPtHFBin].first, (iCoarseScore + 1) * (binning.bdtPtCuts[iPtHFBin].second / nCoarseScanSteps)});
+        }
+        bdtPtCustomCuts.push_back({50., -1});
+
+        // 4 - Fill histograms with custom BDT cuts
+        fillHistograms(fDist, dataContainer, jetptMin, jetptMax, binning, bdtPtCustomCuts);
+
+        // 5 - Perform fits and calculate significance for this set of score cuts
+        FitContainer fittings = performFit(fReflectionsMCFullRange, dataContainer, binning, modelToUse, jetptMin, jetptMax, signalSigmas, startingBackSigma, backgroundSigmas);
+
+        // Open PDF on first page, middle on others: invariant mass plots for this scan step
+        plotBDTScanFits(dataContainer, fittings, bdtPtCustomCuts, binning, iCoarseScore, false, pdfDir, modelToUse, signalSigmas, startingBackSigma);
+
+        // 6 - Store significance and threshold for this scan step
+        std::vector<double> thresholdsThisStep;
+        for (int iPtD = 0; iPtD < nPtHFBins; ++iPtD) {
+            thresholdsThisStep.push_back(bdtPtCustomCuts[iPtD].second);
+        }
+        scanResult.bdtThresholds.push_back(thresholdsThisStep);
+        scanResult.significance.push_back(fittings.significance);
+
+        // Print results for this step
+        std::cout << "[BDT Optimization] Coarse step " << iCoarseScore+1
+                  << "/" << nCoarseScanSteps << "\n";
+        for (int iPtD = 0; iPtD < nPtHFBins; ++iPtD) {
+            std::cout << "  pT,D bin " << iPtD
+                      << " [" << binning.ptHFBinEdges_detector[iPtD]
+                      << "-"  << binning.ptHFBinEdges_detector[iPtD+1] << "]"
+                      << "  cut=" << bdtPtCustomCuts[iPtD].second
+                      << "  sig=" << fittings.significance[iPtD] << "\n";
+        }
+
+        // Cleanup histograms and fits for this step
+        for (auto* h : dataContainer.histograms2d) { if (h) delete h; }
+        for (auto* h : dataContainer.histograms1d) { if (h) delete h; }
+        for (auto* f : fittings.fitTotal)          { if (f) delete f; }
+        for (auto* f : fittings.fitBackgroundOnly) { if (f) delete f; }
+        for (auto* f : fittings.fitSignalOnly)      { if (f) delete f; }
+        for (auto* f : fittings.fitReflectionsOnly) { if (f) delete f; }
+    } // end coarse scan loop
+
+    // 7 - Find the best coarse step per pT,HF bin
+    // Initialize optimal cuts and significances
+    scanResult.nPtDBins       = nPtHFBins;
+    scanResult.optimalCuts    = std::vector<double>(nPtHFBins, 0.);
+    scanResult.maxSignificance = std::vector<double>(nPtHFBins, 0.);
+
+    std::vector<int> bestCoarseStep(nPtHFBins, 0);
+    for (int iPtD = 0; iPtD < nPtHFBins; ++iPtD) {
+        for (int iScan = 0; iScan < nCoarseScanSteps; ++iScan) {
+            if (scanResult.significance[iScan][iPtD] >
+                scanResult.significance[bestCoarseStep[iPtD]][iPtD]) {
+                bestCoarseStep[iPtD] = iScan;
+            }
+        }
+        // Store best coarse result as starting point
+        scanResult.optimalCuts[iPtD] = scanResult.bdtThresholds[bestCoarseStep[iPtD]][iPtD];
+        scanResult.maxSignificance[iPtD] = scanResult.significance[bestCoarseStep[iPtD]][iPtD];
+
+        std::cout << "[BDT Optimization] pT,D bin " << iPtD
+                  << ": best coarse step = " << bestCoarseStep[iPtD]
+                  << ", cut = " << scanResult.optimalCuts[iPtD]
+                  << ", sig = " << scanResult.maxSignificance[iPtD] << "\n";
+    }
+
+    // 8 - Fine scan: each pT,D bin scans independently around its best coarse step
+    std::cout << "[BDT Optimization] === Fine scan ===\n";
+    for (int iFine = 0; iFine <= nFineScan; ++iFine) {
+
+        // Build fine cuts — each pT,D bin uses its own fine range
+        std::vector<std::pair<double,double>> bdtPtCustomCuts;
+        for (int iPtD = 0; iPtD < nPtHFBins; ++iPtD) {
+            // Fine range spans one coarse step below and above the best
+            double fineMin = (bestCoarseStep[iPtD] > 0) ? scanResult.bdtThresholds[bestCoarseStep[iPtD] - 1][iPtD] : 0.;
+            double fineMax = (bestCoarseStep[iPtD] < nCoarseScanSteps - 1) ? scanResult.bdtThresholds[bestCoarseStep[iPtD] + 1][iPtD] : binning.bdtPtCuts[iPtD].second;
+            double cut = fineMin + (iFine + 1) * (fineMax - fineMin) / (nFineScan + 2);
+            bdtPtCustomCuts.push_back({binning.bdtPtCuts[iPtD].first, cut});
+        }
+        bdtPtCustomCuts.push_back({50., -1});
+
+        SidebandData dataContainer = createHistograms(binning, Form("bdt_fine_%d", iFine));
+        fillHistograms(fDist, dataContainer, jetptMin, jetptMax, binning, bdtPtCustomCuts);
+        FitContainer fittings = performFit(fReflectionsMCFullRange, dataContainer, binning, modelToUse, jetptMin, jetptMax, signalSigmas, startingBackSigma, backgroundSigmas);
+
+        std::cout << "[BDT Optimization] Fine step " << iFine+1 << "/" << nFineScan+1 << "\n";
+
+        plotBDTScanFits(dataContainer, fittings, bdtPtCustomCuts, binning, iFine, true, pdfDir, modelToUse, signalSigmas, startingBackSigma);
+
+        // Update optimal cut per pT,D bin if this step gives better significance
+        for (int iPtD = 0; iPtD < nPtHFBins; ++iPtD) {
+            double sig = (iPtD < (int)fittings.significance.size()) ? fittings.significance[iPtD] : 0.;
+            double cut = bdtPtCustomCuts[iPtD].second;
+            std::cout << "  pT,D bin " << iPtD << "  cut=" << cut << "  sig=" << sig << "\n";
+            if (sig > scanResult.maxSignificance[iPtD]) {
+                scanResult.maxSignificance[iPtD] = sig;
+                scanResult.optimalCuts[iPtD]     = cut;
+            }
+        }
+
+        for (auto* h : dataContainer.histograms2d) { if (h) delete h; }
+        for (auto* h : dataContainer.histograms1d) { if (h) delete h; }
+        for (auto* f : fittings.fitTotal)          { if (f) delete f; }
+        for (auto* f : fittings.fitBackgroundOnly) { if (f) delete f; }
+        for (auto* f : fittings.fitSignalOnly)      { if (f) delete f; }
+        for (auto* f : fittings.fitReflectionsOnly) { if (f) delete f; }
+    } // end fine scan loop
+
+    // 9 - Add significance scan plots as final pages
+    plotSignificanceScan(scanResult, binning, pdfDir);
+
+    // 10 - Build full bdtPtCuts FIRST
+    binning.bdtPtCuts.clear();
+    binning.bdtPtCuts.emplace_back(0., -1.);                                         // pre-range
+    for (int i = 0; i < nPtHFBins + 1; ++i) {
+        binning.bdtPtCuts.emplace_back(binning.ptHFBinEdges_detector[i], scanResult.optimalCuts[i]);
+    }
+    binning.bdtPtCuts.emplace_back(50., -1.0); // sentinel
+
+    // 11 - Save optimal cuts to file
+    TFile* fOut = TFile::Open(resultFile.c_str(), "RECREATE");
+    TDirectory* dBDT = fOut->mkdir("bdt");
+    dBDT->cd();
+
+    // Store the FULL bdtPtCuts structure including pre-range and sentinel
+    // At this point binning.bdtPtCuts already has the correct structure from step 11
+    int nFullEntries = binning.bdtPtCuts.size(); // = nPtHFBins + 2 = 13
+    TVectorD vEdges(nFullEntries);
+    TVectorD vCuts(nFullEntries);
+    for (int i = 0; i < nFullEntries; ++i) {
+        vEdges[i] = binning.bdtPtCuts[i].first;
+        vCuts[i]  = binning.bdtPtCuts[i].second;
+    }
+    vEdges.Write("bdtPtEdges");
+    vCuts.Write("bdtCutValues");
+
+    // Also save max significance for the analysis bins only
+    TVectorD vSig(nPtHFBins);
+    for (int i = 0; i < nPtHFBins; ++i) {
+        vSig[i] = scanResult.maxSignificance[i];
+    }
+    vSig.Write("maxSignificance");
+    fOut->Close();
+    std::cout << "[BDT Optimization] Optimal cuts saved to: " << resultFile << "\n";
+
+    // Print summary table
+    std::cout << "\n[BDT Optimization] === Final summary ===\n";
+    std::cout << std::setw(20) << "pT,D bin" << std::setw(15) << "Optimal cut" << std::setw(15) << "Max sig\n";
+    for (int i = 0; i < nPtHFBins; ++i) {
+        std::cout << std::setw(6)  << binning.ptHFBinEdges_detector[i]
+                  << " - " << std::setw(6) << binning.ptHFBinEdges_detector[i+1]
+                  << std::setw(15) << std::fixed << std::setprecision(4)
+                  << scanResult.optimalCuts[i]
+                  << std::setw(15) << std::fixed << std::setprecision(2)
+                  << scanResult.maxSignificance[i] << "\n";
+    }
+  
+    std::cout << "[BDT Optimization] binning.bdtPtCuts updated with optimal cuts.\n";
+
+    return scanResult;
 }
 
 void createShadedRegions(SidebandData& dataContainer, const std::pair<std::array<double, 2>, std::array<double, 2>>& sidebandRanges, const int& iHisto, const double& signalSigmas, const double& sigma) {
@@ -592,8 +1272,11 @@ void createShadedRegions(SidebandData& dataContainer, const std::pair<std::array
     dataContainer.subtractionResults.signalHistDrawing.push_back(hInvMassSignalDrawing);
     
 }
-
-SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& modelToUse, const BinningStruct& binning, double& signalSigmas, int& startingBackSigma, int& backgroundSigmas) {
+// To store information per jet pT interval
+struct JetPtContainerSideband {
+    std::vector<SidebandData> jetPtTotalSidebandData;
+};
+SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& modelToUse, const BinningStruct& binning, double& signalSigmas, int& startingBackSigma, int& backgroundSigmas, JetPtContainerSideband& jetPtContainer) {
     
     // Creating histograms for collecting data
     TH1D* h_sideBand;
@@ -808,7 +1491,8 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
             dataContainer.subtractionResults.hSubtractedFullJetPt->Add(dataContainer.subtractionResults.subtractedHist[iHisto]);
         }
     }
-
+    // Store fit results for this jet pT interval
+    jetPtContainer.jetPtTotalSidebandData.push_back(dataContainer);
     return dataContainer.subtractionResults;
 }
 
@@ -826,11 +1510,9 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
     // Start with a square layout (or close to it)
     int nCols = static_cast<int>(std::ceil(std::sqrt(nHistos)));
     int nRows = static_cast<int>(std::ceil(nHistos / static_cast<double>(nCols)));
-    TCanvas* c1d_fit = new TCanvas("c1d_fit", "1D histograms with Fit", 800, 600);
-    c1d_fit->SetCanvasSize(1800,1000);
+    TCanvas* c1d_fit = new TCanvas("c1d_fit", "1D histograms with Fit", 1800,1000);
     c1d_fit->Divide(nCols,nRows); // columns, lines
-    TCanvas* c_2d = new TCanvas("c_2d", "2D histograms", 800, 600);
-    c_2d->SetCanvasSize(1800,1000);
+    TCanvas* c_2d = new TCanvas("c_2d", "2D histograms", 1800,1000);
     c_2d->Divide(nCols,nRows); // columns, lines
 
     // Loop through all histograms and fitting functions
@@ -860,18 +1542,22 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
 
         // double A1Signal = dataContainer.fittings.fitTotal[iHisto]->GetParameter(2); // Get the value of parameter 'A' from primary signal gaussian
         // double m0_1Signal = dataContainer.fittings.fitTotal[iHisto]->GetParameter(4); // Get the value of parameter 'm0' from primary signal gaussian
-        // double sigma1Signal = dataContainer.fittings.fitTotal[iHisto]->GetParameter(5); // Get the value of parameter 'sigma' from primary signal gaussian
+        double sigma1Signal = dataContainer.fittings.fitTotal[iHisto]->GetParameter(5); // Get the value of parameter 'sigma' from primary signal gaussian
         // double A2Signal = A1Signal / dataContainer.fittings.fitTotal[iHisto]->GetParameter(3); // Get the value of parameter 'A' from secondary signal gaussian
-        // double sigma2Signal = sigma1Signal / dataContainer.fittings.fitTotal[iHisto]->GetParameter(6); // Get the value of parameter 'sigma' from secondary signal gaussian
+        double sigma2Signal = sigma1Signal / dataContainer.fittings.fitTotal[iHisto]->GetParameter(6); // Get the value of parameter 'sigma' from secondary signal gaussian
         double chi2 = dataContainer.fittings.fitTotal[iHisto]->GetChisquare();
         double degOfFreedom = dataContainer.fittings.fitTotal[iHisto]->GetNDF();
         
         // latex->DrawLatex(statBoxPos-0.52, 0.80, Form("A_{1}^{signal} = %.2f, #bar{m_{1}} = %.2f, #sigma_{1} = %.2f GeV/#it{c}^{2}", A1Signal, m0_1Signal,sigma1Signal));
         // latex->DrawLatex(statBoxPos-0.52, 0.75, Form("A_{2}^{signal} = %.2f, #bar{m_{2}} = %.2f, #sigma_{2} = %.2f GeV/#it{c}^{2}", A2Signal, m0_1Signal,sigma2Signal));
-        latex->DrawLatex(statBoxPos-0.28, 0.85, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
+        latex->DrawLatex(statBoxPos-0.87, 0.23, Form("Data: %s", binning.inputDATA.first.Data()));
+        latex->DrawLatex(statBoxPos-0.87, 0.28, Form("MC: %s",binning.inputMC.first.Data()));
         latex->DrawLatex(statBoxPos-0.87, 0.34, Form("%.0f < p_{T, ch. jet} < %.0f GeV/#it{c}",jetptMin,jetptMax)); // Display jet pT cut applied
-        latex->DrawLatex(statBoxPos-0.87, 0.28, "MC: LHC24h1c_All_D0"); // HF_LHC24h1c_All_D0
-        latex->DrawLatex(statBoxPos-0.87, 0.23, "Data: LHC23_pass4_Thin_2P3PDstar_D0CJ_4_D0_1"); // JE_HF_LHC23_pass4_Thin_2P3PDstar_D0CJ_4_D0_1
+        latex->DrawLatex(statBoxPos-0.30, 0.80, Form("#sigma_{primary}^{signal} = %.3f", sigma1Signal));
+        latex->DrawLatex(statBoxPos-0.32, 0.75, Form("#sigma_{secondary}^{signal} = %.3f", sigma2Signal));
+        latex->DrawLatex(statBoxPos-0.28, 0.85, Form("#Chi^{2}_{red} = %.3f",chi2/degOfFreedom));
+        
+        
 
         // Drawing 2D histograms
         c_2d->cd(iHisto+1);
@@ -890,9 +1576,9 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
     cSigPlusBack->Divide(nCols,nRows); // columns, lines
 
     TLegend* legend = new TLegend(0.6,0.57,0.9,0.77);
-    legend->AddEntry(dataContainer.subtractionResults.sidebandHist[0],"Sideband", "lpe");
-    legend->AddEntry(dataContainer.subtractionResults.signalHist[0],"Signal", "lpe");
-    legend->AddEntry(dataContainer.subtractionResults.subtractedHist[0],"Signal (minus background)", "lpe");
+    legend->AddEntry(dataContainer.subtractionResults.sidebandHist[0],"Scaled sideband", "lpe");
+    legend->AddEntry(dataContainer.subtractionResults.signalHist[0],"Raw yield", "lpe");
+    legend->AddEntry(dataContainer.subtractionResults.subtractedHist[0],"Real signal (minus background)", "lpe");
     std::cout << "Starting subtracted histograms plotting..." << std::endl;
     for (size_t iHisto = 0; iHisto < dataContainer.subtractionResults.subtractedHist.size(); iHisto++) {
         
@@ -942,8 +1628,8 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
         dataContainer.subtractionResults.signalHist[iHisto]->GetYaxis()->SetRangeUser(minY*0.9, maxY*1.1);
         dataContainer.subtractionResults.signalHist[iHisto]->Draw();
         dataContainer.subtractionResults.sidebandHist[iHisto]->Draw("same");
-        //dataContainer.subtractionResults.subtractedHist[iHisto]->Draw("same");
-        dataContainer.subtractionResults.subtractedHistCopy[iHisto]->Draw("same");
+        dataContainer.subtractionResults.subtractedHist[iHisto]->Draw("same"); // negative bins set to 0 version
+        //dataContainer.subtractionResults.subtractedHistCopy[iHisto]->Draw("same"); // not reset version
         legend->Draw();
         latex->DrawLatex(statBoxPos-0.35, 0.5, Form("%.0f < p_{T, ch. jet} < %.0f GeV/#it{c}",jetptMin,jetptMax));
     }
@@ -996,20 +1682,26 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
     //
     // Storing images
     //
-    TString imagePath = "../../Images/1-SignalTreatment/SideBand/";
-
+    TString sEmmaBins;
+    if (binning.useEmmaYeatsBins) {
+        sEmmaBins = "EmmaYeatsBins";
+    } else {
+        sEmmaBins = "";
+    }
+    TString imagePath = "../../Images/1-SignalTreatment/SideBand/" + sEmmaBins + "/" + binning.dataPeriod + "/";   
+    std::cout << "Image path is: " << imagePath << std::endl;
     //
     // Storing in a single pdf file
     //
-    c1d_fit->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
-    c_2d->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cSigPlusBack->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cscallingFactorsArrays->Print(imagePath + Form("sb_subtraction_deltaR_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    c1d_fit->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
+    c_2d->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cSigPlusBack->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cscallingFactorsArrays->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 }
 
 void SaveData(SidebandData& dataContainer, const BinningStruct& binning, double jetptMin, double jetptMax) {
     // Open output file
-    TFile* fOutput = new TFile(Form("backSub_%d_to_%d_jetpt.root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
+    TFile* fOutput = new TFile(Form("backSub_%d_to_%d_jetpt_" + binning.dataPeriod + ".root",static_cast<int>(jetptMin),static_cast<int>(jetptMax)),"recreate");
     if (!fOutput || fOutput->IsZombie()) {
         std::cerr << "Error: Unable to open the output ROOT file." << std::endl;
     }
@@ -1028,21 +1720,79 @@ void SaveData(SidebandData& dataContainer, const BinningStruct& binning, double 
     storeBinningInFile(fOutput, binning);
 }
 
-void JetPtIterator(const double jetptMin, const double jetptMax, const BinningStruct& binning) {
+void widthsPerJetPtBin(JetPtContainerSideband& jetPtContainer, const BinningStruct& binning) {
+    
+    // Create a canvas for plotting
+    int nHistos = binning.ptHFBinEdges_detector.size() - 1;
+    // Start with a square layout (or close to it)
+    int nCols = static_cast<int>(std::ceil(std::sqrt(nHistos)));
+    int nRows = static_cast<int>(std::ceil(nHistos / static_cast<double>(nCols)));
+    TCanvas* cWidths = new TCanvas("cWidths", "Widths of signal Gaussian for each jet pT bin", 1800, 1000);
+    cWidths->Divide(nCols,nRows); // columns, lines
+
+    // Create histograms to store the widths for each jet pT bin
+    std::vector<TH1D*> hWidthsPerJetPtBin(binning.ptHFBinEdges_detector.size() - 1);
+
+    for (size_t iHFPtBin = 0; iHFPtBin < binning.ptHFBinEdges_detector.size() - 1; iHFPtBin++) {
+        // Create the histogram for the current HF pT bin
+        hWidthsPerJetPtBin[iHFPtBin] = new TH1D(Form("hWidthsPerJet_HFPtBin_%zu", iHFPtBin),Form("%.0f < p_{T,D^{0}} < %.0f GeV/c;p_{T,jet} (GeV/c);#sigma (GeV/c^{2})", binning.ptHFBinEdges_detector[iHFPtBin], binning.ptHFBinEdges_detector[iHFPtBin + 1]), binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data());
+        
+        // Fill histogram with the widths for each jet pT bin
+        for (size_t iJetPtBin = 0; iJetPtBin < jetPtContainer.jetPtTotalSidebandData.size(); iJetPtBin++) {
+
+            // Do not plot the points corresponding to failed fits
+            if (!jetPtContainer.jetPtTotalSidebandData[iJetPtBin].fittings.workingFits[iHFPtBin]) {
+                continue;
+            }
+
+            double jetPtBinCenter = (binning.ptjetBinEdges_detector[iJetPtBin] + binning.ptjetBinEdges_detector[iJetPtBin + 1]) / 2.0;
+            double width1 = jetPtContainer.jetPtTotalSidebandData[iJetPtBin].fittings.fitTotal[iHFPtBin]->GetParameter(5);
+            double width1Error = jetPtContainer.jetPtTotalSidebandData[iJetPtBin].fittings.fitTotal[iHFPtBin]->GetParError(5);
+            double widthRatio = jetPtContainer.jetPtTotalSidebandData[iJetPtBin].fittings.fitTotal[iHFPtBin]->GetParameter(6);
+            if (widthRatio == 0) {
+                continue; // skip this point to avoid division by zero
+            }
+            
+            double width2 = width1 / widthRatio;
+            double widthRatioError = jetPtContainer.jetPtTotalSidebandData[iJetPtBin].fittings.fitTotal[iHFPtBin]->GetParError(6);
+            double width2Error = width2 * sqrt(pow(width1Error/width1, 2) + pow(widthRatioError/widthRatio, 2)); // propagating the errors sigma2 = sigma1 / ratio
+            int bin = hWidthsPerJetPtBin[iHFPtBin]->FindBin(jetPtBinCenter);
+            hWidthsPerJetPtBin[iHFPtBin]->SetBinContent(bin, width1);
+            hWidthsPerJetPtBin[iHFPtBin]->SetBinError(bin, width1Error);
+        }
+
+        // Plot them on their respective pad of the canvas
+        cWidths->cd(iHFPtBin+1);
+        hWidthsPerJetPtBin[iHFPtBin]->SetMarkerStyle(kFullCircle);
+        hWidthsPerJetPtBin[iHFPtBin]->SetMarkerColor(kYellow+2);
+        hWidthsPerJetPtBin[iHFPtBin]->SetLineColor(kYellow+2);
+        hWidthsPerJetPtBin[iHFPtBin]->Draw();
+
+    }
+
+    // Store canvas on PDF file
+    TString sEmmaBins;
+    if (binning.useEmmaYeatsBins) {
+        sEmmaBins = "EmmaYeatsBins";
+    } else {
+        sEmmaBins = "";
+    }
+    TString imagePath = "../../Images/1-SignalTreatment/SideBand/" + sEmmaBins + "/" + binning.dataPeriod + "/";
+    cWidths->Print(imagePath + Form("signalGaussianWidths_perJetPtBin_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",binning.ptjetBinEdges_detector[0], binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1]));
+}
+
+void JetPtIterator(TFile* fDist, JetPtContainerSideband& jetPtContainer, const double jetptMin, const double jetptMax, const BinningStruct& binning,
+                   const FitModelType& modelToUse, double& signalSigmas, int& startingBackSigma, int& backgroundSigmas) {
     std::cout << "============================================= " << jetptMin << " GeV/c < pT,jet < " << jetptMax << " GeV/c =============================================" << std::endl;
 
     // mass histogram
-    int massBins = 50; // default=50 
-    double minMass = 1.72; // default = 2.1
-    double maxMass = 2.06; // default = 2.49, due to drop of counts on last bin (of various pT,HF ranges) changed to 2.49-0.0078=2.4822
-
-    // Opening data file
-    TFile* fDist = new TFile("../../Data/Experimental/Train_643652/AO2Ds_non_merged/AO2D_mergedDFs.root","read");
-    if (!fDist || fDist->IsZombie()) {
-        std::cerr << "Error: Unable to open the ROOT data file." << std::endl;
-    }
-    // Opening
-    TFile* fReflectionsMC = new TFile(Form("../Reflections/reflections_%.0f_to_%.0fGeV.root",jetptMin,jetptMax),"read");
+    int massBins = 200; // default=50
+    double massBinDensity = 50 / (2.06 - 1.72);
+    double minMass = 1.72; // default = 1.72, in order to exclude D⁰->KPiPi decay entries on the left side
+    //double maxMass = 2.5; // default = 2.06, due to drop of counts on last bin (of various pT,HF ranges) changed
+    std::vector<double> maxMass = {2.02, 2.045, 2.06, 2.08, 2.1, 2.14, 2.20, 2.28, 2.47, 2.47, 2.47};
+    // Opening template file
+    TFile* fReflectionsMC = new TFile(Form("../Reflections/reflections_%.0f_to_%.0fGeV_" + binning.dataPeriod + ".root",jetptMin,jetptMax),"read");
     if (!fReflectionsMC || fReflectionsMC->IsZombie()) {
         std::cerr << "Error: Unable to open the ROOT reflections file." << std::endl;
     }
@@ -1054,24 +1804,16 @@ void JetPtIterator(const double jetptMin, const double jetptMax, const BinningSt
     double maxPtHF = binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1];
 
     // Create multiple histograms
-    SidebandData dataContainer = createHistograms(binning.ptHFBinEdges_detector,                    // the pT,HF edges will determine the number of mass histograms
-                                                     massBins, minMass, maxMass,                    // mass histograms binning
-                                                     binning.deltaRBinEdges_detector, jetptMin);    // deltaR histograms with asymmetrical bin widths
-    //
+    SidebandData dataContainer = createHistograms(binning);
+    
     // Fill histograms
     fillHistograms(fDist, dataContainer, jetptMin, jetptMax, binning);
 
-    // signal/side-band region parameters
-    double signalSigmas = 2; // default delta = 2
-    int startingBackSigma = 4; // default position = 4
-    int backgroundSigmas = 4; // default delta = 4
-
     // Perform fits
-    FitModelType modelToUse = FitModelType::FullPowerLaw; // options: StandardSideBand, FullPowerLaw, FullPoly2, SignalReflectionsOnly, SignalOnly, ReflectionsOnly
-    FitContainer fittings = performFit(fReflectionsMC, dataContainer, minMass, maxMass, modelToUse, jetptMin, jetptMax, signalSigmas);
+    FitContainer fittings = performFit(fReflectionsMC, dataContainer, binning, modelToUse, jetptMin, jetptMax, signalSigmas, startingBackSigma, backgroundSigmas);
 
     // Subtract side-band from signal
-    SubtractionResult subtractionResult = SideBand(dataContainer, modelToUse, binning, signalSigmas, startingBackSigma, backgroundSigmas);
+    SubtractionResult subtractionResult = SideBand(dataContainer, modelToUse, binning, signalSigmas, startingBackSigma, backgroundSigmas, jetPtContainer);
 
     // Plot histograms
     PlotHistograms(dataContainer, modelToUse, binning, jetptMin, jetptMax, binning.ptHFBinEdges_detector);
@@ -1096,7 +1838,7 @@ void create3DBackgroundSubtracted(const BinningStruct& binning) {
     h3D->Sumw2();
 
     for (size_t iJetBin = 0; iJetBin < binning.ptjetBinEdges_detector.size() - 1; iJetBin++) {
-        TFile* fJetRange = new TFile(Form("backSub_%0.f_to_%0.f_jetpt.root",binning.ptjetBinEdges_detector[iJetBin],binning.ptjetBinEdges_detector[iJetBin+1]),"read");
+        TFile* fJetRange = new TFile(Form("backSub_%0.f_to_%0.f_jetpt_" + binning.dataPeriod + ".root",binning.ptjetBinEdges_detector[iJetBin],binning.ptjetBinEdges_detector[iJetBin+1]),"read");
         if (!fJetRange || fJetRange->IsZombie()) {
             std::cerr << "Error opening file " << Form("backSub_%0.f_to_%0.f_jetpt.root",binning.ptjetBinEdges_detector[iJetBin],binning.ptjetBinEdges_detector[iJetBin+1]) << std::endl;
             continue;
@@ -1164,11 +1906,17 @@ void create3DBackgroundSubtracted(const BinningStruct& binning) {
 
     h3D->Draw("colz");
 
-    TFile* fOutput = new TFile(Form("full_merged_ranges_back_sub.root"), "RECREATE");
+    TFile* fOutput = new TFile(Form("full_merged_ranges_back_sub_%s.root", binning.dataPeriod.Data()), "RECREATE");
     h3D->Write();
 
     // Storing images
-    TString imagePath = "../../Images/1-SignalTreatment/SideBand/";
+    TString sEmmaBins;
+    if (binning.useEmmaYeatsBins) {
+        sEmmaBins = "EmmaYeatsBins";
+    } else {
+        sEmmaBins = "";
+    }
+    TString imagePath = "../../Images/1-SignalTreatment/SideBand/" + sEmmaBins + "/" + binning.dataPeriod + "/";
     // Storing in a single pdf file
     h3D->Print(imagePath + Form("3d_deltaR_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
 
@@ -1184,30 +1932,54 @@ void BackgroundSubtraction() {
     time_t start, end;
     time(&start); // initial instant of program execution
 
-    // Opening
-    double jetptMin = 5.; // default = 5 GeV, for Emma's use 5 GeV
-    bool useEmmaYeatsBins = false;
-    double jetptMax = useEmmaYeatsBins ? 10. : 7.; // default = 7GeV, for Emma's use 10 GeV
+    // Opening binning file
+    double jetptMin, jetptMax;
     TFile* fBinning = new TFile(Form("../Reflections/binningInfo.root"),"read");
     if (!fBinning || fBinning->IsZombie()) {
         std::cerr << "Error: Unable to open the first ROOT binning info file." << std::endl;
     }
     // Load binning from reflections file
     BinningStruct binning = retrieveBinningFromFile(fBinning);
+    // Opening data file
+    TFile* fDist = new TFile("../../" + binning.inputDATA.second + "/AO2D_mergedDFs.root","read");
+    if (!fDist || fDist->IsZombie()) {
+        std::cerr << "Error: Unable to open the ROOT data file." << std::endl;
+    }
+    // Opening template file
+    jetptMin = binning.ptjetBinEdges_detector[0];
+    jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
+    TFile* fReflectionsMCFullRange = new TFile(Form("../Reflections/reflections_%.0f_to_%.0fGeV_" + binning.dataPeriod + ".root",jetptMin,jetptMax),"read");
+    if (!fReflectionsMCFullRange || fReflectionsMCFullRange->IsZombie()) {
+        std::cerr << "Error: Unable to open the ROOT reflections file." << std::endl;
+    }
+    FitModelType modelToUse = FitModelType::FullPowerLaw; // options: StandardSideBand, FullPowerLaw, FullPoly2, SignalReflectionsOnly, SignalOnly, ReflectionsOnly
+    // signal/side-band region parameters
+    double signalSigmas = 2; // default delta = 2
+    int startingBackSigma = 4; // default position = 4
+    int backgroundSigmas = 4; // default delta = 4
+    //BDTScanResult scanResult = optimizeBDTCuts(fDist, fReflectionsMCFullRange, binning, modelToUse, signalSigmas, startingBackSigma, backgroundSigmas);
     // binning.ptjetBinEdges_detector = {7., 10.}; // for quick tests
+
+    // Container to store results for each jet pT bin
+    JetPtContainerSideband jetPtContainer;
 
     for (size_t iJetPt = 0; iJetPt < binning.ptjetBinEdges_detector.size() - 1; iJetPt++) {
         // Apply side-band method to each pT,jet bin
         std::cout << "Processing pT,jet bin: " << binning.ptjetBinEdges_detector[iJetPt] << " to " << binning.ptjetBinEdges_detector[iJetPt+1] << " GeV/c" << std::endl;
         jetptMin = binning.ptjetBinEdges_detector[iJetPt];
         jetptMax = binning.ptjetBinEdges_detector[iJetPt+1];
-        JetPtIterator(jetptMin, jetptMax, binning);
+        JetPtIterator(fDist, jetPtContainer, jetptMin, jetptMax, binning, modelToUse, signalSigmas, startingBackSigma, backgroundSigmas);
+    }
+
+    // Fit widths as a function of jet pT for each pT,HF bin and store results in the container
+    if (!binning.useEmmaYeatsBins) {
+        widthsPerJetPtBin(jetPtContainer, binning);
     }
 
     // Compute the entire range too
     jetptMin = binning.ptjetBinEdges_detector[0];
     jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
-    JetPtIterator(jetptMin, jetptMax, binning);
+    JetPtIterator(fDist, jetPtContainer, jetptMin, jetptMax, binning, modelToUse, signalSigmas, startingBackSigma, backgroundSigmas);
 
     // Create 3D final histogram with pT,jet vs DeltaR vs pT,HF
     create3DBackgroundSubtracted(binning);
@@ -1218,6 +1990,9 @@ void BackgroundSubtraction() {
     cout << "Time taken by program is : " << fixed 
          << time_taken/60 << setprecision(5); 
     cout << " min " << endl;
+
+    std::time_t now = std::time(nullptr);
+    std::cout << "Finished at: " << std::ctime(&now);
 }
 
 int main() {

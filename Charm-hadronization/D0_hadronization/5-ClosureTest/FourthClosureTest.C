@@ -10,20 +10,12 @@
  * 
 **/
 
-#include "commonFunctions.h"
+#include "../commonUtilities.h"
 #include "sidebandClosure.h"
 #include "efficiencyClosure.h"
 #include "unfoldingClosure.h"
 
 using namespace std;
-
-std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
-    auto* vec = (TVectorD*)fInput->Get(pathInFile);
-    if (!vec) {
-        throw std::runtime_error(Form("Could not find TVectorD at '%s'", pathInFile));
-    }
-    return std::vector<double>(vec->GetMatrixArray(), vec->GetMatrixArray() + vec->GetNoElements());
-}
 
 std::pair<TH1D*, std::vector<TBox*>> createEmmasDistribution(TCanvas*& cEmmaRawPlot) {
     // Define bin edges
@@ -31,9 +23,7 @@ std::pair<TH1D*, std::vector<TBox*>> createEmmasDistribution(TCanvas*& cEmmaRawP
     double bins[nbins+1] = {0.0, 0.01, 0.03, 0.05, 0.12};
     
     // Create TH1D with the binning
-    TH1D* hDeltaR = new TH1D("hDeltaREmma", 
-                             "Emma's distribution;#DeltaR;#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}", 
-                             nbins, bins);
+    TH1D* hDeltaR = new TH1D("hDeltaREmma", "Emma's distribution;#DeltaR;#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}", nbins, bins);
     
     // Set bin values and statistical errors
     double values[nbins] = {16.6786, 14.4632, 13.0093, 3.49983};
@@ -48,7 +38,7 @@ std::pair<TH1D*, std::vector<TBox*>> createEmmasDistribution(TCanvas*& cEmmaRawP
     // Style the main histogram
     hDeltaR->SetLineColor(kRed);
     hDeltaR->SetMarkerColor(kRed);
-    hDeltaR->SetMarkerStyle(20);
+    //hDeltaR->SetMarkerStyle(20);
     hDeltaR->SetMarkerSize(1.0);
     hDeltaR->SetFillStyle(0);
     
@@ -131,9 +121,9 @@ TH1D* getMyDataDistribution(TFile* fMyData, const BinningStruct& binning) {
     TCanvas* cMyDataNormalization = new TCanvas("cMyDataNormalization", "My Data Normalization Check", 1800, 1000);
     cMyDataNormalization->SetGrid();
     cMyDataNormalization->Divide(2,2);
-    TH2D* hpTjet_vs_DeltaR = (TH2D*)fMyData->Get("Unfolded/hUnfoldedKinCor_iter8");
+    TH2D* hpTjet_vs_DeltaR = (TH2D*)fMyData->Get("Unfolded/hUnfoldedKinCor_iter4");
     if (!hpTjet_vs_DeltaR) {
-        throw std::runtime_error("Could not find TH2D 'Unfolded/hUnfoldedKinCor_iter8' in the provided file.");
+        throw std::runtime_error("Could not find TH2D 'Unfolded/hUnfoldedKinCor_iter4' in the provided file.");
     }
     // pT,D⁰ #in [5;20] GeV/c -> this is ensured since the beginning of the analysis on background subtraction
     
@@ -182,7 +172,7 @@ TH1D* getMyDataDistribution(TFile* fMyData, const BinningStruct& binning) {
     if (doTruncation) {
         // Create a new histogram with only the desired DeltaR range
         hDeltaR_final = new TH1D("hMyDeltaRDistribution_final_v1", 
-                                    "My Data Distribution;#DeltaR;#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}",
+                                    ";#DeltaR^{truth};#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}",
                                     deltaRBinEdges_truncated.size() - 1,deltaRBinEdges_truncated.data());
         
         // Copy the content and errors
@@ -194,7 +184,7 @@ TH1D* getMyDataDistribution(TFile* fMyData, const BinningStruct& binning) {
     } else {
         // If not truncating, just clone the original histogram and rename it
         hDeltaR_final = (TH1D*)hDeltaR->Clone("hMyDeltaRDistribution_final");
-        hDeltaR_final->SetTitle("My Data Distribution;#DeltaR;#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}");
+        hDeltaR_final->SetTitle(";#DeltaR^{truth};#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}");
     }
     
 
@@ -204,7 +194,7 @@ TH1D* getMyDataDistribution(TFile* fMyData, const BinningStruct& binning) {
     // Style the histogram
     hDeltaR_final->SetLineColor(kBlue);
     hDeltaR_final->SetMarkerColor(kBlue);
-    hDeltaR_final->SetMarkerStyle(21);
+    //hDeltaR_final->SetMarkerStyle(21);
     hDeltaR_final->SetMarkerSize(1.0);
     hDeltaR_final->SetFillStyle(0);
 
@@ -253,7 +243,7 @@ std::pair<std::vector<TH1D*>, std::vector<TBox*>> compareEmmasAndMine(TFile* fMy
     TCanvas* cCompare = new TCanvas("cCompare", "Comparison of #DeltaR Distributions", 1800, 1000);
     cCompare->cd();
     hEmmasDeltaR->SetTitle("Comparison of #DeltaR_{STD} Distributions;#DeltaR_{STD};#frac{1}{N_{jets}}#frac{dN}{d#DeltaR_{STD}}");
-    hDataDeltaR->GetYaxis()->SetRangeUser(0, 20); // Adjust range as needed
+    hDataDeltaR->GetYaxis()->SetRangeUser(0, 1.1 * std::max(hDataDeltaR->GetMaximum(), hEmmasDeltaR->GetMaximum())); // Adjust range as needed
     hDataDeltaR->Draw();
     hEmmasDeltaR->Draw("same");
     // hDataDeltaR->Draw("same");
@@ -267,7 +257,7 @@ std::pair<std::vector<TH1D*>, std::vector<TBox*>> compareEmmasAndMine(TFile* fMy
     legendCompare->SetFillStyle(0);
     // legendCompare->AddEntry(hEmmasDeltaR, "(Emma Yeats') Run 2, pp #rightarrow #sqrt{s} = 5.02 TeV", "lep");
     legendCompare->AddEntry(hEmmasDeltaR, "Run 2 (published), pp #rightarrow #sqrt{s} = 5.02 TeV", "lep");
-    legendCompare->AddEntry(hDataDeltaR, "Run 3, pp #rightarrow #sqrt{s} = 13 TeV", "lep");
+    legendCompare->AddEntry(hDataDeltaR, Form("Run 3 - %s, pp #rightarrow #sqrt{s} = 13.6 TeV", binning.dataPeriod.Data()), "lep");
     legendCompare->Draw();
 
     TLatex* latexCompare = new TLatex();
@@ -284,7 +274,7 @@ std::pair<std::vector<TH1D*>, std::vector<TBox*>> compareEmmasAndMine(TFile* fMy
     //
     // Storing images
     //
-    TString imagePath = "../Images/5-ClosureTest/Fourth/";
+    TString imagePath = "../Images/5-ClosureTest/Fourth/" + binning.dataPeriod + "/";
     cEmmaRawPlot->Print(imagePath + Form("closureTest4_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
     cCompare->Print(imagePath + Form("closureTest4_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
     std::vector<TH1D*> histogramsToSave = {hEmmasDeltaR, hDataDeltaR};
@@ -294,7 +284,7 @@ std::pair<std::vector<TH1D*>, std::vector<TBox*>> compareEmmasAndMine(TFile* fMy
 
 }
 // Compare data final distribution to Emma Yeats' reported distribution
-void FourthClosureTest(){
+void FourthClosureTest() {
     // Execution time calculation
     time_t start, end;
     time(&start); // initial instant of program execution
@@ -308,12 +298,14 @@ void FourthClosureTest(){
     BinningStruct binning = retrieveBinningFromFile(fBinning);
     double jetptMin = binning.ptjetBinEdges_detector[0];
     double jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
-
+    binning.dataPeriod = "2022";
     // Opening files
-    TFile* fMyData = new TFile(Form("../4-Unfolding/unfolding_%.0f_to_%.0f_jetpt.root", jetptMin, jetptMax), "read");
+    TFile* fMyData = new TFile(Form("../4-Unfolding/EmmaYeatsBins/unfolding_%.0f_to_%.0f_jetpt_" + binning.dataPeriod + ".root", jetptMin, jetptMax), "read");
     if (!fMyData || fMyData->IsZombie()) {
         std::cerr << "Error: Unable to open unfolded data ROOT file." << std::endl;
     }
+    // First call to get the corresponding data period, second call to fetch the binning with Emma's binning
+    binning = retrieveBinningFromFile(fMyData);
 
     // Compare Emma Yeats' reported DeltaR distribution to my unfolded data distribution
     std::pair<std::vector<TH1D*>, std::vector<TBox*>> emmaAndMine = compareEmmasAndMine(fMyData, jetptMin, jetptMax, binning);
@@ -321,7 +313,7 @@ void FourthClosureTest(){
     TH1D* hMyDeltaR = emmaAndMine.first[1];
     std::vector<TBox*> systematicBands = emmaAndMine.second;
 
-    TFile* fOutput = new TFile(Form("FourthClosureTestResults_%.0f_to_%.0fGeV_jetpt.root",jetptMin,jetptMax), "RECREATE");
+    TFile* fOutput = new TFile(Form("FourthClosureTestResults_%.0f_to_%.0fGeV_jetpt_" + binning.dataPeriod + ".root",jetptMin,jetptMax), "RECREATE");
     fOutput->cd();
     hEmmasDeltaR->Write();
     hMyDeltaR->Write();
@@ -344,7 +336,8 @@ void FourthClosureTest(){
          << time_taken/60 << setprecision(5); 
     cout << " min " << endl; 
 
-    
+    std::time_t now = std::time(nullptr);
+    std::cout << "Finished at: " << std::ctime(&now);
 }
 
 int main(){

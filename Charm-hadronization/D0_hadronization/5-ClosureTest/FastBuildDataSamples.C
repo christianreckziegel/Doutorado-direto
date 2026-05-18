@@ -1,7 +1,20 @@
+#include "../commonUtilities.h"
 
 void BuildMatchedData() {
+    
+    // Binning file
+    TFile* fBinning = new TFile(Form("../1-SignalTreatment/BDTOptimization/binningInfo_2023.root"),"read");
+    if (!fBinning || fBinning->IsZombie()) {
+        std::cerr << "Error: Unable to open the first ROOT binning info file." << std::endl;
+    }
+    // Load binning from reflections file
+    BinningStruct binning = retrieveBinningFromFile(fBinning);
+
     //
-    TFile* inFile = TFile::Open("../Data/MonteCarlo/Train_645447/AO2D_mergedDFs.root", "READ");
+    //TFile* inFile = TFile::Open("../" + binning.inputMC.second + "/AO2D_mergedDFs.root", "READ");
+    // 2022 MC anchored data -> Train_669231
+    // 2023 MC anchored data -> Train_671273
+    TFile* inFile = TFile::Open("../Data/MonteCarlo/Train_671273/AO2D_mergedDFs.root", "READ");
     TTree* originalTree = (TTree*)inFile->Get("DF_merged/O2matchtable");
     if (!originalTree) {
         std::cout << "Error: Couldn't find tree!\n";
@@ -9,7 +22,7 @@ void BuildMatchedData() {
     }
 
     // Create output file FIRST
-    TFile* outFile = new TFile("mc_closure_input_data.root", "RECREATE");
+    TFile* outFile = new TFile("mc_closure_input_data_2023.root", "RECREATE");
     outFile->cd();
 
     // Clone original structure to disk-bound tree
@@ -36,6 +49,8 @@ void BuildMatchedData() {
     // Create filtered trees
     TTree* inputTree = workingTree->CopyTree("SplitGroup==0");
     TTree* correctionTree = workingTree->CopyTree("SplitGroup==1");
+    std::cout << "New iput tree:" << std::endl;
+    inputTree->Print();
 
     inputTree->Write("InputTree");
     correctionTree->Write("CorrectionTree");
@@ -43,7 +58,7 @@ void BuildMatchedData() {
     outFile->Close();
     inFile->Close();
 
-    std::cout << "\nFast tree split done with disk-backed tree.\n";
+    std::cout << "\nFast tree split done with disk-backed tree. Data stored to file" << outFile->GetName() << std::endl;
 }
 
 
