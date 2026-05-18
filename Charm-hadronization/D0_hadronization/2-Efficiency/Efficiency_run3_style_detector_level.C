@@ -297,16 +297,16 @@ void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dat
 
         // 2 --- Response matrix: fill histograms considering jet pT and detector acceptance (response range)
         if (MCDhfmatch && isRealD0) {
-            if (genLevelRange && recoLevelRange) {
+            if (genLevelRange && recoLevelRange && passBDTcut) {
 
                 // fill 2D yields histograms
                 if (MCPhfprompt) {
 
                     // Get efficiency estimate to weight the response matrix
-                    hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_run2style_prompt");
+                    //hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_run2style_prompt"); // efficiency_prompt_run3style_particleLevel
                     // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
-                    int bin = hEffWeight->FindBin(MCDhfPt);
-                    double estimatedEfficiency = hEffWeight->GetBinContent(bin);
+                    int bin = dataContainer.hEfficiency_prompt_part_run3style->FindBin(MCDhfPt);
+                    double estimatedEfficiency = dataContainer.hEfficiency_prompt_part_run3style->GetBinContent(bin);
                     if (estimatedEfficiency == 0) {
                         std::cout << "Warning: Prompt efficiency is zero for pT,HF = " << MCDhfPt << " GeV/c with bin " << bin << " of efficiency_prompt run 2 histogram. Setting it to 1. How to properly deal with these entries?" << std::endl;
                         estimatedEfficiency = 1; // Avoid division by zero
@@ -319,10 +319,10 @@ void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dat
                 } else{
 
                     // Get efficiency estimate to weight the response matrix
-                    hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_run2style_nonprompt");
+                    //hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_run2style_nonprompt");
                     // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
-                    int bin = hEffWeight->FindBin(MCDhfPt);
-                    double estimatedEfficiency = hEffWeight->GetBinContent(bin);
+                    int bin = dataContainer.hEfficiency_nonprompt_part_run3style->FindBin(MCDhfPt);
+                    double estimatedEfficiency = dataContainer.hEfficiency_nonprompt_part_run3style->GetBinContent(bin);
                     if (estimatedEfficiency == 0) {
                         //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
                         estimatedEfficiency = 1; // Avoid division by zero
@@ -339,7 +339,7 @@ void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dat
         // 3 --- Kinematic efficiencies
         if (MCDhfmatch && isRealD0) {
             // Particle level kinematic efficiency
-            if (genLevelRange) {
+            if (genLevelRange && passBDTcut) {
                 // prompt D0s
                 if (MCPhfprompt) {
                     // fill prompt 2D yield: total particle range (denominator)
@@ -359,7 +359,7 @@ void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dat
             }
 
             // Detector level kinematic efficiency
-            if (recoLevelRange) {
+            if (recoLevelRange && passBDTcut) {
                 if (MCPhfprompt) {
                     // fill prompt 2D yield: total detector range
                     dataContainer.hKEffRecoTotalDetector.first->Fill(MCDjetPt, MCDhfPt);

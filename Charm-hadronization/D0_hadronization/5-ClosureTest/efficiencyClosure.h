@@ -20,18 +20,28 @@ struct EfficiencyData {
     TH3D* hSelEff_run2style3d;
     std::vector<TH1D*> hSelEff_run2style_per_jetpt;
     std::vector<TH1D*> hSelEff_run2style_per_deltaR;
+
+    //
+    // Run 3 particle level selection efficiency
+    //
+    TH1D* hDenominator_prompt_part_run3style;
+    TH1D* hNumerator_prompt_part_run3style;
+    TH1D* hEfficiency_prompt_part_run3style;                    // prompt D0 selection efficiency histogram
+    TH1D* hDenominator_nonprompt_part_run3style;
+    TH1D* hNumerator_nonprompt_part_run3style;
+    TH1D* hEfficiency_nonprompt_part_run3style;                 // non-prompt D0 selection efficiency histogram
     
     //
-    // Run 3 style efficiency
+    // Run 3 style detector level selection efficiency
     //
     
     // Yield 2D histograms: pT,jet vs pT,D: first = prompt D0 data distribution, second = non-prompt D0 distribution
-    std::pair<TH2D*, TH2D*> hYieldTruth; // all particle level entries (denominator): will be kinematically corrected and folded
-    std::pair<TH2D*, TH2D*> hYieldMeasured; // detector level entries (numerator): went over smearing effects and passed the selection cuts
+    std::pair<TH2D*, TH2D*> hYieldTruth;                        // all particle level entries (denominator): will be kinematically corrected and folded
+    std::pair<TH2D*, TH2D*> hYieldMeasured;                     // detector level entries (numerator): went over smearing effects and passed the selection cuts
 
     // Response matrices
-    std::pair<RooUnfoldResponse, RooUnfoldResponse> response; // first = prompt D0s, second = non-prompt D0s
-    std::pair<std::vector<TH2D*>, std::vector<TH2D*>> responseProjections; // response projections matrix: first = prompt D^{0}, second = non-prompt D^{0}
+    std::pair<RooUnfoldResponse, RooUnfoldResponse> response;               // first = prompt D0s, second = non-prompt D0s
+    std::pair<std::vector<TH2D*>, std::vector<TH2D*>> responseProjections;  // response projections matrix: first = prompt D^{0}, second = non-prompt D^{0}
 
     //
     // Kinematic efficiency histograms: first = prompt D0s, second = non-prompt D0s
@@ -104,6 +114,30 @@ EfficiencyData run2StyleEfficiency(TFile* fClosureInput, const BinningStruct& bi
     histStruct.hMcdPt_vs_ptJet_vs_deltaR = new TH3D("hMcdPt_vs_ptJet_vs_deltaR", "Run 2 style prompt 3D efficiency;#it{p}_{T,D}^{reco};#it{p}_{T,jet}^{reco};#DeltaR^{reco}",binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data(), binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data());
     histStruct.hMcdPt_vs_ptJet_vs_deltaR->Sumw2();
     histStruct.hMcdPt_vs_ptJet_vs_deltaR->SetStats(0);
+
+    // Run 3 style particle level prompt selection efficiency histograms
+    histStruct.hDenominator_prompt_part_run3style = new TH1D("mcp_pt_prompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    histStruct.hDenominator_prompt_part_run3style->SetMarkerStyle(kOpenCircle);
+    histStruct.hDenominator_prompt_part_run3style->Sumw2();
+    histStruct.hDenominator_prompt_part_run3style->SetStats(0);
+    histStruct.hNumerator_prompt_part_run3style = new TH1D("mcd_pt_prompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    histStruct.hNumerator_prompt_part_run3style->SetMarkerStyle(kOpenCircle);
+    histStruct.hNumerator_prompt_part_run3style->SetMarkerColor(kBlue);
+    histStruct.hNumerator_prompt_part_run3style->SetLineColor(kBlue);
+    histStruct.hNumerator_prompt_part_run3style->Sumw2();
+    histStruct.hNumerator_prompt_part_run3style->SetStats(0);
+
+    // Run 3 style particle level non-prompt selection efficiency histograms
+    histStruct.hDenominator_nonprompt_part_run3style = new TH1D("mcp_pt_nonprompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    histStruct.hDenominator_nonprompt_part_run3style->SetMarkerStyle(kOpenCircle);
+    histStruct.hDenominator_nonprompt_part_run3style->Sumw2();
+    histStruct.hDenominator_nonprompt_part_run3style->SetStats(0);
+    histStruct.hNumerator_nonprompt_part_run3style = new TH1D("mcd_pt_nonprompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    histStruct.hNumerator_nonprompt_part_run3style->SetMarkerStyle(kOpenCircle);
+    histStruct.hNumerator_nonprompt_part_run3style->SetMarkerColor(kRed);
+    histStruct.hNumerator_nonprompt_part_run3style->SetLineColor(kRed);
+    histStruct.hNumerator_nonprompt_part_run3style->Sumw2();
+    histStruct.hNumerator_nonprompt_part_run3style->SetStats(0);
 
     // 2 ------ Fill histograms from TFile data
     const double jetRadius = 0.4;
@@ -203,8 +237,12 @@ EfficiencyData run2StyleEfficiency(TFile* fClosureInput, const BinningStruct& bi
                 if (MCPhfprompt) {
                     histStruct.hMcpPt[1]->Fill(MCPhfPt);// fill prompt efficiency histogram
                     histStruct.hMcpPt_vs_ptJet_vs_deltaR->Fill(MCPhfPt, MCPjetPt, MCPdeltaR);
+                    // Run 3 style prompt particle level efficiency histogram
+                    histStruct.hDenominator_prompt_part_run3style->Fill(MCPhfPt);
                 } else{
                     histStruct.hMcpPt[2]->Fill(MCPhfPt);// fill non-prompt efficiency histogram
+                    // Run 3 style non-prompt particle level efficiency histogram
+                    histStruct.hDenominator_nonprompt_part_run3style->Fill(MCPhfPt);
                 }
                 // Fill detector level entry
                 if (recoLevelRange && passBDTcut) {
@@ -214,9 +252,13 @@ EfficiencyData run2StyleEfficiency(TFile* fClosureInput, const BinningStruct& bi
                     if (MCDhfprompt) {
                         histStruct.hMcdPt[1]->Fill(MCDhfPt);
                         histStruct.hMcdPt_vs_ptJet_vs_deltaR->Fill(MCDhfPt, MCDjetPt, MCDdeltaR);
+                        // Run 3 style prompt particle level efficiency histogram
+                        histStruct.hNumerator_prompt_part_run3style->Fill(MCPhfPt);
                     } else{
                         // fill non-prompt efficiency histogram
                         histStruct.hMcdPt[2]->Fill(MCDhfPt);
+                        // Run 3 style non-prompt particle level efficiency histogram
+                        histStruct.hNumerator_nonprompt_part_run3style->Fill(MCPhfPt);
                     }
                 } else if (recoLevelRange && !passBDTcut) {
                     // histStruct.hBDTBackgroundScore->Fill(MCDhfMlScore0);
@@ -226,8 +268,12 @@ EfficiencyData run2StyleEfficiency(TFile* fClosureInput, const BinningStruct& bi
                 if (MCPhfprompt) {
                     histStruct.hMcpPt[1]->Fill(MCPhfPt);// fill prompt efficiency histogram
                     histStruct.hMcpPt_vs_ptJet_vs_deltaR->Fill(MCPhfPt, MCPjetPt, MCPdeltaR);
+                    // Run 3 style prompt particle level efficiency histogram
+                    histStruct.hDenominator_prompt_part_run3style->Fill(MCPhfPt);
                 } else{
                     histStruct.hMcpPt[2]->Fill(MCPhfPt);// fill non-prompt efficiency histogram
+                    // Run 3 style non-prompt particle level efficiency histogram
+                    histStruct.hDenominator_nonprompt_part_run3style->Fill(MCPhfPt);
                 }
             }   
         }
@@ -287,6 +333,14 @@ EfficiencyData run2StyleEfficiency(TFile* fClosureInput, const BinningStruct& bi
         histStruct.hSelEff_run2style_per_deltaR.emplace_back((TH1D*)hMcdPt1d->Clone(Form("hRun2style_per_deltaR_%d",bin)));
         histStruct.hSelEff_run2style_per_deltaR.back()->Divide(hMcpPt1d);
     }
+
+    // Run 3 style particle level prompt selection efficiency calculation
+    histStruct.hEfficiency_prompt_part_run3style = static_cast<TH1D*>(histStruct.hNumerator_prompt_part_run3style->Clone("efficiency_prompt_run3style_particleLevel"));
+    histStruct.hEfficiency_prompt_part_run3style->Divide(histStruct.hDenominator_prompt_part_run3style);
+
+    // Run 3 style non-prompt particle level selection efficiency calculation
+    histStruct.hEfficiency_nonprompt_part_run3style = static_cast<TH1D*>(histStruct.hNumerator_nonprompt_part_run3style->Clone("efficiency_nonprompt_run3style_particleLevel"));
+    histStruct.hEfficiency_nonprompt_part_run3style->Divide(histStruct.hDenominator_nonprompt_part_run3style);
 
     return histStruct;
 }
@@ -465,21 +519,21 @@ void foldingObjects(TFile* fClosureInput, EfficiencyData& histStruct, const Binn
                 } else{
                     histStruct.hYieldTruth.second->Fill(MCPjetPt, MCPhfPt); // non-prompt particle level denonimator
                 }
-            }   
+            }
         }
 
         // 2 --- Response matrix: fill histograms considering jet pT and detector acceptance (response range)
         if (MCDhfmatch && isRealD0) {
-            if (genLevelRange && recoLevelRange) {
+            if (genLevelRange && recoLevelRange && passBDTcut) {
 
                 // fill 2D yields histograms
                 if (MCPhfprompt) {
 
                     // Get efficiency estimate to weight the response matrix
-                    hEffWeight = histStruct.hSelEff_run2style[1];
+                    //hEffWeight = histStruct.hSelEff_run2style[1];
                     // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
-                    int bin = hEffWeight->FindBin(MCDhfPt);
-                    double estimatedEfficiency = hEffWeight->GetBinContent(bin);
+                    int bin = histStruct.hEfficiency_prompt_part_run3style->FindBin(MCDhfPt);
+                    double estimatedEfficiency = histStruct.hEfficiency_prompt_part_run3style->GetBinContent(bin);
                     if (estimatedEfficiency == 0) {
                         std::cout << "Warning: Prompt efficiency is zero for pT,HF = " << MCDhfPt << " GeV/c with bin " << bin << " of efficiency_prompt run 2 histogram. Setting it to 1. How to properly deal with these entries?" << std::endl;
                         estimatedEfficiency = 1; // Avoid division by zero
@@ -492,10 +546,10 @@ void foldingObjects(TFile* fClosureInput, EfficiencyData& histStruct, const Binn
                 } else{
 
                     // Get efficiency estimate to weight the response matrix
-                    hEffWeight = histStruct.hSelEff_run2style[2];
+                    //hEffWeight = histStruct.hSelEff_run2style[2];
                     // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
-                    int bin = hEffWeight->FindBin(MCDhfPt);
-                    double estimatedEfficiency = hEffWeight->GetBinContent(bin);
+                    int bin = histStruct.hEfficiency_nonprompt_part_run3style->FindBin(MCDhfPt);
+                    double estimatedEfficiency = histStruct.hEfficiency_nonprompt_part_run3style->GetBinContent(bin);
                     if (estimatedEfficiency == 0) {
                         //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
                         estimatedEfficiency = 1; // Avoid division by zero
@@ -512,7 +566,7 @@ void foldingObjects(TFile* fClosureInput, EfficiencyData& histStruct, const Binn
         // 3 --- Kinematic efficiencies
         if (MCDhfmatch && isRealD0) {
             // Particle level kinematic efficiency
-            if (genLevelRange) {
+            if (genLevelRange && passBDTcut) {
                 // prompt D0s
                 if (MCPhfprompt) {
                     // fill prompt 2D yield: total particle range (denominator)
@@ -532,7 +586,7 @@ void foldingObjects(TFile* fClosureInput, EfficiencyData& histStruct, const Binn
             }
 
             // Detector level kinematic efficiency
-            if (recoLevelRange) {
+            if (recoLevelRange && passBDTcut) {
                 if (MCPhfprompt) {
                     // fill prompt 2D yield: total detector range
                     histStruct.hKEffRecoTotalDetector.first->Fill(MCDjetPt, MCDhfPt);
