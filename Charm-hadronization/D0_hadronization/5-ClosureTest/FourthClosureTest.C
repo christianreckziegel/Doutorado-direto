@@ -128,21 +128,9 @@ TH1D* getMyDataDistribution(TFile* fMyData, const BinningStruct& binning) {
     // pT,D⁰ #in [5;20] GeV/c -> this is ensured since the beginning of the analysis on background subtraction
     
     // pT,jet #in [10;20] GeV/c
-    int ptjetBinMin = 1 + 1; // 10 GeV/c on 2nd bin
-    int ptjetBinMax = hpTjet_vs_DeltaR->GetNbinsX() - 1; // inclusive upper edge, 20 GeV/c is the upper edge of the last bin, so we take the previous bin as max
-    std::cout << "(ptjetBinMin,ptjetBinMax) = (" << ptjetBinMin << "," << ptjetBinMax << ")" << std::endl;
-    std::cout << "hpTjet_vs_DeltaR->GetNbinsY() = " << hpTjet_vs_DeltaR->GetNbinsY() << std::endl;
-
-    // loop through x bins to find the one corresponding to 10 GeV/c and 20 GeV/c, and print the bin edges for verification
-    for (size_t iXbin = 0; iXbin < hpTjet_vs_DeltaR->GetNbinsX(); iXbin++) {
-        double binLowEdge = hpTjet_vs_DeltaR->GetXaxis()->GetBinLowEdge(iXbin + 1);
-        double binUpEdge = hpTjet_vs_DeltaR->GetXaxis()->GetBinUpEdge(iXbin + 1);
-        std::cout << "X bin " << iXbin + 1 << "\t[binLowEdge,binUpEdge]: [" << binLowEdge << ";" << binUpEdge << "] GeV/c" << std::endl;
-        if (binLowEdge >= 10 && binUpEdge <= 20) {
-            std::cout << "Selected pT,jet bin " << iXbin + 1 << ": [" << binLowEdge << ";" << binUpEdge << "] GeV/c" << std::endl;
-        }
-    }
     
+    ptjetBinMin = hpTjet_vs_DeltaR->GetXaxis()->FindBin(10.0); // Find the bin corresponding to 10 GeV/c
+    ptjetBinMax = hpTjet_vs_DeltaR->GetXaxis()->FindBin(20.0) - 1; // Find the bin corresponding to 20 GeV/c and take the previous bin as max to be inclusive of the upper edge
     std::cout << "X bins of 2D histogram: " << hpTjet_vs_DeltaR->GetNbinsX() << std::endl;
     std::cout << "Selected pT,jet bin range: [" << hpTjet_vs_DeltaR->GetXaxis()->GetBinLowEdge(ptjetBinMin) << ";" << hpTjet_vs_DeltaR->GetXaxis()->GetBinUpEdge(ptjetBinMax) << "] GeV/c" << std::endl;
     // std::cout << "Y bins of 2D histogram: " << hpTjet_vs_DeltaR->GetNbinsY() << std::endl;
@@ -171,9 +159,7 @@ TH1D* getMyDataDistribution(TFile* fMyData, const BinningStruct& binning) {
     TH1D* hDeltaR_final;
     if (doTruncation) {
         // Create a new histogram with only the desired DeltaR range
-        hDeltaR_final = new TH1D("hMyDeltaRDistribution_final_v1", 
-                                    ";#DeltaR^{truth};#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}",
-                                    deltaRBinEdges_truncated.size() - 1,deltaRBinEdges_truncated.data());
+        hDeltaR_final = new TH1D("hMyDeltaRDistribution_final_v1", ";#DeltaR^{truth};#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}", deltaRBinEdges_truncated.size() - 1,deltaRBinEdges_truncated.data());
         
         // Copy the content and errors
         for (int i = 1; i <= hDeltaR_final->GetNbinsX(); i++) {
@@ -230,6 +216,134 @@ TH1D* getMyDataDistribution(TFile* fMyData, const BinningStruct& binning) {
     return hDeltaR_final_v3;
 }
 
+TH1D* createPythiaDistribution(TFile* fSimulatedMCMatched, const BinningStruct& binning) {
+    // Create histogram with Emma's binning
+    TH1D* hMyDeltaRPythia = new TH1D("hMyDeltaRPythia", "Pythia distribution;#DeltaR;#frac{1}{N_{jets}}#frac{dN}{d#DeltaR}", binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data());
+
+    // Defining cuts
+    const double jetRadius = 0.4;
+    const double MCPetaCut = 0.9 - jetRadius; // on particle level jet
+    const double MCDetaCut = 0.9 - jetRadius; // on detector level jet
+    const double MCPyCut = 0.8; // on particle level HF
+    const double MCDyCut = 0.8; // on detector level HF
+    const double MCPDeltaRcut = binning.deltaRBinEdges_particle[binning.deltaRBinEdges_particle.size() - 1]; // on particle level delta R
+    const double MCDDeltaRcut = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1]; // on detector level delta R
+    const double MCPHfPtMincut = 5.; // binning.ptHFBinEdges_particle[0]; // on particle level HF
+    const double MCDHfPtMincut = 5.; // binning.ptHFBinEdges_detector[0]; // on detector level HF
+    const double MCPHfPtMaxcut = 20.; // binning.ptHFBinEdges_particle[binning.ptHFBinEdges_particle.size() - 1]; // on particle level HF
+    const double MCDHfPtMaxcut = 20.; // binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1]; // on detector level HF
+    const double jetptMin = 10.; // binning.ptjetBinEdges_particle[0];
+    const double jetptMax = 20.; // binning.ptjetBinEdges_particle[binning.ptjetBinEdges_particle.size() - 1];
+
+    // Get TTree
+    TTree* tree = (TTree*)fSimulatedMCMatched->Get("DF_merged/O2matchtable");
+    // Check for correct access
+    if (!tree) {
+        cout << "Error opening O2 matching tree.\n";
+    }
+
+    // Fill histogram
+    // defining variables for accessing particle level data on TTree
+    float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
+    float MCPhfPt, MCPhfEta, MCPhfPhi, MCPhfMass, MCPhfY;
+    bool MCPhfprompt;
+    int MCPjetNConst;
+    // defining variables for accessing detector level data on TTree
+    float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
+    float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
+    bool MCDhfprompt;
+    int MCDhfMatchedFrom, MCDhfSelectedAs;
+    int MCDjetNConst;
+    // defining ML score variables for accessing the TTree
+    float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
+
+    // particle level branches
+    tree->SetBranchAddress("fMcJetHfDist",&MCPaxisDistance);
+    tree->SetBranchAddress("fMcJetPt",&MCPjetPt);
+    tree->SetBranchAddress("fMcJetEta",&MCPjetEta);
+    tree->SetBranchAddress("fMcJetPhi",&MCPjetPhi);
+    tree->SetBranchAddress("fMcJetNConst",&MCPjetNConst);
+    tree->SetBranchAddress("fMcHfPt",&MCPhfPt);
+    tree->SetBranchAddress("fMcHfEta",&MCPhfEta);
+    tree->SetBranchAddress("fMcHfPhi",&MCPhfPhi);
+    MCPhfMass = 1.86483; // D0 rest mass in GeV/c^2
+    tree->SetBranchAddress("fMcHfY",&MCPhfY);
+    tree->SetBranchAddress("fMcHfPrompt",&MCPhfprompt);
+    // detector level branches
+    tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance);
+    tree->SetBranchAddress("fJetPt",&MCDjetPt);
+    tree->SetBranchAddress("fJetEta",&MCDjetEta);
+    tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
+    tree->SetBranchAddress("fJetNConst",&MCDjetNConst);
+    tree->SetBranchAddress("fHfPt",&MCDhfPt);
+    tree->SetBranchAddress("fHfEta",&MCDhfEta);
+    tree->SetBranchAddress("fHfPhi",&MCDhfPhi);
+    tree->SetBranchAddress("fHfMass",&MCDhfMass);
+    tree->SetBranchAddress("fHfY",&MCDhfY);
+    tree->SetBranchAddress("fHfPrompt",&MCDhfprompt);
+    tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
+    tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
+    tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
+
+    int nEntries = tree->GetEntries();
+    for (int entry = 0; entry < nEntries; ++entry) {
+        tree->GetEntry(entry);
+
+        // Generator level selection cuts
+        double MCPDeltaR = MCPaxisDistance;
+        bool genJetPtRange = (MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax);
+        bool genHfPtRange = ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut));
+        bool genDeltaRRange = ((MCPaxisDistance >= binning.deltaRBinEdges_particle[0]) && (MCPaxisDistance < MCPDeltaRcut));
+        bool genAcceptance = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut);
+        bool genLevelRange = genAcceptance && genJetPtRange && genDeltaRRange && genHfPtRange; // --> this is new!
+        // Reconstruction level selection cuts
+        double MCDDeltaR = MCDaxisDistance;
+        double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
+        bool passBDTcut = (MCDhfMlScore0 < maxBkgProb);
+        bool recoJetPtRange = (MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax);
+        bool recoHfPtRange = ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut));
+        bool recoDeltaRRange = ((MCDaxisDistance >= binning.deltaRBinEdges_detector[0]) && (MCDaxisDistance < MCDDeltaRcut));
+        bool recoAcceptance = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut);
+        bool recoLevelRange = recoAcceptance && recoJetPtRange && recoHfPtRange && recoDeltaRRange;
+
+        // Apply non-prompt selection (i.e., only B → D0)
+        //bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
+        bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
+        bool isRealD0 = isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs); // can't be reflection
+
+        // Fill with particle level, real (non-reflections) prompt D0s (regardless of their reconstruction level matching) that are within the defined cuts
+        if (MCPhfprompt && genLevelRange) {
+            // Matched entries can't be reflections
+            if (MCDhfmatch) {
+                if (isRealD0) {
+                    if (passEmmaCut(MCPjetPt, MCPhfPt)) {
+                        hMyDeltaRPythia->Fill(MCPDeltaR);
+                    }
+                }
+            } else {
+                if (passEmmaCut(MCPjetPt, MCPhfPt)) {
+                    hMyDeltaRPythia->Fill(MCPDeltaR);
+                }
+            }
+        }
+    }
+
+    // Normalize by bin width and number of jets
+    hMyDeltaRPythia->Scale(1.0 / hMyDeltaRPythia->Integral(), "width");
+
+    // Drawing style
+    hMyDeltaRPythia->SetLineColor(kBlue);
+    hMyDeltaRPythia->SetMarkerColor(kBlue);
+    hMyDeltaRPythia->SetLineStyle(kDashed);
+    //hMyDeltaRPythia->SetMarkerStyle(21);
+    hMyDeltaRPythia->SetMarkerSize(1.0);
+    hMyDeltaRPythia->SetFillStyle(0);
+
+    return hMyDeltaRPythia;
+}
+
 std::pair<std::vector<TH1D*>, std::vector<TBox*>> compareEmmasAndMine(TFile* fMyData, const double& jetptMin, const double& jetptMax, const BinningStruct& binning) {
     TCanvas* cEmmaRawPlot = nullptr;
     // Create Emma's ΔR-STD distribution histogram
@@ -240,11 +354,16 @@ std::pair<std::vector<TH1D*>, std::vector<TBox*>> compareEmmasAndMine(TFile* fMy
     // Fetch my unfolded ΔR distribution from data
     TH1D* hDataDeltaR = getMyDataDistribution(fMyData, binning);
 
+    // Create my pythia distribution
+    TFile* fSimulatedMCMatched = new TFile("../" + binning.inputMC.second + "/AO2D_mergedDFs.root","read");
+    TH1D* hMyDeltaRPythia = createPythiaDistribution(fSimulatedMCMatched, binning);
+
     TCanvas* cCompare = new TCanvas("cCompare", "Comparison of #DeltaR Distributions", 1800, 1000);
     cCompare->cd();
     hEmmasDeltaR->SetTitle("Comparison of #DeltaR_{STD} Distributions;#DeltaR_{STD};#frac{1}{N_{jets}}#frac{dN}{d#DeltaR_{STD}}");
     hDataDeltaR->GetYaxis()->SetRangeUser(0, 1.1 * std::max(hDataDeltaR->GetMaximum(), hEmmasDeltaR->GetMaximum())); // Adjust range as needed
     hDataDeltaR->Draw();
+    hMyDeltaRPythia->Draw("same");
     hEmmasDeltaR->Draw("same");
     // hDataDeltaR->Draw("same");
     // Draw systematic boxes first (so they are in the background)
@@ -258,6 +377,7 @@ std::pair<std::vector<TH1D*>, std::vector<TBox*>> compareEmmasAndMine(TFile* fMy
     // legendCompare->AddEntry(hEmmasDeltaR, "(Emma Yeats') Run 2, pp #rightarrow #sqrt{s} = 5.02 TeV", "lep");
     legendCompare->AddEntry(hEmmasDeltaR, "Run 2 (published), pp #rightarrow #sqrt{s} = 5.02 TeV", "lep");
     legendCompare->AddEntry(hDataDeltaR, Form("Run 3 - %s, pp #rightarrow #sqrt{s} = 13.6 TeV", binning.dataPeriod.Data()), "lep");
+    legendCompare->AddEntry(hMyDeltaRPythia, Form("Anchored MC - %s, pp #rightarrow #sqrt{s} = 13.6 TeV", binning.dataPeriod.Data()), "lep");
     legendCompare->Draw();
 
     TLatex* latexCompare = new TLatex();
@@ -298,7 +418,7 @@ void FourthClosureTest() {
     BinningStruct binning = retrieveBinningFromFile(fBinning);
     double jetptMin = binning.ptjetBinEdges_detector[0];
     double jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
-    binning.dataPeriod = "2022";
+    binning.dataPeriod = "2023";
     // Opening files
     TFile* fMyData = new TFile(Form("../4-Unfolding/EmmaYeatsBins/unfolding_%.0f_to_%.0f_jetpt_" + binning.dataPeriod + ".root", jetptMin, jetptMax), "read");
     if (!fMyData || fMyData->IsZombie()) {
