@@ -94,13 +94,13 @@ EfficiencyData run2StyleEfficiency(TFile* fClosureInput, const BinningStruct& bi
     // 1 ----- Create pT,D histograms for efficiency calculation (3 cases: inclusive = 0, prompt only = 1, non-prompt only = 2)
     int histCaseNum = 3;
     for (size_t i = 0; i < histCaseNum; ++i) {
-        histStruct.hMcpPt.push_back(new TH1D(Form("mcp_pt_%zu",i), ";#it{p}_{T,D}^{truth};dN^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data()));
+        histStruct.hMcpPt.push_back(new TH1D(Form("mcp_pt_%zu",i), ";#it{p}_{T,D}^{truth};dN^{truth}", binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data()));
         histStruct.hMcpPt[i]->SetMarkerColor(kBlack);
         histStruct.hMcpPt[i]->SetLineColor(kBlack);
         histStruct.hMcpPt[i]->SetMarkerStyle(kOpenCircle);
         histStruct.hMcpPt[i]->Sumw2();
         histStruct.hMcpPt[i]->SetStats(0);
-        histStruct.hMcdPt.push_back(new TH1D(Form("mcd_pt_%zu",i), ";#it{p}_{T,D}^{reco};dN^{reco}", binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data()));
+        histStruct.hMcdPt.push_back(new TH1D(Form("mcd_pt_%zu",i), ";#it{p}_{T,D}^{reco};dN^{reco}", binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data()));
         histStruct.hMcdPt[i]->SetMarkerColor(kBlue);
         histStruct.hMcdPt[i]->SetLineColor(kBlue);
         histStruct.hMcdPt[i]->SetMarkerStyle(kFullCircle);
@@ -108,19 +108,19 @@ EfficiencyData run2StyleEfficiency(TFile* fClosureInput, const BinningStruct& bi
         histStruct.hMcdPt[i]->SetStats(0);
     }
     // 3D run 2 style efficiency pT,HF vs DeltaR (check deltaR dependence)
-    histStruct.hMcpPt_vs_ptJet_vs_deltaR = new TH3D("hMcpPt_vs_ptJet_vs_deltaR", "Run 2 style prompt 3D efficiency;#it{p}_{T,D}^{truth};#it{p}_{T,jet}^{truth};#DeltaR^{truth}",binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data(), binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), binning.deltaRBinEdges_particle.size() - 1, binning.deltaRBinEdges_particle.data());
+    histStruct.hMcpPt_vs_ptJet_vs_deltaR = new TH3D("hMcpPt_vs_ptJet_vs_deltaR", "Run 2 style prompt 3D efficiency;#it{p}_{T,D}^{truth};#it{p}_{T,jet}^{truth};#DeltaR^{truth}",binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data(), binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), binning.deltaRBinEdges_particle.size() - 1, binning.deltaRBinEdges_particle.data());
     histStruct.hMcpPt_vs_ptJet_vs_deltaR->Sumw2();
     histStruct.hMcpPt_vs_ptJet_vs_deltaR->SetStats(0);
-    histStruct.hMcdPt_vs_ptJet_vs_deltaR = new TH3D("hMcdPt_vs_ptJet_vs_deltaR", "Run 2 style prompt 3D efficiency;#it{p}_{T,D}^{reco};#it{p}_{T,jet}^{reco};#DeltaR^{reco}",binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data(), binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data());
+    histStruct.hMcdPt_vs_ptJet_vs_deltaR = new TH3D("hMcdPt_vs_ptJet_vs_deltaR", "Run 2 style prompt 3D efficiency;#it{p}_{T,D}^{reco};#it{p}_{T,jet}^{reco};#DeltaR^{reco}",binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data(), binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data());
     histStruct.hMcdPt_vs_ptJet_vs_deltaR->Sumw2();
     histStruct.hMcdPt_vs_ptJet_vs_deltaR->SetStats(0);
 
     // Run 3 style particle level prompt selection efficiency histograms
-    histStruct.hDenominator_prompt_part_run3style = new TH1D("mcp_pt_prompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    histStruct.hDenominator_prompt_part_run3style = new TH1D("mcp_pt_prompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hDenominator_prompt_part_run3style->SetMarkerStyle(kOpenCircle);
     histStruct.hDenominator_prompt_part_run3style->Sumw2();
     histStruct.hDenominator_prompt_part_run3style->SetStats(0);
-    histStruct.hNumerator_prompt_part_run3style = new TH1D("mcd_pt_prompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    histStruct.hNumerator_prompt_part_run3style = new TH1D("mcd_pt_prompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hNumerator_prompt_part_run3style->SetMarkerStyle(kOpenCircle);
     histStruct.hNumerator_prompt_part_run3style->SetMarkerColor(kBlue);
     histStruct.hNumerator_prompt_part_run3style->SetLineColor(kBlue);
@@ -128,11 +128,11 @@ EfficiencyData run2StyleEfficiency(TFile* fClosureInput, const BinningStruct& bi
     histStruct.hNumerator_prompt_part_run3style->SetStats(0);
 
     // Run 3 style particle level non-prompt selection efficiency histograms
-    histStruct.hDenominator_nonprompt_part_run3style = new TH1D("mcp_pt_nonprompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    histStruct.hDenominator_nonprompt_part_run3style = new TH1D("mcp_pt_nonprompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hDenominator_nonprompt_part_run3style->SetMarkerStyle(kOpenCircle);
     histStruct.hDenominator_nonprompt_part_run3style->Sumw2();
     histStruct.hDenominator_nonprompt_part_run3style->SetStats(0);
-    histStruct.hNumerator_nonprompt_part_run3style = new TH1D("mcd_pt_nonprompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    histStruct.hNumerator_nonprompt_part_run3style = new TH1D("mcd_pt_nonprompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hNumerator_nonprompt_part_run3style->SetMarkerStyle(kOpenCircle);
     histStruct.hNumerator_nonprompt_part_run3style->SetMarkerColor(kRed);
     histStruct.hNumerator_nonprompt_part_run3style->SetLineColor(kRed);
@@ -149,10 +149,10 @@ EfficiencyData run2StyleEfficiency(TFile* fClosureInput, const BinningStruct& bi
     const double MCDDeltaRcut = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1]; // on detector level delta R
     const double jetptMin = binning.ptjetBinEdges_particle[0]; // on both levels jet
     const double jetptMax = binning.ptjetBinEdges_particle[binning.ptjetBinEdges_particle.size() - 1]; // on both levels jet
-    const double MCPHfPtMincut = binning.ptHFBinEdges_particle[0]; // on particle level D0
-    const double MCDHfPtMincut = binning.ptHFBinEdges_detector[0]; // on detector level D0
-    const double MCPHfPtMaxcut = binning.ptHFBinEdges_particle[binning.ptHFBinEdges_particle.size() - 1]; // on particle level D0
-    const double MCDHfPtMaxcut = binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1]; // on detector level D0
+    const double MCPHfPtMincut = binning.ptHFEfficiencyBinEdges_particle[0]; // on particle level D0
+    const double MCDHfPtMincut = binning.ptHFEfficiencyBinEdges_detector[0]; // on detector level D0
+    const double MCPHfPtMaxcut = binning.ptHFEfficiencyBinEdges_particle[binning.ptHFEfficiencyBinEdges_particle.size() - 1]; // on particle level D0
+    const double MCDHfPtMaxcut = binning.ptHFEfficiencyBinEdges_detector[binning.ptHFEfficiencyBinEdges_detector.size() - 1]; // on detector level D0
     
     // defining variables for accessing PARTICLE level data on TTree
     float MCPaxisDistance, MCPjetPt, MCPjetEta, MCPjetPhi;
@@ -350,54 +350,54 @@ void foldingObjects(TFile* fClosureInput, EfficiencyData& histStruct, const Binn
     // Create 2D histograms for prompt D0s: raw and folded
     histStruct.hYieldTruth.first = new TH2D("hYieldTruthPrompt", "Particle level data prompt yield distribution;#it{p}_{T, ch. jet}^{gen} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})", 
                                                 binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
-                                                binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+                                                binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hYieldTruth.first->Sumw2();
     histStruct.hYieldMeasured.first = new TH2D("hYieldMeasuredPrompt", "Detector level data prompt yield distribution;#it{p}_{T, ch. jet}^{det} (GeV/#it{c});#it{p}_{T, D^{0}}^{det} (GeV/#it{c})", 
                                                 binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
-                                                binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data());
+                                                binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data());
     // Create 2D histograms for non-prompt D0s: raw and folded
     histStruct.hYieldTruth.second = new TH2D("hYieldTruthNonPrompt", "Particle level data non-prompt yield distribution;#it{p}_{T, ch. jet}^{gen} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})", 
                                                 binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
-                                                binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+                                                binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hYieldTruth.second->Sumw2();
     histStruct.hYieldMeasured.second = new TH2D("hYieldMeasuredNonPrompt", "Detector level data non-prompt yield distribution;#it{p}_{T, ch. jet}^{det} (GeV/#it{c});#it{p}_{T, D^{0}}^{det} (GeV/#it{c})",
                                                 binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
-                                                binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data());
+                                                binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data());
 
     // Create RooUnfoldResponse objects for prompt and non-prompt D0s
     histStruct.response.first = RooUnfoldResponse(histStruct.hYieldMeasured.first, histStruct.hYieldTruth.first); // prompt D0s
     histStruct.response.second = RooUnfoldResponse(histStruct.hYieldMeasured.second, histStruct.hYieldTruth.second); // non-prompt D0s
     // Create projections of response matrix object for prompt and non-prompt D^{0}
     histStruct.responseProjections.first.push_back(new TH2D("responseProjectionsPtJetPrompt", "Prompt D^{0}'s reponse matrix #it{p}_{T, ch. jet} projection;#it{p}_{T, ch. jet}^{det} (GeV/#it{c});#it{p}_{T, ch. jet}^{gen} (GeV/#it{c})", binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data()));
-    histStruct.responseProjections.first.push_back(new TH2D("responseProjectionsPtHFPrompt", "Prompt D^{0}'s reponse matrix p_{T,D^{0}} projection;#it{p}_{T, D^{0}}^{det} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})", binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data(), binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data()));
+    histStruct.responseProjections.first.push_back(new TH2D("responseProjectionsPtHFPrompt", "Prompt D^{0}'s reponse matrix p_{T,D^{0}} projection;#it{p}_{T, D^{0}}^{det} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})", binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data(), binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data()));
     histStruct.responseProjections.second.push_back(new TH2D("responseProjectionsPtJetNonPrompt", "Non-prompt D^{0}'s reponse matrix #it{p}_{T, ch. jet} projection;#it{p}_{T, ch. jet}^{det} (GeV/#it{c});#it{p}_{T, ch. jet}^{gen} (GeV/#it{c})", binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data()));
-    histStruct.responseProjections.second.push_back(new TH2D("responseProjectionsPtHFNonPrompt", "Non-prompt D^{0}'s reponse matrix p_{T,D^{0}} projection;#it{p}_{T, D^{0}}^{det} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})", binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data(), binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data()));
+    histStruct.responseProjections.second.push_back(new TH2D("responseProjectionsPtHFNonPrompt", "Non-prompt D^{0}'s reponse matrix p_{T,D^{0}} projection;#it{p}_{T, D^{0}}^{det} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})", binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data(), binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data()));
     
     // Kinematic efficiency histograms
     histStruct.hKEffResponseParticle.first = new TH2D("hKEffResponseParticlePrompt", "Truth prompt D^{0}'s within response range;#it{p}_{T, ch. jet}^{gen} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})", 
                                                 binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
-                                                binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+                                                binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hKEffResponseParticle.second = new TH2D("hKEffResponseParticleNonPrompt", "Truth non-prompt D^{0}'s within response range;#it{p}_{T, ch. jet}^{gen} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})", 
                                                 binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
-                                                binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+                                                binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hKEffTruthTotalParticle.first = new TH2D("hKEffTruthTotalParticlePrompt", "Truth prompt D^{0}'s within total particle range;#it{p}_{T, ch. jet}^{gen} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})",
                                                 binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
-                                                binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+                                                binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hKEffTruthTotalParticle.second = new TH2D("hKEffTruthTotalParticleNonPrompt", "Truth non-prompt D^{0}'s within total particle range;#it{p}_{T, ch. jet}^{gen} (GeV/#it{c});#it{p}_{T, D^{0}}^{gen} (GeV/#it{c})",
                                                 binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
-                                                binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+                                                binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     histStruct.hKEffResponseDetector.first = new TH2D("hKEffResponseDetectorPrompt", "Reconstructed prompt D^{0}'s within response range;#it{p}_{T, ch. jet}^{reco};#it{p}_{T, D^{0}}^{reco}", 
             binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
-            binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data());
+            binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data());
     histStruct.hKEffResponseDetector.second = new TH2D("hKEffResponseDetectorNonPrompt", "Reconstructed non-prompt D^{0}'s within response range;#it{p}_{T, ch. jet}^{reco};#it{p}_{T, D^{0}}^{reco}", 
             binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
-            binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data());
+            binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data());
     histStruct.hKEffRecoTotalDetector.first = new TH2D("hKEffRecoTotalDetectorPrompt", "Reconstructed prompt D^{0}'s within total detector range;#it{p}_{T, ch. jet}^{reco};#it{p}_{T, D^{0}}^{reco}",
             binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
-            binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data());
+            binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data());
     histStruct.hKEffRecoTotalDetector.second = new TH2D("hKEffRecoTotalDetectorNonPrompt", "Reconstructed non-prompt D^{0}'s within total detector range;#it{p}_{T, ch. jet}^{reco};#it{p}_{T, D^{0}}^{reco}",
             binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
-            binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data());
+            binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data());
     
     // 2 ----- Fill histograms
     // Defining cuts
@@ -410,10 +410,10 @@ void foldingObjects(TFile* fClosureInput, EfficiencyData& histStruct, const Binn
     const double MCDDeltaRcut = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1]; // on detector level delta R
     const double jetptMin = binning.ptjetBinEdges_particle[0]; // on both levels jet
     const double jetptMax = binning.ptjetBinEdges_particle[binning.ptjetBinEdges_particle.size() - 1]; // on both levels jet
-    const double MCPHfPtMincut = binning.ptHFBinEdges_particle[0]; // on particle level D0
-    const double MCDHfPtMincut = binning.ptHFBinEdges_detector[0]; // on detector level D0
-    const double MCPHfPtMaxcut = binning.ptHFBinEdges_particle[binning.ptHFBinEdges_particle.size() - 1]; // on particle level D0
-    const double MCDHfPtMaxcut = binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1]; // on detector level D0
+    const double MCPHfPtMincut = binning.ptHFEfficiencyBinEdges_particle[0]; // on particle level D0
+    const double MCDHfPtMincut = binning.ptHFEfficiencyBinEdges_detector[0]; // on detector level D0
+    const double MCPHfPtMaxcut = binning.ptHFEfficiencyBinEdges_particle[binning.ptHFEfficiencyBinEdges_particle.size() - 1]; // on particle level D0
+    const double MCDHfPtMaxcut = binning.ptHFEfficiencyBinEdges_detector[binning.ptHFEfficiencyBinEdges_detector.size() - 1]; // on detector level D0
     TTree* tree = (TTree*)fClosureInput->Get("CorrectionTree");
     // Check for correct access
     if (!tree) {

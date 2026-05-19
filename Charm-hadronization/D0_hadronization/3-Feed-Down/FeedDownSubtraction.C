@@ -48,15 +48,18 @@ struct FeedDownData {
     TH2D* hFinalScaled2D = nullptr;
 
     // Metadata
-    double lumiData = 1; // luminosity of the data in 1/pb
-    double lumiMC = 1; // luminosity of the MC in 1/pb
-    const double branchingRatio = 0.03947; // D0 -> KPi decay channel branching ratio = (3.947 +- 0.04) %
+    double lumiData = 1;                                                    // luminosity of the data in 1/pb
+    double lumiMC = 1;                                                      // luminosity of the MC in 1/pb
+    const double branchingRatio = 0.03947;                                  // D0 -> KPi decay channel branching ratio = (3.947 +- 0.04) %
 
     // Total data distribution before feed-down subtraction, to be used for comparison with the final background subtracted distribution and for calculating the feed-down fraction
     TH2D* hTotalDataBeforeFeedDown = nullptr;
 
     // Step 9: remove non-prompt D0 contribution from data distribution
     TH2D* hBFedDownData;
+
+    // Bonus: MC non-prompt fraction estimation
+    std::pair<TH3D*, TH3D*> hMCPromptNonPrompt;                             // first = prompt D0s, second = non-prompt D0s
 };
 
 FeedDownData createHistograms(const BinningStruct& binning) {
@@ -68,7 +71,7 @@ FeedDownData createHistograms(const BinningStruct& binning) {
     //
     dataContainer.hPowheg = new TH3D("hPowheg", "POWHEG + PYTHIA;p_{T,jet}^{gen ch} (GeV/#it{c});#DeltaR^{gen};p_{T,D}^{gen}", binning.ptjetBinEdges_particle.size()-1, binning.ptjetBinEdges_particle.data(), 
                                                                                                                           binning.deltaRBinEdges_particle.size()-1, binning.deltaRBinEdges_particle.data(), 
-                                                                                                                          binning.ptHFBinEdges_particle.size()-1, binning.ptHFBinEdges_particle.data());
+                                                                                                                          binning.ptHFEfficiencyBinEdges_particle.size()-1, binning.ptHFEfficiencyBinEdges_particle.data());
     dataContainer.hPowheg->SetMarkerColor(30);
     dataContainer.hPowheg->SetLineColor(30); // 30 = pastel green
     dataContainer.hPowheg->SetMarkerStyle(kCircle);
@@ -82,24 +85,24 @@ FeedDownData createHistograms(const BinningStruct& binning) {
     dataContainer.hKineEffParticle[0] = new TH3D("hKineEffParticleNumerator", "Particle level kinematic efficiency numerator (non-prompt D^{0}'s);p_{T,jet}^{gen ch} (GeV/#it{c});#DeltaR^{gen};p_{T,D}^{gen}", 
                                                                                   binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
                                                                                   binning.deltaRBinEdges_particle.size() - 1, binning.deltaRBinEdges_particle.data(),
-                                                                                  binning.ptHFBinEdges_particle.size()-1, binning.ptHFBinEdges_particle.data());
+                                                                                  binning.ptHFEfficiencyBinEdges_particle.size()-1, binning.ptHFEfficiencyBinEdges_particle.data());
     dataContainer.hKineEffParticle[1] = new TH3D("hKineEffParticleDenominator", "Particle level kinematic efficiency denominator (non-prompt D^{0}'s);p_{T,jet}^{gen ch} (GeV/#it{c});#DeltaR^{gen};p_{T,D}^{gen}", 
                                                                                   binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
                                                                                   binning.deltaRBinEdges_particle.size() - 1, binning.deltaRBinEdges_particle.data(),
-                                                                                  binning.ptHFBinEdges_particle.size()-1, binning.ptHFBinEdges_particle.data());
+                                                                                  binning.ptHFEfficiencyBinEdges_particle.size()-1, binning.ptHFEfficiencyBinEdges_particle.data());
     dataContainer.hKineEffDetector[0] = new TH3D("hKineEffDetectorNumerator", "Detector level kinematic efficiency numerator (non-prompt D^{0}'s);p_{T,jet}^{reco ch} (GeV/#it{c});#DeltaR^{reco};p_{T,D}^{reco}", 
                                                                                   binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
                                                                                   binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data(),
-                                                                                  binning.ptHFBinEdges_detector.size()-1, binning.ptHFBinEdges_detector.data());
+                                                                                  binning.ptHFEfficiencyBinEdges_detector.size()-1, binning.ptHFEfficiencyBinEdges_detector.data());
     dataContainer.hKineEffDetector[1] = new TH3D("hKineEffDetectorDenominator", "Detector level kinematic efficiency denominator (non-prompt D^{0}'s);p_{T,jet}^{reco ch} (GeV/#it{c});#DeltaR^{reco};p_{T,D}^{reco}", 
                                                                                   binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
                                                                                   binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data(),
-                                                                                  binning.ptHFBinEdges_detector.size()-1, binning.ptHFBinEdges_detector.data());
+                                                                                  binning.ptHFEfficiencyBinEdges_detector.size()-1, binning.ptHFEfficiencyBinEdges_detector.data());
 
     dataContainer.hMeasuredTemplate = new TH3D("hMeasuredTemplate", "Folded 3D histogram;p_{T,jet}^{reco} (GeV/#it{c});#DeltaR^{reco};p_{T,D}^{reco}", 
                                                                                   binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), 
                                                                                   binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data(),
-                                                                                  binning.ptHFBinEdges_detector.size()-1, binning.ptHFBinEdges_detector.data());
+                                                                                  binning.ptHFEfficiencyBinEdges_detector.size()-1, binning.ptHFEfficiencyBinEdges_detector.data());
     //
     // Response matrix projections: DeltaR and pT,jet
     //
@@ -110,8 +113,8 @@ FeedDownData createHistograms(const BinningStruct& binning) {
                                                                                   binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(),
                                                                                   binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data());
     dataContainer.hResponsePtHF = new TH2D("hResponsePtHF","Response matrix p_{T,HF} projection;p_{T,HF}^{reco};p_{T,HF}^{gen}",
-                                                                                  binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data(),
-                                                                                  binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+                                                                                  binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data(),
+                                                                                  binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
 
     std::cout << "Histograms created.\n";
 
@@ -123,6 +126,16 @@ FeedDownData createHistograms(const BinningStruct& binning) {
     }
     dataContainer.response = RooUnfoldResponse(dataContainer.hKineEffDetector[0], dataContainer.hKineEffParticle[0]);
     std::cout << "Response matrix created.\n";
+
+    // MC non-prompt fraction estimation histograms
+    dataContainer.hMCPromptNonPrompt.first = new TH3D("hMCPrompt", "MC prompt D^{0}'s;p_{T,jet}^{gen ch} (GeV/#it{c});#DeltaR^{gen};p_{T,D}^{gen}", 
+                                                                                  binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
+                                                                                  binning.deltaRBinEdges_particle.size() - 1, binning.deltaRBinEdges_particle.data(),
+                                                                                  binning.ptHFEfficiencyBinEdges_particle.size()-1, binning.ptHFEfficiencyBinEdges_particle.data());
+    dataContainer.hMCPromptNonPrompt.second = new TH3D("hMCNonPrompt", "MC non-prompt D^{0}'s;p_{T,jet}^{gen ch} (GeV/#it{c});#DeltaR^{gen};p_{T,D}^{gen}", 
+                                                                                  binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), 
+                                                                                  binning.deltaRBinEdges_particle.size() - 1, binning.deltaRBinEdges_particle.data(),
+                                                                                  binning.ptHFEfficiencyBinEdges_particle.size()-1, binning.ptHFEfficiencyBinEdges_particle.data());
 
     return dataContainer;
 };
@@ -138,10 +151,10 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
     const double MCDyCut = 0.8; // on detector level HF
     const double MCPDeltaRcut = binning.deltaRBinEdges_particle[binning.deltaRBinEdges_particle.size() - 1]; // on particle level delta R
     const double MCDDeltaRcut = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1]; // on detector level delta R
-    const double MCPHfPtMincut = binning.ptHFBinEdges_particle[0]; // on particle level HF
-    const double MCDHfPtMincut = binning.ptHFBinEdges_detector[0]; // on detector level HF
-    const double MCPHfPtMaxcut = binning.ptHFBinEdges_particle[binning.ptHFBinEdges_particle.size() - 1]; // on particle level HF
-    const double MCDHfPtMaxcut = binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1]; // on detector level HF
+    const double MCPHfPtMincut = binning.ptHFEfficiencyBinEdges_particle[0]; // on particle level HF
+    const double MCDHfPtMincut = binning.ptHFEfficiencyBinEdges_detector[0]; // on detector level HF
+    const double MCPHfPtMaxcut = binning.ptHFEfficiencyBinEdges_particle[binning.ptHFEfficiencyBinEdges_particle.size() - 1]; // on particle level HF
+    const double MCDHfPtMaxcut = binning.ptHFEfficiencyBinEdges_detector[binning.ptHFEfficiencyBinEdges_detector.size() - 1]; // on detector level HF
 
     // Defining variables for accessing POWHEG tree
     double PowaxisDistance, PowjetPt, PowjetEta, PowjetPhi;
@@ -197,7 +210,7 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
 
         // calculating delta R
         double deltaR = PowaxisDistance;
-        bool genLevelRange = (abs(PowjetEta) < MCPetaCut) && (abs(PowhfY) < MCPyCut) && ((PowjetPt >= jetptMin) && (PowjetPt < jetptMax)) && ((deltaR >= binning.deltaRBinEdges_particle[0]) && (deltaR < MCPDeltaRcut)) && ((PowhfPt >= MCPHfPtMincut) && (PowhfPt < MCPHfPtMaxcut));
+        bool genLevelRange = (std::abs(PowjetEta) < MCPetaCut) && (std::abs(PowhfY) < MCPyCut) && ((PowjetPt >= jetptMin) && (PowjetPt < jetptMax)) && ((deltaR >= binning.deltaRBinEdges_particle[0]) && (deltaR < MCPDeltaRcut)) && ((PowhfPt >= MCPHfPtMincut) && (PowhfPt < MCPHfPtMaxcut));
         
         // Fill 2D histogram considering jet pT and detector acceptance
         if (genLevelRange) {
@@ -216,7 +229,8 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
     if (!tree) {
         cout << "Error opening O2 matching tree.\n";
     }
-    tree->SetBranchAddress("fMcJetHfDist",&MCPaxisDistance); // particle level branches
+    // particle level branches
+    tree->SetBranchAddress("fMcJetHfDist",&MCPaxisDistance);
     tree->SetBranchAddress("fMcJetPt",&MCPjetPt);
     tree->SetBranchAddress("fMcJetEta",&MCPjetEta);
     tree->SetBranchAddress("fMcJetPhi",&MCPjetPhi);
@@ -227,7 +241,8 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
     MCPhfMass = 1.86483; // D0 rest mass in GeV/c^2
     tree->SetBranchAddress("fMcHfY",&MCPhfY);
     tree->SetBranchAddress("fMcHfPrompt",&MCPhfprompt);
-    tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance); // detector level branches
+    // detector level branches
+    tree->SetBranchAddress("fJetHfDist",&MCDaxisDistance);
     tree->SetBranchAddress("fJetPt",&MCDjetPt);
     tree->SetBranchAddress("fJetEta",&MCDjetEta);
     tree->SetBranchAddress("fJetPhi",&MCDjetPhi);
@@ -252,7 +267,7 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
         bool genJetPtRange = (MCPjetPt >= jetptMin) && (MCPjetPt < jetptMax);
         bool genHfPtRange = ((MCPhfPt >= MCPHfPtMincut) && (MCPhfPt < MCPHfPtMaxcut));
         bool genDeltaRRange = ((MCPaxisDistance >= binning.deltaRBinEdges_particle[0]) && (MCPaxisDistance < MCPDeltaRcut));
-        bool genAcceptance = (abs(MCPjetEta) < MCPetaCut) && (abs(MCPhfY) < MCPyCut);
+        bool genAcceptance = (std::abs(MCPjetEta) < MCPetaCut) && (std::abs(MCPhfY) < MCPyCut);
         bool genLevelRange = genAcceptance && genJetPtRange && genDeltaRRange && genHfPtRange; // --> this is new!
         // Reconstruction level selection cuts
         double MCDDeltaR = MCDaxisDistance;
@@ -261,13 +276,13 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
         bool recoJetPtRange = (MCDjetPt >= jetptMin) && (MCDjetPt < jetptMax);
         bool recoHfPtRange = ((MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut));
         bool recoDeltaRRange = ((MCDaxisDistance >= binning.deltaRBinEdges_detector[0]) && (MCDaxisDistance < MCDDeltaRcut));
-        bool recoAcceptance = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut);
+        bool recoAcceptance = (std::abs(MCDjetEta) < MCDetaCut) && (std::abs(MCDhfY) < MCDyCut);
         bool recoLevelRange = recoAcceptance && recoJetPtRange && recoHfPtRange && recoDeltaRRange;
 
         // Apply non-prompt selection (i.e., only B → D0)
         //bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
         bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
-        bool isRealD0 = MCDhfmatch && isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs);
+        bool isRealD0 = isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs);
 
         // Only real non-prompt D0s with existing match counterpart on particle level and detector level
         if (!MCDhfprompt && MCDhfmatch && isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs)) {
@@ -278,10 +293,10 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
                 double efficiency_prompt = dataContainer.hSelEffRun3Style_detectorLevel.first->GetBinContent(bin);
                 // Obs.: previously a weigth of 1./efficiency_prompt was used, is that correct?
                 // Fill 4D RooUnfoldResponse object (jet pT shape is influenced by D0 pT efficiency)
-                dataContainer.response.Fill(MCDjetPt, MCDDeltaR, MCDhfPt, MCPjetPt, MCPDeltaR, MCPhfPt, 1./ efficiency_prompt);
-                dataContainer.hResponseDeltaR->Fill(MCDDeltaR,MCPDeltaR, 1./ efficiency_prompt);
-                dataContainer.hResponsePtJet->Fill(MCDjetPt,MCPjetPt, 1./ efficiency_prompt);
-                dataContainer.hResponsePtHF->Fill(MCDhfPt,MCPhfPt, 1./ efficiency_prompt);
+                dataContainer.response.Fill(MCDjetPt, MCDDeltaR, MCDhfPt, MCPjetPt, MCPDeltaR, MCPhfPt); // , 1./ efficiency_prompt
+                dataContainer.hResponseDeltaR->Fill(MCDDeltaR,MCPDeltaR); // , 1./ efficiency_prompt
+                dataContainer.hResponsePtJet->Fill(MCDjetPt,MCPjetPt); // , 1./ efficiency_prompt
+                dataContainer.hResponsePtHF->Fill(MCDhfPt,MCPhfPt); // , 1./ efficiency_prompt
 
                 // Fill kinematic efficiency numerator histograms
                 dataContainer.hKineEffParticle[0]->Fill(MCPjetPt, MCPDeltaR, MCPhfPt);
@@ -296,6 +311,40 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
                 dataContainer.hKineEffDetector[1]->Fill(MCDjetPt, MCDDeltaR, MCDhfPt);
             }
         }
+
+        // --- Fill prompt and non-prompt histograms for MC non-prompt fraction estimation
+        if (genLevelRange) {
+            if (MCPhfprompt) {
+                // matched entries cannot be reflections (in order not to double count)
+                if (MCDhfmatch) {
+                    if (isRealD0) {
+                        if (!binning.useEmmaYeatsBins || passEmmaCut(MCPjetPt, MCPhfPt)) {
+                            dataContainer.hMCPromptNonPrompt.first->Fill(MCPjetPt, MCPDeltaR, MCPhfPt);
+                        }
+                    }
+                } else {
+                    if (!binning.useEmmaYeatsBins || passEmmaCut(MCPjetPt, MCPhfPt)) {
+                        dataContainer.hMCPromptNonPrompt.first->Fill(MCPjetPt, MCPDeltaR, MCPhfPt);
+                    }
+                }
+            } else {
+                
+                // matched entries cannot be reflections (in order not to double count)
+                if (MCDhfmatch) {
+                    if (isRealD0) {
+                        if (!binning.useEmmaYeatsBins || passEmmaCut(MCPjetPt, MCPhfPt)) {
+                            dataContainer.hMCPromptNonPrompt.second->Fill(MCPjetPt, MCPDeltaR, MCPhfPt);
+                        }
+                    }
+                } else {
+                    if (!binning.useEmmaYeatsBins || passEmmaCut(MCPjetPt, MCPhfPt)) {
+                        dataContainer.hMCPromptNonPrompt.second->Fill(MCPjetPt, MCPDeltaR, MCPhfPt);
+                    }
+                }
+            }
+        }
+        
+        
     }
     std::cout << "Response matrix and kinematic efficiencies histograms filled.\n";
 
@@ -417,7 +466,7 @@ void addOutsideData(FeedDownData& dataContainer) {
 }
 
 // Module for folding particle level data from POWHEG simulation
-void smearGeneratorData(FeedDownData& dataContainer, TFile* fEfficiency) {
+void smearGeneratorData(FeedDownData& dataContainer, TFile* fEfficiency, const BinningStruct& binning) {
 
     //
     // 1st step: correct by non-prompt particle level selection efficiency
@@ -444,7 +493,7 @@ void smearGeneratorData(FeedDownData& dataContainer, TFile* fEfficiency) {
                 double binError = dataContainer.hPowhegSelEffCorrected->GetBinError(xBin, yBin, zBin);
 
                 // Rescale the bin content by the ratio of efficiencies
-                if (effPrompt > 0) {
+                if (effNonPrompt > 0) {
                     //double efficiencyRatio = effNonPrompt / effPrompt;
                     dataContainer.hPowhegSelEffCorrected->SetBinContent(xBin, yBin, zBin, binContent * effNonPrompt);
                     // Rescale the bin error accordingly
@@ -478,7 +527,7 @@ void smearGeneratorData(FeedDownData& dataContainer, TFile* fEfficiency) {
     addOutsideData(dataContainer);
     
     //
-    // 5th step: scale by 1 / efficiency_prompt (one over the detector level prompt d0 selection efficiency)
+    // 5th step: scale by 1 / efficiency_prompt (one over the DETECTOR level prompt d0 selection efficiency)
     // Obs.: also remove entries that doesn't pass Emma's cuts
     dataContainer.hFinalPromptSelEffCorrected = (TH3D*)dataContainer.hFoldedKinCorrected->Clone("hFinalPromptSelEffCorrected");
     for (int xBin = 1; xBin <= dataContainer.hFinalPromptSelEffCorrected->GetNbinsX(); xBin++) {
@@ -503,7 +552,12 @@ void smearGeneratorData(FeedDownData& dataContainer, TFile* fEfficiency) {
                 double binContent = dataContainer.hFinalPromptSelEffCorrected->GetBinContent(xBin, yBin, zBin);
                 double binError = dataContainer.hFinalPromptSelEffCorrected->GetBinError(xBin, yBin, zBin);
 
-                double weightEmmaCut = passEmmaCut(jetPtCenter, ptDcenter) ? 1.0 : 0.0; // ToDo: remove Emma correspondent bins only at detector level, after all corrections, before luminosity scaling
+                // Remove Emma correspondent bins only at detector level, after all corrections, before luminosity scaling
+                // Obs.: also remove the padding bins that are outside of the pT,HF range
+                double weightEmmaCut = 1.0; // ToDo: 
+                if (!passEmmaCut(jetPtCenter, ptDcenter) || (ptDcenter < binning.ptHFBinEdges_particle.front()) || (ptDcenter > binning.ptHFBinEdges_particle.back())) {
+                    weightEmmaCut = 0;
+                }
                 binContent *= weightEmmaCut;
                 binError *= weightEmmaCut;
 
@@ -726,11 +780,53 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     legendFull->AddEntry(hTotalFull, "Total data", "lpe");
     legendFull->SetBorderSize(0);
     legendFull->SetFillStyle(0);
-    gPad->SetLogy();
+    // gPad->SetLogy();
     hTotalFull->Draw();
     hNonpromptFull->Draw("same");
     latex->DrawLatex(0.2, 0.8, Form("Jet pT bin: %.0f - %.0f GeV/c", binning.ptjetBinEdges_detector[0], binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1]));
     legendFull->Draw();
+
+    // MC non-prompt fraction
+    std::vector<TCanvas*> cMCNonpromptFraction(binning.ptjetBinEdges_particle.size() - 1);
+    TH3D* hMCTotalFraction = (TH3D*) dataContainer.hMCPromptNonPrompt.first->Clone("hMCTotalFraction");
+    hMCTotalFraction->Add(dataContainer.hMCPromptNonPrompt.second); // Now hMCTotalFraction contains the total (prompt + non-prompt) distribution
+    TH2D* hMCPromptFraction_2d = (TH2D*) dataContainer.hMCPromptNonPrompt.first->Project3D("xy");
+    TH2D* hMCNonPromptFraction_2d = (TH2D*) dataContainer.hMCPromptNonPrompt.second->Project3D("xy");
+    TH2D* hMCTotalFraction_2d = (TH2D*) hMCTotalFraction->Project3D("xy");
+    for (size_t iJetptBin = 0; iJetptBin < binning.ptjetBinEdges_particle.size() - 1; iJetptBin++) {
+        // Project jet pT bin on DeltaR axis
+        TH1D* hMCPromptJetptBin = (TH1D*) hMCPromptFraction_2d->ProjectionY(Form("hMCPromptJetptBin_%zu",iJetptBin), iJetptBin + 1, iJetptBin + 1);
+        TH1D* hMCNonPromptJetptBin = (TH1D*) hMCNonPromptFraction_2d->ProjectionY(Form("hMCNonPromptJetptBin_%zu",iJetptBin), iJetptBin + 1, iJetptBin + 1);
+        TH1D* hMCTotalJetptBin = (TH1D*) hMCTotalFraction_2d->ProjectionY(Form("hMCTotalJetptBin_%zu",iJetptBin), iJetptBin + 1, iJetptBin + 1);
+
+        //hMCPromptJetptBin->Divide(hMCPromptJetptBin, hMCNonPromptJetptBin, 1, 1, "B"); // Divide with binomial errors
+        hMCNonPromptJetptBin->SetTitle(Form("MC non-prompt fraction for jet pT bin %.0f - %.0f GeV/c", binning.ptjetBinEdges_particle[iJetptBin], binning.ptjetBinEdges_particle[iJetptBin + 1]));
+        hMCNonPromptJetptBin->SetLineColor(kRed+2);
+        hMCNonPromptJetptBin->SetMarkerStyle(kOpenCircle);
+        hMCNonPromptJetptBin->SetMarkerColor(kRed+2);
+        hMCNonPromptJetptBin->Sumw2();
+
+        hMCTotalJetptBin->SetTitle(Form("Jet pT bin %.0f - %.0f GeV/c", binning.ptjetBinEdges_particle[iJetptBin], binning.ptjetBinEdges_particle[iJetptBin + 1]));
+        hMCTotalJetptBin->SetLineColor(kBlue+2);
+        hMCTotalJetptBin->SetMarkerStyle(kOpenCircle);
+        hMCTotalJetptBin->SetMarkerColor(kBlue+2);
+        hMCTotalJetptBin->GetYaxis()->SetRangeUser(std::min(hMCTotalJetptBin->GetMinimum(), hMCNonPromptJetptBin->GetMinimum()) * 0.8, std::max(hMCTotalJetptBin->GetMaximum(), hMCNonPromptJetptBin->GetMaximum()) * 1.2);
+        hMCTotalJetptBin->Sumw2();
+
+        TLegend* legend = new TLegend(0.6, 0.7, 0.8, 0.8);
+        legend->AddEntry(hMCNonPromptJetptBin, "Non-prompt fraction", "lpe");
+        legend->AddEntry(hMCTotalJetptBin, "Total data", "lpe");
+        legend->SetBorderSize(0);
+        legend->SetFillStyle(0);
+
+        cMCNonpromptFraction[iJetptBin] = new TCanvas(Form("cMCNonpromptFraction_%zu", iJetptBin), Form("MC non-prompt fraction for jet pT bin %.0f - %.0f GeV/c", binning.ptjetBinEdges_particle[iJetptBin], binning.ptjetBinEdges_particle[iJetptBin + 1]), 1800, 1000);
+        cMCNonpromptFraction[iJetptBin]->cd();
+        //gPad->SetLogy();
+        hMCTotalJetptBin->Draw();
+        hMCNonPromptJetptBin->Draw("same");
+        latex->DrawLatex(0.2, 0.8, Form("Jet pT bin: %.0f - %.0f GeV/c", binning.ptjetBinEdges_detector[iJetptBin], binning.ptjetBinEdges_detector[iJetptBin + 1]));
+        legend->Draw();
+    }
     
     //
     // Storing images
@@ -758,7 +854,11 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     for (size_t iJetptBin = 0; iJetptBin < cNonpromptFraction.size() - 1; iJetptBin++) {
         cNonpromptFraction[iJetptBin]->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     }
-    cNonpromptFraction.back()->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cNonpromptFraction.back()->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    for (size_t iJetptBin = 0; iJetptBin < cNonpromptFraction.size() - 1; iJetptBin++) {
+        cMCNonpromptFraction[iJetptBin]->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    }
+    cMCNonpromptFraction.back()->Print(imagePath + Form("feeddown_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 
 }
 
@@ -828,7 +928,7 @@ void FeedDownSubtraction(){
     std::vector<double> lumiValues = retrieveLuminosityFromFile(fPowhegNonPrompt, fLumi, dataContainer);
 
     // 4 - Smearing and folding of POWHEG data to detector level
-    smearGeneratorData(dataContainer, fEfficiency);
+    smearGeneratorData(dataContainer, fEfficiency, binning);
 
     // 5 - Subtract feed-down contribution from measured data distribution
     feedDown(fEfficiency, dataContainer, jetptMin, jetptMax);

@@ -884,7 +884,7 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
         hRatio->GetYaxis()->SetTitleOffset(0.5);
         // hRatio->GetYaxis()->SetTitleSize(0.08);
         if (iHisto == 0) {
-            hRatio->GetYaxis()->SetRangeUser(0.7, 2.0); // typical range
+            hRatio->GetYaxis()->SetRangeUser(0.5, 1.5); // typical range
             hRatio->Draw();
         } else {
             hRatio->Draw("same");
@@ -997,7 +997,7 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     cConvTest->cd();
     TH1D* hFedDown1D = dataContainer.hBFedDownDataKinCorrected->ProjectionY("OriginalFromFeedDown_convtest");
     TLegend* origlegend = new TLegend(0.7, 0.7, 0.9, 0.9);
-    dataContainer.hConvergenceTest2[0]->GetYaxis()->SetRangeUser(0.0, 2.0);
+    dataContainer.hConvergenceTest2[0]->GetYaxis()->SetRangeUser(0.5, 1.5);
     dataContainer.hConvergenceTest2[0]->GetYaxis()->SetTitle("#frac{Unfolded_{i}}{Unfolded_{0}}");
     for (size_t iHisto = 0; iHisto < dataContainer.hConvergenceTest2.size(); iHisto++) {
         dataContainer.hConvergenceTest2[iHisto]->Draw((iHisto == 0) ? "" : "SAME");
@@ -1012,7 +1012,7 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
         if (iHisto == 0) {
             legConvTestRatio->AddEntry(dataContainer.hConvergenceTest[iHisto], Form("Iteration %zu / Iteration %zu", iHisto+2, iHisto+1), "l");
             dataContainer.hConvergenceTest[iHisto]->SetTitle("Consecutive ratios of unfolded distributions with different # of iterations;#DeltaR;#frac{Unfolded_{i+1}}{Unfolded_{i}}");
-            dataContainer.hConvergenceTest[iHisto]->GetYaxis()->SetRangeUser(0.0, 2.0);
+            dataContainer.hConvergenceTest[iHisto]->GetYaxis()->SetRangeUser(0.5, 1.5);
             dataContainer.hConvergenceTest[iHisto]->Draw("E");      // draw the first ratio
         } else {
             legConvTestRatio->AddEntry(dataContainer.hConvergenceTest[iHisto], Form("Iteration %zu / Iteration %zu", iHisto+2, iHisto+1), "l");
@@ -1078,13 +1078,6 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     //cKinEfficiency->Print(imagePath + Form("unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     //cFolded->Print(imagePath + Form("unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     //cFedDownData->Print(imagePath + Form("unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.'pdf)",jetptMin,jetptMax));
-    // in separate .pdf file
-    cKinEffParticle->Print(imagePath + "Unfolding_kin_efficiency_particle" + sEmmaBins + ".pdf");
-    cKinEffDetector->Print(imagePath + "Unfolding_kin_efficiency_detector" + sEmmaBins + ".pdf");
-    cUnfoldedIter->Print(imagePath + "Unfolding_unfolded_iterations" + sEmmaBins + ".pdf");
-    cRefoldedIter->Print(imagePath + "Unfolding_refolded_comparison" + sEmmaBins + ".pdf");
-    
-
 }
 
 void saveData(const UnfoldData& dataContainer, const double& jetptMin, const double& jetptMax, const BinningStruct& binning) {

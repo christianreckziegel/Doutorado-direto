@@ -171,7 +171,13 @@ TH2D* CompareClosureTest(TFile* fClosureInput, const SidebandClosureResult& side
             std::vector<bool> workingFits = sidebandDataContainer.workingFitsPerJetPt[iJetPt];
             if (!workingFits.empty() && !eraseHistogram(workingFits, iPtHF)) { // Also apply eraseHistogram logic to determine the surviving block
                 // use Emma's run 2 cuts in case useEmmaYeatsBins is true
-                if (!binning.useEmmaYeatsBins || (MCDhfmatch && passEmmaCut(MCDjetPt, MCDhfPt)) || !MCDhfmatch) { // --> this is new!
+                // if (!binning.useEmmaYeatsBins || (MCDhfmatch && passEmmaCut(MCDjetPt, MCDhfPt)) || !MCDhfmatch) { // --> this is new!
+                //     // Emma cut should only be checked for the matched detector level entry MCDs?
+                //     // Verify Emma's cuts only in case these are matched entries, since the cuts were applied to detector level
+                //     // Fill input distribution
+                //     hDeltaRInputMCP->Fill(MCPjetPt, MCPDeltaR);
+                // }
+                if (!binning.useEmmaYeatsBins || passEmmaCut(MCPjetPt, MCPhfPt)) { // --> this is new!
                     // Emma cut should only be checked for the matched detector level entry MCDs?
                     // Verify Emma's cuts only in case these are matched entries, since the cuts were applied to detector level
                     // Fill input distribution
@@ -454,15 +460,23 @@ void SecondClosureTest(){
     // Number of unfolding procedure iterations
     int iterationNumber = 4;
 
-    // Load binning from reflections file
+    bool useEmmaYeatsBins = false;
+    TString sEmmaBins;
+    if (useEmmaYeatsBins) {
+        sEmmaBins = "EmmaYeatsBins";
+    } else {
+        sEmmaBins = "";
+    }
+    // Select data period to retrieve the corresponding binning information and BDT score thresholds
     TString dataPeriod = "2023";
-    TFile* fBinning = new TFile(Form("../1-SignalTreatment/BDTOptimization/binningInfo_%s.root", dataPeriod.Data()),"read");
+    // Open binning information file with optimal BDT score thresholds
+    TFile* fBinning = new TFile("../1-SignalTreatment/BDTOptimization/binningInfo_" + dataPeriod + "_" + sEmmaBins + ".root", "read");
     if (!fBinning || fBinning->IsZombie()) {
         std::cerr << "Error: Unable to open the first ROOT binning info file." << std::endl;
     }
     BinningStruct binning = retrieveBinningFromFile(fBinning);
     // Force by hand new binning regardless of previous steps
-    binning.useEmmaYeatsBins = true;
+    binning.useEmmaYeatsBins = useEmmaYeatsBins;
     if (binning.useEmmaYeatsBins) {
         // pT,jet cuts
         binning.ptjetBinEdges_detector = {5., 7., 10., 20., 50.};

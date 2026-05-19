@@ -129,8 +129,8 @@ TH1D* getMyDataDistribution(TFile* fMyData, const BinningStruct& binning) {
     
     // pT,jet #in [10;20] GeV/c
     
-    ptjetBinMin = hpTjet_vs_DeltaR->GetXaxis()->FindBin(10.0); // Find the bin corresponding to 10 GeV/c
-    ptjetBinMax = hpTjet_vs_DeltaR->GetXaxis()->FindBin(20.0) - 1; // Find the bin corresponding to 20 GeV/c and take the previous bin as max to be inclusive of the upper edge
+    int ptjetBinMin = hpTjet_vs_DeltaR->GetXaxis()->FindBin(10.0); // Find the bin corresponding to 10 GeV/c
+    int ptjetBinMax = hpTjet_vs_DeltaR->GetXaxis()->FindBin(20.0) - 1; // Find the bin corresponding to 20 GeV/c and take the previous bin as max to be inclusive of the upper edge
     std::cout << "X bins of 2D histogram: " << hpTjet_vs_DeltaR->GetNbinsX() << std::endl;
     std::cout << "Selected pT,jet bin range: [" << hpTjet_vs_DeltaR->GetXaxis()->GetBinLowEdge(ptjetBinMin) << ";" << hpTjet_vs_DeltaR->GetXaxis()->GetBinUpEdge(ptjetBinMax) << "] GeV/c" << std::endl;
     // std::cout << "Y bins of 2D histogram: " << hpTjet_vs_DeltaR->GetNbinsY() << std::endl;
@@ -331,7 +331,9 @@ TH1D* createPythiaDistribution(TFile* fSimulatedMCMatched, const BinningStruct& 
     }
 
     // Normalize by bin width and number of jets
-    hMyDeltaRPythia->Scale(1.0 / hMyDeltaRPythia->Integral(), "width");
+    double integral = hMyDeltaRPythia->Integral();  // save N_jets BEFORE touching histogram
+    hMyDeltaRPythia->Scale(1.0, "width");
+    hMyDeltaRPythia->Scale(1.0 / integral);
 
     // Drawing style
     hMyDeltaRPythia->SetLineColor(kBlue);

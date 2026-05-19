@@ -54,13 +54,13 @@ EfficiencyData createHistograms(const BinningStruct& binning) {
     // Create 3 histogram cases: inclusive = 0, prompt only = 1, non-prompt only = 2
     int histCaseNum = 3;
     for (size_t iCase = 0; iCase < histCaseNum; ++iCase) {
-        dataContainer.hMcpPt.emplace_back(new TH1D(Form("mcp_pt_%zu",iCase), ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data()));
+        dataContainer.hMcpPt.emplace_back(new TH1D(Form("mcp_pt_%zu",iCase), ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data()));
         dataContainer.hMcpPt[iCase]->SetMarkerColor(kBlack);
         dataContainer.hMcpPt[iCase]->SetLineColor(kBlack);
         dataContainer.hMcpPt[iCase]->SetMarkerStyle(kOpenCircle);
         dataContainer.hMcpPt[iCase]->Sumw2();
         dataContainer.hMcpPt[iCase]->SetStats(0);
-        dataContainer.hMcdPt.emplace_back(new TH1D(Form("mcd_pt_%zu",iCase), ";#it{p}_{T,D}^{reco};dN/d#it{p}_{T,D}^{reco}", binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data()));
+        dataContainer.hMcdPt.emplace_back(new TH1D(Form("mcd_pt_%zu",iCase), ";#it{p}_{T,D}^{reco};dN/d#it{p}_{T,D}^{reco}", binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data()));
         dataContainer.hMcdPt[iCase]->SetMarkerColor(kBlue);
         dataContainer.hMcdPt[iCase]->SetLineColor(kBlue);
         dataContainer.hMcdPt[iCase]->SetMarkerStyle(kFullCircle);
@@ -72,17 +72,17 @@ EfficiencyData createHistograms(const BinningStruct& binning) {
     dataContainer.hBDTBackgroundScore = new TH1D("hBDTBackgroundScore", "Entries that didn't pass the cuts;BDT background score;Counts", 100, 0, 1);
 
     // Create 2D version histograms
-    dataContainer.hSelEff_run2style2d.emplace_back(new TH2D(Form("mcp2d_pt"), "Prompt D^{0}s denominator (particle level);#it{p}_{T,jet}^{truth};#it{p}_{T,D^{0}}^{truth}", binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data()));
+    dataContainer.hSelEff_run2style2d.emplace_back(new TH2D(Form("mcp2d_pt"), "Prompt D^{0}s denominator (particle level);#it{p}_{T,jet}^{truth};#it{p}_{T,D^{0}}^{truth}", binning.ptjetBinEdges_particle.size() - 1, binning.ptjetBinEdges_particle.data(), binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data()));
     dataContainer.hSelEff_run2style2d.back()->SetStats(0);
-    dataContainer.hSelEff_run2style2d.emplace_back(new TH2D(Form("mcd2d_pt"), "Prompt D^{0}s numerator (detector level);#it{p}_{T,jet}^{reco};;#it{p}_{T,D^{0}}^{reco}", binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), binning.ptHFBinEdges_detector.size() - 1, binning.ptHFBinEdges_detector.data()));
+    dataContainer.hSelEff_run2style2d.emplace_back(new TH2D(Form("mcd2d_pt"), "Prompt D^{0}s numerator (detector level);#it{p}_{T,jet}^{reco};;#it{p}_{T,D^{0}}^{reco}", binning.ptjetBinEdges_detector.size() - 1, binning.ptjetBinEdges_detector.data(), binning.ptHFEfficiencyBinEdges_detector.size() - 1, binning.ptHFEfficiencyBinEdges_detector.data()));
     dataContainer.hSelEff_run2style2d.back()->SetStats(0);
     
     // Run 3 style particle level prompt selection efficiency histograms
-    dataContainer.hDenominator_prompt_part_run3style = new TH1D("mcp_pt_prompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    dataContainer.hDenominator_prompt_part_run3style = new TH1D("mcp_pt_prompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     dataContainer.hDenominator_prompt_part_run3style->SetMarkerStyle(kOpenCircle);
     dataContainer.hDenominator_prompt_part_run3style->Sumw2();
     dataContainer.hDenominator_prompt_part_run3style->SetStats(0);
-    dataContainer.hNumerator_prompt_part_run3style = new TH1D("mcd_pt_prompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    dataContainer.hNumerator_prompt_part_run3style = new TH1D("mcd_pt_prompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     dataContainer.hNumerator_prompt_part_run3style->SetMarkerStyle(kOpenCircle);
     dataContainer.hNumerator_prompt_part_run3style->SetMarkerColor(kBlue);
     dataContainer.hNumerator_prompt_part_run3style->SetLineColor(kBlue);
@@ -90,11 +90,11 @@ EfficiencyData createHistograms(const BinningStruct& binning) {
     dataContainer.hNumerator_prompt_part_run3style->SetStats(0);
 
     // Run 3 style particle level non-prompt selection efficiency histograms
-    dataContainer.hDenominator_nonprompt_part_run3style = new TH1D("mcp_pt_nonprompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    dataContainer.hDenominator_nonprompt_part_run3style = new TH1D("mcp_pt_nonprompt_part_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     dataContainer.hDenominator_nonprompt_part_run3style->SetMarkerStyle(kOpenCircle);
     dataContainer.hDenominator_nonprompt_part_run3style->Sumw2();
     dataContainer.hDenominator_nonprompt_part_run3style->SetStats(0);
-    dataContainer.hNumerator_nonprompt_part_run3style = new TH1D("mcd_pt_nonprompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFBinEdges_particle.size() - 1, binning.ptHFBinEdges_particle.data());
+    dataContainer.hNumerator_nonprompt_part_run3style = new TH1D("mcd_pt_nonprompt_det_run3style", ";#it{p}_{T,D^{0}}^{truth};dN/d#it{p}_{T,D^{0}}^{truth}", binning.ptHFEfficiencyBinEdges_particle.size() - 1, binning.ptHFEfficiencyBinEdges_particle.data());
     dataContainer.hNumerator_nonprompt_part_run3style->SetMarkerStyle(kOpenCircle);
     dataContainer.hNumerator_nonprompt_part_run3style->SetMarkerColor(kRed);
     dataContainer.hNumerator_nonprompt_part_run3style->SetLineColor(kRed);
@@ -114,6 +114,11 @@ void fillHistograms(TFile* fSimulated, EfficiencyData& dataContainer, const Binn
         std::cout << "\t" << binning.bdtPtCuts[iHFBin].first << "-" << binning.bdtPtCuts[iHFBin+1].first << "\t\t\t\t" << binning.bdtPtCuts[iHFBin].second << std::endl;
     }
     
+    std::cout << "Efficiency bin edges (GeV):" << std::endl;
+    for (size_t iHFBin = 0; iHFBin < binning.ptHFEfficiencyBinEdges_detector.size() - 1; iHFBin++) {
+        std::cout << "\t" << binning.ptHFEfficiencyBinEdges_detector[iHFBin] << "-" << binning.ptHFEfficiencyBinEdges_detector[iHFBin+1] << std::endl;
+    }
+    
     // Defining cuts
     const double jetRadius = 0.4;
     const double MCPetaCut = 0.9 - jetRadius; // on particle level jet
@@ -122,8 +127,8 @@ void fillHistograms(TFile* fSimulated, EfficiencyData& dataContainer, const Binn
     const double MCDyCut = 0.8; // on detector level D0
     const double MCPDeltaRcut = binning.deltaRBinEdges_particle[binning.deltaRBinEdges_particle.size() - 1]; // on particle level delta R
     const double MCDDeltaRcut = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1]; // on detector level delta R
-    double hfptMin = binning.ptHFBinEdges_detector[0]; //ptHFBinEdges[0] - should start from 0 or from the lowest pT,HF value?
-    double hfptMax = binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1];
+    double hfptMin = binning.ptHFEfficiencyBinEdges_detector[0]; //ptHFBinEdges[0] - should start from 0 or from the lowest pT,HF value?
+    double hfptMax = binning.ptHFEfficiencyBinEdges_detector[binning.ptHFEfficiencyBinEdges_detector.size() - 1];
     const double MCPHfPtMincut = hfptMin; // on particle level HF
     const double MCDHfPtMincut = hfptMin; // on detector level HF
     const double MCPHfPtMaxcut = hfptMax; // on particle level HF

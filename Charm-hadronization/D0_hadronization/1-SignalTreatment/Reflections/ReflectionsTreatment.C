@@ -756,75 +756,18 @@ void ReflectionsTreatment() {
     time_t start, end;
     time(&start); // initial instant of program execution
     
-    // // --- Binning objects
-    // BinningStruct binning;
-
-    // // Emma Yeats reported analysis bins:
-    // bool useEmmaYeatsBins = false;
-    // if (useEmmaYeatsBins) {
-    //     binning.useEmmaYeatsBins = useEmmaYeatsBins;
-    //     // pT,jet cuts
-    //     binning.ptjetBinEdges_detector = {5., 7., 10., 20., 50.};
-    //     // DeltaR bins
-    //     binning.deltaRBinEdges_detector = {0., 0.01, 0.03, 0.05, 0.12, 0.2};
-    //     // pT,HF bins, must be the same from the BDT models
-    //     // binning.ptHFBinEdges_detector = {2., 3., 4., 5., 6., 7., 8., 10., 12., 16., 24., 36.};
-    // } else {
-    //     // pT,jet cuts
-    //     binning.ptjetBinEdges_detector = {5., 7., 10., 16., 36., 50.}; // default = {5., 7., 10., 15., 30., 50.}
-    //     // DeltaR bins
-    //     binning.deltaRBinEdges_detector = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5};
-    //     // pT,HF bins, must be the same from the BDT models
-    //     // binning.ptHFBinEdges_detector = {1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 12., 18., 30.};
-    // }
-    // double minDeltaR = binning.deltaRBinEdges_detector[0];
-    // double maxDeltaR = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1];    
-    // // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.05 (from first of pair)
-    // std::vector<std::pair<double, double>> bdtPtCuts = {
-    //     {0, 0.12}, {1, 0.12}, {2, 0.12}, {3, 0.16}, {4, 0.2}, {5, 0.25}, {6, 0.4}, {7, 0.6}, {8, 0.8}, {10, 0.8}, {12, 1}, {16, 1}, {50, -1}
-    // }; // on dataset JE_HF_LHC23_pass4_Thin_2P3PDstar_D0CJ_4_D0_1
-    // // std::vector<std::pair<double, double>> bdtPtCuts = {
-    // //     {1, 0.03}, {2, 0.03}, {3, 0.05}, {4, 0.05}, {5, 0.08}, {6, 0.15}, {8, 0.22}, {12, 0.35}, {16, 0.47}, {24, 0.47}, {48, -1}
-    // // }; // from Nima's AN
-    // binning.bdtPtCuts = bdtPtCuts;
-    // binning.ptHFEfficiencyBinEdges = efficiencyBinEdges(binning.bdtPtCuts);
-    // binning.ptjetBinEdges_particle = binning.ptjetBinEdges_detector;
-    // binning.deltaRBinEdges_particle = binning.deltaRBinEdges_detector;
-    // // the HF binning depends on the ones used in the BDT models, copy ptHFEfficiencyBinEdges minus first and last edge
-    // binning.ptHFBinEdges_particle = std::vector<double>(binning.ptHFEfficiencyBinEdges.begin() + 1, binning.ptHFEfficiencyBinEdges.end() - 1);
-    // binning.ptHFBinEdges_particle.push_back(36.); // add last edge to cover the entire range, as done on Nima's AN
-    // //binning.ptHFBinEdges_particle = {1., 2., 3., 4., 5., 6., 7., 8., 12., 16., 24., 36.}; // override with custom binning for HF pT, same as used for BDT models
-    // binning.ptHFBinEdges_detector = binning.ptHFBinEdges_particle;
-    // // Define mass range here — this is the ONLY place you need to change it
-    // binning.massBinDensity = 50.0 / (2.06 - 1.72); // = 147.06 bins/GeV/c²
-    // // Per pT,D upper mass edge — adjust per bin if needed
-    // // Default: all bins use 2.06 GeV/c²
-    // binning.minMass.assign(binning.ptHFBinEdges_detector.size() - 1, 1.72);
-    // binning.maxMass.assign(binning.ptHFBinEdges_detector.size() - 1, 2.06);
-    // binning.maxMass = {2.02, 2.045, 2.06, 2.08, 2.1, 2.14, 2.20, 2.28, 2.47, 2.47, 2.47};
-    // // Override specific bins if needed, e.g.:
-    // // binning.maxMass[0] = 1.98; // first pT,D bin has less room on the right
-
-    // // Choose file period
-    // binning.dataPeriod = "2023";
-    // if (binning.dataPeriod == "2023") {
-    //     // DATA
-    //     binning.inputDATA.first = "JE_HF_LHC23_pass4_Thin_2P3PDstar_D0CJ_4_D0_1";
-    //     binning.inputDATA.second = "Data/Experimental/Train_643652";
-    //     // Anchored MC
-    //     binning.inputMC.first = "HF_LHC24h1c_All_D0";
-    //     binning.inputMC.second = "Data/MonteCarlo/Train_645447";
-    // } else if (binning.dataPeriod == "2022") {
-    //     // DATA
-    //     binning.inputDATA.first = "JE_HF_LHC22o_pass7_minBias_2P3PDstar_D0CJ_4_D0_1";
-    //     binning.inputDATA.second = "Data/Experimental/Train_659513";
-    //     // Anchored MC
-    //     binning.inputMC.first = "HF_LHC24g5_All_D0";
-    //     binning.inputMC.second = "Data/MonteCarlo/Train_659747";
-    // }
+    // Select whether to use Emma Yeats reported analysis bins or not
+    bool useEmmaYeatsBins = false;
+    TString sEmmaBins;
+    if (useEmmaYeatsBins) {
+        sEmmaBins = "EmmaYeatsBins";
+    } else {
+        sEmmaBins = "";
+    }
+    // Select data period to retrieve the corresponding binning information and BDT score thresholds
     TString dataPeriod = "2023";
     // Open binning information file with optimal BDT score thresholds
-    TFile* fBinning = new TFile("../BDTOptimization/binningInfo_" + dataPeriod + ".root", "read");
+    TFile* fBinning = new TFile("../BDTOptimization/binningInfo_" + dataPeriod + "_" + sEmmaBins + ".root", "read");
     if (!fBinning || fBinning->IsZombie()) {
         std::cerr << "Error: Unable to open the binning info ROOT file." << std::endl;
     }
@@ -834,9 +777,14 @@ void ReflectionsTreatment() {
         std::cout << binning.ptHFBinEdges_particle[ipTHF] << ",\t";
     }
     std::cout << "]" << std::endl;    
-    
+    std::cout << "ptHFEfficiencyBinEdges = [";
+    for (size_t ipTHF = 0; ipTHF < binning.ptHFEfficiencyBinEdges_particle.size(); ipTHF++) {
+        std::cout << binning.ptHFEfficiencyBinEdges_particle[ipTHF] << ",\t";
+    }
+    std::cout << "]" << std::endl;
+
     // // Emma Yeats reported analysis bins:
-    binning.useEmmaYeatsBins = true;
+    binning.useEmmaYeatsBins = useEmmaYeatsBins;
     if (binning.useEmmaYeatsBins) {
         // pT,jet cuts
         binning.ptjetBinEdges_detector = {5., 7., 10., 20., 50.};

@@ -1180,13 +1180,13 @@ void plotIteration(const BDTScanContainer& dataContainer, const BDTScanResult& b
     }
     TString sIteration = Form("%s_%d", granularity.Data(), scanIteration);
 
-    TString imagePath = "../../Images/1-SignalTreatment/BDTOptimization/" + binning.dataPeriod + "/";
+    TString imagePath = "../../Images/1-SignalTreatment/BDTOptimization/" + sEmmaBins + "/" + binning.dataPeriod + "/";
     TString jetPtRange = Form("%.0f_to_%.0fGeV", jetptMin, jetptMax);
-    cMCPureReflections->Print(Form(imagePath + sIteration + "_%s.pdf(",jetPtRange.Data()));
-    cMCPureSignals->Print(Form(imagePath + sIteration + "_%s.pdf",jetPtRange.Data()));
-    cMCSignalAndReflections->Print(Form(imagePath + sIteration + "_%s.pdf",jetPtRange.Data()));
-    cDataTotal->Print(Form(imagePath + sIteration + "_%s.pdf",jetPtRange.Data()));
-    cRun2PromptEfficiency->Print(Form(imagePath + sIteration + "_%s.pdf)",jetPtRange.Data()));
+    cMCPureReflections->Print(Form(imagePath + sIteration + "_" + sEmmaBins + "_%s.pdf(",jetPtRange.Data()));
+    cMCPureSignals->Print(Form(imagePath + sIteration + "_" + sEmmaBins + "_%s.pdf",jetPtRange.Data()));
+    cMCSignalAndReflections->Print(Form(imagePath + sIteration + "_" + sEmmaBins + "_%s.pdf",jetPtRange.Data()));
+    cDataTotal->Print(Form(imagePath + sIteration + "_" + sEmmaBins + "_%s.pdf",jetPtRange.Data()));
+    cRun2PromptEfficiency->Print(Form(imagePath + sIteration + "_" + sEmmaBins + "_%s.pdf)",jetPtRange.Data()));
 
     std::cout << "Iteration plots stored." << std::endl;
 
@@ -1296,10 +1296,10 @@ void plotSignificance(const BDTScanContainer& dataContainer, const BDTScanResult
     } else {
         sEmmaBins = "";
     }
-    TString imagePath = "../../Images/1-SignalTreatment/BDTOptimization/" + binning.dataPeriod + "/";
+    TString imagePath = "../../Images/1-SignalTreatment/BDTOptimization/" + sEmmaBins + "/" + binning.dataPeriod + "/";
     TString jetPtRange = Form("%.0f_to_%.0fGeV", jetptMin, jetptMax);
-    cOptimalBdtCuts->Print(Form(imagePath + "Significance_%s.pdf(",jetPtRange.Data()));
-    cEfficiencyVsBDT->Print(Form(imagePath + "Significance_%s.pdf)",jetPtRange.Data()));
+    cOptimalBdtCuts->Print(Form(imagePath + "Significance_" + sEmmaBins + "_%s.pdf(",jetPtRange.Data()));
+    cEfficiencyVsBDT->Print(Form(imagePath + "Significance_" + sEmmaBins + "_%s.pdf)",jetPtRange.Data()));
 
     std::cout << "Significance plot stored." << std::endl;
 }
@@ -1493,55 +1493,12 @@ void BDTOptimization() {
     // Execution time calculation
     time_t start, end;
     time(&start); // initial instant of program execution
-    
-    TString dataPeriod = "2023";
-    TString sBinningFileName = "binningInfo_" + dataPeriod + ".root";
-    if (!gSystem->AccessPathName(sBinningFileName)) {
-        std::cout << "Optimal cuts already calculated. Skipping step..." << std::endl;
-        return;
-    }
-    TFile* fBinning = new TFile(sBinningFileName, "recreate");
-    if (!fBinning || fBinning->IsZombie()) {
-        std::cerr << "Error: Unable to open the binning info ROOT file." << std::endl;
-    }
 
     // --- Binning objects
     BinningStruct binning;
 
-    // Emma Yeats reported analysis bins:
-    binning.useEmmaYeatsBins = false;
-    if (binning.useEmmaYeatsBins) {
-        // pT,jet cuts
-        binning.ptjetBinEdges_detector = {5., 7., 10., 20., 50.};
-        // DeltaR bins
-        binning.deltaRBinEdges_detector = {0., 0.01, 0.03, 0.05, 0.12, 0.2};
-    } else {
-        // pT,jet cuts
-        binning.ptjetBinEdges_detector = {5., 7., 10., 16., 36., 50.}; // default = {5., 7., 10., 16., 36., 50.}
-        // DeltaR bins
-        binning.deltaRBinEdges_detector = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5};
-    }
-    // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.05 (from first of pair)
-    binning.bdtPtCuts = {
-        {0, 0.12}, {1, 0.12}, {2, 0.12}, {3, 0.16}, {4, 0.2}, {5, 0.25}, {6, 0.4}, {7, 0.6}, {8, 0.8}, {10, 0.8}, {12, 1}, {16, 1}, {50, -1}
-    }; // on dataset JE_HF_LHC23_pass4_Thin_2P3PDstar_D0CJ_4_D0_1, std::vector<std::pair<double, double>>
-    efficiencyBinEdges(binning); // get ptHFEfficiencyBinEdges from the BDT intervals
-    binning.ptjetBinEdges_particle = binning.ptjetBinEdges_detector;
-    binning.deltaRBinEdges_particle = binning.deltaRBinEdges_detector;
-    // the HF binning depends on the ones used in the BDT models, copy binning.ptHFEfficiencyBinEdges_particle minus last edge
-    binning.ptHFBinEdges_particle = std::vector<double>(binning.ptHFEfficiencyBinEdges_particle.begin(), binning.ptHFEfficiencyBinEdges_particle.end() - 1);
-    binning.ptHFBinEdges_particle.push_back(36.); // add last edge to cover the entire range, as done on Nima's AN, defalut = 36 GeV/c
-    //binning.ptHFBinEdges_particle = {1., 2., 3., 4., 5., 6., 7., 8., 12., 16., 24., 36.}; // override with custom binning for HF pT, same as used for BDT models
-    binning.ptHFBinEdges_detector = binning.ptHFBinEdges_particle;
-    // Define mass range here — this is the ONLY place you need to change it
-    binning.massBinDensity = 50.0 / (2.06 - 1.72); // = 147.06 bins/GeV/c²
-    // Default: all bins use 2.06 GeV/c²
-    binning.minMass.assign(binning.ptHFBinEdges_detector.size() - 1, 1.72);
-    binning.maxMass.assign(binning.ptHFBinEdges_detector.size() - 1, 2.06);
-    binning.maxMass = {2.02, 2.045, 2.06, 2.08, 2.1, 2.14, 2.20, 2.28, 2.47, 2.47, 2.47};
-
     // Choose file period
-    binning.dataPeriod = dataPeriod;
+    binning.dataPeriod = "2023";
     if (binning.dataPeriod == "2023") {
         // DATA
         binning.inputDATA.first = "JE_HF_LHC23_pass4_Thin_2P3PDstar_D0CJ_4_D0_1";
@@ -1558,6 +1515,62 @@ void BDTOptimization() {
         binning.inputMC.second = "Data/MonteCarlo/Train_669231";
     }
 
+    // BDT background probability cuts based on pT,D ranges. Example: 1-2 GeV/c -> 0.05 (from first of pair)
+    binning.bdtPtCuts = {
+        {0, 0.12}, {1, 0.12}, {2, 0.12}, {3, 0.16}, {4, 0.2}, {5, 0.25}, {6, 0.4}, {7, 0.6}, {8, 0.8}, {10, 0.8}, {12, 1}, {16, 1}, {50, -1}
+    };
+    // Emma Yeats reported analysis bins:
+    binning.useEmmaYeatsBins = false;
+    efficiencyBinEdges(binning); // get ptHFEfficiencyBinEdges from the BDT intervals
+    // the HF binning depends on the ones used in the BDT models, copy binning.ptHFEfficiencyBinEdges_particle minus last edge
+    binning.ptHFBinEdges_particle = std::vector<double>(binning.ptHFEfficiencyBinEdges_particle.begin(), binning.ptHFEfficiencyBinEdges_particle.end() - 1);
+    if (binning.useEmmaYeatsBins) {
+        // pT,jet cuts
+        binning.ptjetBinEdges_particle = {5., 7., 10., 20., 50.};
+        // DeltaR bins
+        binning.deltaRBinEdges_particle = {0., 0.01, 0.03, 0.05, 0.12, 0.2};
+    } else {
+        // pT,jet cuts
+        binning.ptjetBinEdges_particle = {5., 7., 10., 16., 36., 50.}; // default = {5., 7., 10., 16., 36., 50.}
+        // DeltaR bins
+        binning.deltaRBinEdges_particle = {0., 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5};
+    }
+    // Detector binning is the same as particle binning
+    binning.ptjetBinEdges_detector = binning.ptjetBinEdges_particle;
+    binning.deltaRBinEdges_detector = binning.deltaRBinEdges_particle;
+    binning.ptHFBinEdges_detector = binning.ptHFBinEdges_particle;
+
+    std::cout << "ptHFBinEdges = [";
+    for (size_t ipTHF = 0; ipTHF < binning.ptHFBinEdges_particle.size(); ipTHF++) {
+        std::cout << binning.ptHFBinEdges_particle[ipTHF] << ",\t";
+    }
+    std::cout << "]" << std::endl;    
+    std::cout << "ptHFEfficiencyBinEdges = [";
+    for (size_t ipTHF = 0; ipTHF < binning.ptHFEfficiencyBinEdges_particle.size(); ipTHF++) {
+        std::cout << binning.ptHFEfficiencyBinEdges_particle[ipTHF] << ",\t";
+    }
+    std::cout << "]" << std::endl;
+
+    // Define mass range here — this is the ONLY place you need to change it
+    binning.massBinDensity = 50.0 / (2.06 - 1.72); // = 147.06 bins/GeV/c²
+    // Default: all bins use 2.06 GeV/c²
+    binning.minMass.assign(binning.ptHFBinEdges_detector.size() - 1, 1.72);
+    binning.maxMass.assign(binning.ptHFBinEdges_detector.size() - 1, 2.06);
+    binning.maxMass = {2.02, 2.02, 2.02, 2.02, 2.02, 2.05, 2.05, 2.10, 2.10, 2.15, 2.15};// maximum with counts observed: {2.02, 2.045, 2.06, 2.08, 2.1, 2.14, 2.20, 2.28, 2.47, 2.47, 2.47}
+
+    // Only run the scan if optimal cuts haven't been calculated yet (i.e. binning info file doesn't exist)
+    TString sEmmaBins;
+    if (binning.useEmmaYeatsBins) {
+        sEmmaBins = "EmmaYeatsBins";
+    } else {
+        sEmmaBins = "";
+    }
+    TString sBinningFileName = "binningInfo_" + binning.dataPeriod + "_" + sEmmaBins + ".root";
+    if (!gSystem->AccessPathName(sBinningFileName)) {
+        std::cout << "Optimal cuts already calculated. Skipping step..." << std::endl;
+        return;
+    }
+
     // Choose total fit model
     FitModelType modelToUse = FitModelType::FullPowerLaw;
     // Compute the entire range of pT,jet
@@ -1565,7 +1578,11 @@ void BDTOptimization() {
     double jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
     ScanIterator(jetptMin, jetptMax, binning, modelToUse);
 
-    // Store binning information in a separate file for later use
+    // Store binning information in a separate file for later use (only create file at the end of execution)
+    TFile* fBinning = new TFile(sBinningFileName, "recreate");
+    if (!fBinning || fBinning->IsZombie()) {
+        std::cerr << "Error: Unable to open the binning info ROOT file." << std::endl;
+    }
     storeBinningInFile(fBinning, binning);
     fBinning->Close();
 

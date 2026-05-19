@@ -111,14 +111,25 @@ struct BinningStruct {
 };
 void efficiencyBinEdges(BinningStruct& binning) {
 
-    // Reserve space, 0-1 interval is excluded
-    binning.ptHFEfficiencyBinEdges_particle.reserve(binning.bdtPtCuts.size()-1);
-    binning.ptHFEfficiencyBinEdges_detector.reserve(binning.bdtPtCuts.size()-1);
+    // Reserve space, "0-1" and "16-50" intervals are excluded
+    binning.ptHFEfficiencyBinEdges_particle.reserve(binning.bdtPtCuts.size()-2);
+    binning.ptHFEfficiencyBinEdges_detector.reserve(binning.bdtPtCuts.size()-2);
 
     // Loop through intervals  of pT,HF
-    for (size_t iInterval = 1; iInterval < binning.bdtPtCuts.size(); iInterval++) {
+    for (size_t iInterval = 1; iInterval < binning.bdtPtCuts.size()-1; iInterval++) {
         binning.ptHFEfficiencyBinEdges_particle.emplace_back(binning.bdtPtCuts[iInterval].first);
     }
+
+    // Add padding bin for folding/unfolding operations
+    if (!binning.useEmmaYeatsBins) {
+        binning.ptHFEfficiencyBinEdges_particle.emplace_back(36.);
+        binning.ptHFEfficiencyBinEdges_particle.emplace_back(50.);
+    } else {
+        binning.ptHFEfficiencyBinEdges_particle.emplace_back(20.);
+        binning.ptHFEfficiencyBinEdges_particle.emplace_back(50.);
+    }
+    
+    // Detector binning is the same as particle binning
     binning.ptHFEfficiencyBinEdges_detector = binning.ptHFEfficiencyBinEdges_particle;
 }
 std::vector<double> LoadBinning(TFile* fInput, const char* pathInFile) {
@@ -186,6 +197,14 @@ void storeBinningInFile(TFile* fOutput, const BinningStruct& binning) {
     }
     ptEdges.Write("ptHfBDTBinEdges");
     bdtCuts.Write("bdtCutValues");
+
+    // Return to root directory
+    fOutput->cd();
+    TVectorD vecPtHFEff(binning.ptHFEfficiencyBinEdges_particle.size());
+    for (size_t i = 0; i < binning.ptHFEfficiencyBinEdges_particle.size(); ++i) {
+        vecPtHFEff[i] = binning.ptHFEfficiencyBinEdges_particle[i];
+    }
+    vecPtHFEff.Write("ptHFEfficiencyBinEdges");
 
     // Return to root directory
     fOutput->cd();
@@ -299,7 +318,14 @@ BinningStruct retrieveBinningFromFile(TFile* fInput) {
         binning.bdtPtCuts.emplace_back((*vecPt)[i], (*vecCut)[i]);
         binning.ptHfBfDTBinEdges.emplace_back((*vecPt)[i]);
     }
-    binning.ptHFEfficiencyBinEdges_particle = std::vector<double>(binning.ptHfBfDTBinEdges.begin() + 1, binning.ptHfBfDTBinEdges.end());
+
+    //
+    // --- Load efficiency bin edges, which are the same as the BDT cut pT,HF bin edges, except for the last one which is the upper edge of the last BDT interval
+    //
+    TVectorD* vecPtHFEff = (TVectorD*)fInput->Get("ptHFEfficiencyBinEdges");
+    for (int i = 0; i < vecPtHFEff->GetNoElements(); ++i) {
+        binning.ptHFEfficiencyBinEdges_particle.emplace_back((*vecPtHFEff)[i]);
+    }
     binning.ptHFEfficiencyBinEdges_detector = binning.ptHFEfficiencyBinEdges_particle;
 
     // Retrieve boolean flag
