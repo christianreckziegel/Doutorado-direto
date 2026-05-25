@@ -298,12 +298,16 @@ void fillHistograms(TFile* fEfficiency, TFile* fPowhegNonPrompt, TFile* fSimulat
                 dataContainer.hResponsePtJet->Fill(MCDjetPt,MCPjetPt); // , 1./ efficiency_prompt
                 dataContainer.hResponsePtHF->Fill(MCDhfPt,MCPhfPt); // , 1./ efficiency_prompt
 
+                
+            }
+            // Numerator kinematic efficiency 
+            if (genLevelRange && recoLevelRange && passBDTcut) {
                 // Fill kinematic efficiency numerator histograms
                 dataContainer.hKineEffParticle[0]->Fill(MCPjetPt, MCPDeltaR, MCPhfPt);
                 dataContainer.hKineEffDetector[0]->Fill(MCDjetPt, MCDDeltaR, MCDhfPt);
             }
             // Particle level kinematic efficiency denominator (full particle level range)
-            if (genLevelRange) {
+            if (genLevelRange && passBDTcut) {
                 dataContainer.hKineEffParticle[1]->Fill(MCPjetPt, MCPDeltaR, MCPhfPt);
             }
             // Detector level kinematic efficiency denominator (full detector level range)
@@ -365,7 +369,16 @@ std::vector<double> retrieveLuminosityFromFile(TFile* fPowhegNonPrompt, TFile* f
         std::cerr << "Error: fHistXsection is missing or not a TProfile!" << std::endl;
         return {0.0, 0.0};
     }
-
+    TTree* tree = dynamic_cast<TTree*>(fPowhegNonPrompt->Get("tree_D0"));
+    std::cout << "pLumi TProfile has " << pLumi->GetEntries() << " entries, \t mean " << pLumi->GetMean(2) << " and [" << pLumi->GetTitle() << "] title." << std::endl;
+    std::cout << "pLumi TProfile X-axis: " << pLumi->GetXaxis()->GetTitle() << ", Y-axis: " << pLumi->GetYaxis()->GetTitle() << std::endl;
+    std::cout << "POWHEG tree entries: " << tree->GetEntries() << std::endl;  // requires tree open
+    std::cout << "pLumi GetNbinsX(): " << pLumi->GetNbinsX() << std::endl;
+    std::cout << "pLumi GetEffectiveEntries(): " << pLumi->GetEffectiveEntries() << std::endl;
+    std::cout << "pLumi total sum of weights (per-bin): " << std::endl;
+    for (int i = 1; i <= pLumi->GetNbinsX(); i++) {
+        std::cout << "  bin " << i << ": entries=" << pLumi->GetBinEntries(i) << ", mean=" << pLumi->GetBinContent(i) << std::endl;
+    }
     // 1. Get the average cross section (Mean Y = 0.4263 mb)
     double sigmaPowheg_mb = pLumi->GetMean(2); // 2 specifies the Y-axis mean
     
@@ -388,7 +401,7 @@ std::vector<double> retrieveLuminosityFromFile(TFile* fPowhegNonPrompt, TFile* f
     Int_t bcTVX = 0;
     long long bcTVXSum = 0; // Use long long to avoid integer overflow loops
     tLumiBunchCrossing->SetBranchAddress("fCountsWithTVX", &bcTVX);
-    
+    std::cout << "tLumiBunchCrossing TTree has " << tLumiBunchCrossing->GetEntries() << " entries." << std::endl;
     for (Long64_t iEntry = 0; iEntry < tLumiBunchCrossing->GetEntries(); iEntry++) {
         tLumiBunchCrossing->GetEntry(iEntry);
         bcTVXSum += bcTVX;
@@ -554,12 +567,13 @@ void smearGeneratorData(FeedDownData& dataContainer, TFile* fEfficiency, const B
 
                 // Remove Emma correspondent bins only at detector level, after all corrections, before luminosity scaling
                 // Obs.: also remove the padding bins that are outside of the pT,HF range
-                double weightEmmaCut = 1.0; // ToDo: 
-                if (!passEmmaCut(jetPtCenter, ptDcenter) || (ptDcenter < binning.ptHFBinEdges_particle.front()) || (ptDcenter > binning.ptHFBinEdges_particle.back())) {
-                    weightEmmaCut = 0;
+                double ptDLowEdge = dataContainer.hFinalPromptSelEffCorrected->GetZaxis()->GetBinLowEdge(zBin);
+                double ptDUpperEdge = dataContainer.hFinalPromptSelEffCorrected->GetZaxis()->GetBinLowEdge(zBin+1);
+                if ((binning.useEmmaYeatsBins && !passEmmaCut(jetPtCenter, ptDcenter)) || ((ptDLowEdge < binning.ptHFBinEdges_particle.front()) || (ptDUpperEdge > binning.ptHFBinEdges_particle.back()))) {
+                    double weightEmmaCut = 0;
+                    binContent *= weightEmmaCut;
+                    binError *= weightEmmaCut;
                 }
-                binContent *= weightEmmaCut;
-                binError *= weightEmmaCut;
 
                 // Rescale the bin content by the ratio of efficiencies
                 if (effPrompt > 0) {
@@ -715,6 +729,7 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     dataContainer.hFoldedKinCorrected->Project3D("yx")->SetStats(0);
     dataContainer.hFoldedKinCorrected->Project3D("yx")->Draw("colz");
     cFolded->cd(3);
+    dataContainer.hFinalPromptSelEffCorrected->SetTitle("Folded 2D histogram with #varepsilon_{kin}^{detector} and #varepsilon_{non-prompt, sel}^{detector} corrections yx projection");
     dataContainer.hFinalPromptSelEffCorrected->Project3D("yx")->SetStats(0);
     dataContainer.hFinalPromptSelEffCorrected->Project3D("yx")->Draw("colz");
     cFolded->cd(4);
@@ -780,7 +795,7 @@ void plotHistograms(const FeedDownData& dataContainer, const double& jetptMin, c
     legendFull->AddEntry(hTotalFull, "Total data", "lpe");
     legendFull->SetBorderSize(0);
     legendFull->SetFillStyle(0);
-    // gPad->SetLogy();
+    gPad->SetLogy();
     hTotalFull->Draw();
     hNonpromptFull->Draw("same");
     latex->DrawLatex(0.2, 0.8, Form("Jet pT bin: %.0f - %.0f GeV/c", binning.ptjetBinEdges_detector[0], binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1]));

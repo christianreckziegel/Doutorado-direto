@@ -204,38 +204,39 @@ void fillHistograms(TFile* fSimulated, EfficiencyData& dataContainer, const Binn
         bool isRealD0 = isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs);
         if (genLevelRange) {
             // Matched entries must be of real D0s, not reflections or combinatorial background
-            if (MCDhfmatch && isRealD0) {
+            if (MCDhfmatch) {
 
-                // Fill particle level entry
-                dataContainer.hMcpPt[0]->Fill(MCPhfPt);// Fill inclusive histogram
-                if (MCPhfprompt) {
-                    dataContainer.hMcpPt[1]->Fill(MCPhfPt);// fill prompt efficiency histogram
-                    dataContainer.hSelEff_run2style2d[0]->Fill(MCPjetPt, MCPhfPt);
-                    // Run 3 style prompt particle level efficiency histogram
-                    dataContainer.hDenominator_prompt_part_run3style->Fill(MCPhfPt);
-                } else{
-                    dataContainer.hMcpPt[2]->Fill(MCPhfPt);// fill non-prompt efficiency histogram
-                    dataContainer.hDenominator_nonprompt_part_run3style->Fill(MCPhfPt);
-                }
-                // Fill detector level entry
-                if (recoLevelRange && passBDTcut) {
-                    // Fill inclusive histogram
-                    dataContainer.hMcdPt[0]->Fill(MCDhfPt);
-                    // fill prompt efficiency histogram
-                    if (MCDhfprompt) {
-                        dataContainer.hMcdPt[1]->Fill(MCDhfPt);
-                        dataContainer.hSelEff_run2style2d[1]->Fill(MCDjetPt, MCDhfPt);
+                if (isRealD0) {
+                    // Fill particle level entry
+                    dataContainer.hMcpPt[0]->Fill(MCPhfPt);// Fill inclusive histogram
+                    if (MCPhfprompt) {
+                        dataContainer.hMcpPt[1]->Fill(MCPhfPt);// fill prompt efficiency histogram
+                        dataContainer.hSelEff_run2style2d[0]->Fill(MCPjetPt, MCPhfPt);
                         // Run 3 style prompt particle level efficiency histogram
-                        dataContainer.hNumerator_prompt_part_run3style->Fill(MCPhfPt);
+                        dataContainer.hDenominator_prompt_part_run3style->Fill(MCPhfPt);
                     } else{
-                        // fill non-prompt efficiency histogram
-                        dataContainer.hMcdPt[2]->Fill(MCDhfPt);
-                        dataContainer.hNumerator_nonprompt_part_run3style->Fill(MCPhfPt);
+                        dataContainer.hMcpPt[2]->Fill(MCPhfPt);// fill non-prompt efficiency histogram
+                        dataContainer.hDenominator_nonprompt_part_run3style->Fill(MCPhfPt);
                     }
-                } else if (recoLevelRange && !passBDTcut) {
-                    dataContainer.hBDTBackgroundScore->Fill(MCDhfMlScore0);
+                    // Fill detector level entry
+                    if (recoLevelRange && passBDTcut) {
+                        // Fill inclusive histogram
+                        dataContainer.hMcdPt[0]->Fill(MCDhfPt);
+                        // fill prompt efficiency histogram
+                        if (MCDhfprompt) {
+                            dataContainer.hMcdPt[1]->Fill(MCDhfPt);
+                            dataContainer.hSelEff_run2style2d[1]->Fill(MCDjetPt, MCDhfPt);
+                            // Run 3 style prompt particle level efficiency histogram
+                            dataContainer.hNumerator_prompt_part_run3style->Fill(MCPhfPt);
+                        } else{
+                            // fill non-prompt efficiency histogram
+                            dataContainer.hMcdPt[2]->Fill(MCDhfPt);
+                            dataContainer.hNumerator_nonprompt_part_run3style->Fill(MCPhfPt);
+                        }
+                    } else if (recoLevelRange && !passBDTcut) {
+                        dataContainer.hBDTBackgroundScore->Fill(MCDhfMlScore0);
+                    }
                 }
-
             } else {// fill particle level even if not matched
                 dataContainer.hMcpPt[0]->Fill(MCPhfPt);// Fill inclusive histogram
                 if (MCPhfprompt) {

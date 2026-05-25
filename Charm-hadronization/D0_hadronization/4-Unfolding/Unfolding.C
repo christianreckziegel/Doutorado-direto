@@ -261,7 +261,7 @@ void fillHistograms(TFile* fFeedDown, TFile* fEfficiency, TFile* fSimulatedMCMat
         //bool isReflection = (MCDhfMatchedFrom != MCDhfSelectedAs) ? true : false;
         bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
         bool isPrompt = MCDhfprompt || MCPhfprompt;                                 // both need to be non-prompt in order to reject the candidate
-        if (!isPrompt || !isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs) || !MCDhfmatch) {
+        if (!MCPhfprompt || !MCDhfmatch || !isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs)) {
             continue;
         }
 
@@ -278,7 +278,7 @@ void fillHistograms(TFile* fFeedDown, TFile* fEfficiency, TFile* fSimulatedMCMat
         bool recoInside = (MCDDeltaR >= 0.) && (MCDDeltaR < 0.01);
         bool genOutside = (MCPDeltaR >= 0.01);
         // Fill response matrix and kinematic efficiency histograms
-        if (genLevelRange && recoLevelRange) {
+        if (genLevelRange && recoLevelRange && passBDTcut) {// use matched selected sample to describe kinematic smearing requires correction with the inverse of selection efficiency
             
             // Find the bin corresponding to the given pT,D value
             int bin = dataContainer.hSelectionEfficiency.first->FindBin(MCDhfPt);
@@ -322,11 +322,14 @@ void fillHistograms(TFile* fFeedDown, TFile* fEfficiency, TFile* fSimulatedMCMat
                 dataContainer.hHfphiMigration[0]->Fill(MCPhfPhi);
                 dataContainer.hHfphiMigration[1]->Fill(MCDhfPhi);
             }
-            
+        }
+        // No need for passBDTCut condition in the following, since we want to fill the kinematic efficiency histograms for all the entries that are inside the kinematic range, independently of whether they pass the BDT cut or not, since the kinematic efficiency is meant to correct for the geometrical and kinematic acceptance of the detector, not for the BDT selection efficiency (which is already corrected for in the fed-down subtraction step).
+        if (genLevelRange && recoLevelRange) {
             // Fill kinematic efficiency numerator histograms
             dataContainer.hKineEffParticle[0]->Fill(MCPjetPt, MCPDeltaR);
             dataContainer.hKineEffDetector[0]->Fill(MCDjetPt, MCDDeltaR);
         }
+        
         if (genLevelRange) {
             // Fill kinematic efficiency denominator histogram for full particle level range
             dataContainer.hKineEffParticle[1]->Fill(MCPjetPt, MCPDeltaR);
@@ -569,10 +572,64 @@ void plotHistograms(const UnfoldData& dataContainer, const double& jetptMin, con
     cResponseDeltaR->cd();
     dataContainer.hResponse2D[0]->Draw("colz");
     gPad->SetLogz();
+    float topY = 0.83; // Top Y position for the text
+    float bottomY = 0.15; // Bottom Y position for the text
+    float deltaY = 0.06; // Vertical spacing between lines
+    float middleX = 0.52; // Middle X position for the text
+    float leftX = 0.13; // Left X position for the text
+    float rightX = 0.87; // or 0.90, depending on your layout
+    float textSize = 0.04; // Text size for the labels
+    // Allign text to the left
+    TLatex* latexLeft = new TLatex();
+    latexLeft->SetTextColor(kBlack); // ROOT's predefined white color
+    latexLeft->SetTextSizePixels(24);
+    latexLeft->SetNDC(); // Enables normalized coordinates (0 to 1)
+    latexLeft->SetTextSize(textSize); // default = 0.05
+    latexLeft->DrawLatex(leftX, topY, "ALICE Performance");
+    latexLeft->DrawLatex(leftX, topY-deltaY, "pp, #sqrt{#it{s}} = 13.6 TeV");
+    latexLeft->DrawLatex(leftX, topY-2*deltaY, "Prompt D^{0}");
+    // Allign text to the right
+    TLatex* latexRight = new TLatex();
+    latexRight->SetTextColor(kWhite); // ROOT's predefined white color
+    latexRight->SetTextSizePixels(24);
+    latexRight->SetNDC(); // Enables normalized coordinates (0 to 1)
+    latexRight->SetTextSize(textSize); // default = 0.05
+    latexRight->SetTextAlign(31); // Right-align text to that X position
+    latexRight->DrawLatex(rightX, topY, "D^{0}#rightarrow K^{#minus}+#pi^{+} and ch. conj.");
+    latexRight->DrawLatex(rightX, topY - deltaY, "in ch-particle jets, anti-#it{k}_{T}, #it{R} = 0.4");
+    
+    latexRight->DrawLatex(rightX, topY - 2*deltaY, Form("%.0f < #it{p}_{T, D^{0}} < %.0f GeV/#it{c}, |#it{y}_{D^{0}}| #leq 0.8", binning.ptHFBinEdges_detector[0], binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1])); // right GeV/c - Raymond
+    latexRight->DrawLatex(rightX, topY - 3*deltaY, Form("%.0f < #it{p}_{T, jet} < %.0f GeV/#it{c}, |#it{#eta}_{jet}| #leq 0.5",binning.ptjetBinEdges_detector[0], binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1]));
     TCanvas* cResponsePtJet = new TCanvas("cResponsePtJet","Response matrix pT,jet projection");
     cResponsePtJet->cd();
     dataContainer.hResponse2D[1]->Draw("colz");
     gPad->SetLogz();
+    topY = 0.83; // Top Y position for the text
+    bottomY = 0.15; // Bottom Y position for the text
+    deltaY = 0.06; // Vertical spacing between lines
+    middleX = 0.52; // Middle X position for the text
+    leftX = 0.13; // Left X position for the text
+    rightX = 0.87; // or 0.90, depending on your layout
+    textSize = 0.04; // Text size for the labels
+    // Allign text to the left
+    latexLeft->SetTextColor(kWhite); // ROOT's predefined white color
+    latexLeft->SetTextSizePixels(24);
+    latexLeft->SetNDC(); // Enables normalized coordinates (0 to 1)
+    latexLeft->SetTextSize(textSize); // default = 0.05
+    latexLeft->DrawLatex(leftX, topY, "ALICE Performance");
+    latexLeft->DrawLatex(leftX, topY-deltaY, "pp, #sqrt{#it{s}} = 13.6 TeV");
+    latexLeft->DrawLatex(leftX, topY-2*deltaY, "Prompt D^{0}");
+    // Allign text to the right
+    latexRight->SetTextColor(kWhite); // ROOT's predefined white color
+    latexRight->SetTextSizePixels(24);
+    latexRight->SetNDC(); // Enables normalized coordinates (0 to 1)
+    latexRight->SetTextSize(textSize); // default = 0.05
+    latexRight->SetTextAlign(31); // Right-align text to that X position
+    latexRight->DrawLatex(rightX, topY, "D^{0}#rightarrow K^{#minus}+#pi^{+} and ch. conj.");
+    latexRight->DrawLatex(rightX, topY - deltaY, "in ch-particle jets, anti-#it{k}_{T}, #it{R} = 0.4");
+    latexRight->DrawLatex(rightX, topY - 2*deltaY, Form("%.0f < #it{p}_{T, D^{0}} < %.0f GeV/#it{c}, |#it{y}_{D^{0}}| #leq 0.8", binning.ptHFBinEdges_detector[0], binning.ptHFBinEdges_detector[binning.ptHFBinEdges_detector.size() - 1])); // right GeV/c - Raymond
+    latexRight->DrawLatex(rightX, topY - 3*deltaY, "|#it{#eta}_{jet}| #leq 0.5");
+    
 
     TCanvas* cResponseJetptRanges = new TCanvas("cResponseJetptRanges","Response matrix 2D representation for jet pt in 10-20 GeV");
     cResponseJetptRanges->Divide(2,2);

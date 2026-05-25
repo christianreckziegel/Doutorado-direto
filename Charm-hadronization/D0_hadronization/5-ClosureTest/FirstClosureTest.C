@@ -269,6 +269,7 @@ ClosureTestData1 createAnalysisObjects(TFile* fClosureInput, double& jetptMin, d
         if (recoLevelRange && passBDTcut) {
             // Fill input distribution for detector level
             dataContainer.hInputDetector->Fill(MCDjetPt, MCDDeltaR);
+            //dataContainer.hInputParticle->Fill(MCPjetPt, MCPDeltaR);
             //std::cout << "Filling detector level input: pT,jet = " << MCDjetPt << ", DeltaR = " << MCDDeltaR << std::endl;
         }
     }

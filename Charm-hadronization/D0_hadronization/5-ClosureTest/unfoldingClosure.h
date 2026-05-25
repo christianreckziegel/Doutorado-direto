@@ -11,6 +11,7 @@ using namespace std;
 struct UnfoldData {
     // Step 2: apply efficiency (pT,D dependent) correction
     std::pair<TH1D*, TH1D*> hSelectionEfficiency;                           // first = prompt D0s, second = non-prompt D0s
+    std::pair<TH1D*, TH1D*> hSelectionEfficiency_run3_particleLevel;        // first = prompt D0s, second = non-prompt D0s
 
     // Step 3: input (background subtracted, efficiency corrected, B fed-down) 2D distribution (pT,jet vs DeltaR) with corrections applied to be unfolded
     TH2D* hBFedDownData;
@@ -32,7 +33,7 @@ struct UnfoldData {
     std::vector<TH2D*> hRefolded;                                           // refolded 2D histogram (jet pT vs DeltaR), there are iterationNumber unfolding objects
 };
 
-UnfoldData calculateKinematics(TFile* fClosureInput, const std::vector<TH1D*>& hSelEff_run3style, const BinningStruct& binning, int& iterationNumber) {
+UnfoldData calculateKinematics(TFile* fClosureInput, const std::vector<TH1D*>& hSelEff_run3style, const std::vector<TH1D*>& hSelEff_run3_particleLevel, const BinningStruct& binning, int& iterationNumber) {
     UnfoldData dataContainer;
     
     // 1 ----- Create histograms
@@ -90,6 +91,8 @@ UnfoldData calculateKinematics(TFile* fClosureInput, const std::vector<TH1D*>& h
     // Access prompt and non-prompt efficiency
     dataContainer.hSelectionEfficiency.first = hSelEff_run3style[0];
     dataContainer.hSelectionEfficiency.second = hSelEff_run3style[1];
+    dataContainer.hSelectionEfficiency_run3_particleLevel.first = hSelEff_run3_particleLevel[0];
+    dataContainer.hSelectionEfficiency_run3_particleLevel.second = hSelEff_run3_particleLevel[1];
 
     // Accessing TTree
     TTree* tree = (TTree*)fClosureInput->Get("CorrectionTree");
@@ -148,7 +151,7 @@ UnfoldData calculateKinematics(TFile* fClosureInput, const std::vector<TH1D*>& h
         // Only prompt, real (not reflections) and matched candidates
         bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
         bool isPrompt = MCDhfprompt || MCPhfprompt;                                 // both need to be non-prompt in order to reject the candidate
-        if (!isPrompt || !isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs) || !MCDhfmatch) {
+        if (!MCPhfprompt || !MCDhfmatch || !isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs)) {
             continue;
         }
   
@@ -168,14 +171,14 @@ UnfoldData calculateKinematics(TFile* fClosureInput, const std::vector<TH1D*>& h
         bool recoDeltaRRange = ((MCDaxisDistance >= binning.deltaRBinEdges_detector[0]) && (MCDaxisDistance < MCDDeltaRcut));
         bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && recoJetPtRange && recoHfPtRange && recoDeltaRRange;
         
-        
+        // Find the bin corresponding to the given pT,D value
+        int bin = dataContainer.hSelectionEfficiency.first->FindBin(MCDhfPt);
+        // Get the efficiency value from the bin content
+        double efficiency_prompt = dataContainer.hSelectionEfficiency.first->GetBinContent(bin);
+
         // Fill response matrix and kinematic efficiency histograms
-        if (genLevelRange && recoLevelRange) {
-            
-            // Find the bin corresponding to the given pT,D value
-            int bin = dataContainer.hSelectionEfficiency.first->FindBin(MCDhfPt);
-            // Get the efficiency value from the bin content
-            double efficiency_prompt = dataContainer.hSelectionEfficiency.first->GetBinContent(bin);
+        if (genLevelRange && recoLevelRange && passBDTcut) { // use matched selected sample to describe kinematic smearing requires correction with the inverse of selection efficiency
+
             // Fill 4D RooUnfoldResponse object (jet pT shape is influenced by D0 pT efficiency)
             dataContainer.response->Fill(MCDjetPt, MCDDeltaR, MCPjetPt, MCPDeltaR, 1./efficiency_prompt);
             
@@ -183,11 +186,20 @@ UnfoldData calculateKinematics(TFile* fClosureInput, const std::vector<TH1D*>& h
             dataContainer.hResponse2D[0]->Fill(MCDDeltaR, MCPDeltaR, 1./efficiency_prompt);
             dataContainer.hResponse2D[1]->Fill(MCDjetPt, MCPjetPt, 1./efficiency_prompt);
 
+            
+        }
+        // No need for passBDTCut condition in the following, since we want to fill the kinematic efficiency histograms for all the entries that are inside the kinematic range,
+        // independently of whether they pass the BDT cut or not, since the kinematic efficiency is meant to correct for the geometrical and kinematic acceptance of the detector,
+        // not for the BDT selection efficiency (which is already corrected for in the fed-down subtraction step).
+        int particleBin = dataContainer.hSelectionEfficiency_run3_particleLevel.first->FindBin(MCPhfPt);  // ← use MCPhfPt
+        double eff_particle = dataContainer.hSelectionEfficiency_run3_particleLevel.first->GetBinContent(particleBin);
+        if (genLevelRange && recoLevelRange) {
             // Fill kinematic efficiency numerator histograms
             dataContainer.hKineEffParticle[0]->Fill(MCPjetPt, MCPDeltaR);
             dataContainer.hKineEffDetector[0]->Fill(MCDjetPt, MCDDeltaR);
         }
         if (genLevelRange) {
+            
             // Fill kinematic efficiency denominator histogram for full particle level range
             dataContainer.hKineEffParticle[1]->Fill(MCPjetPt, MCPDeltaR);
         }
@@ -396,12 +408,12 @@ void plotHistograms(const UnfoldData& dataContainer, const BinningStruct& binnin
     cFullyCorrected1D->Print(imagePath + Form("closureTest2_unfolding_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 }
 
-UnfoldData UnfoldingClosure(TFile* fClosureInput, TH2D* hEfficiencyCorrectedData, const std::vector<TH1D*>& hSelEff_run3style, const BinningStruct& binning) {
+UnfoldData UnfoldingClosure(TFile* fClosureInput, TH2D* hEfficiencyCorrectedData, const std::vector<TH1D*>& hSelEff_run3style, const std::vector<TH1D*>& hSelEff_run3_particleLevel, const BinningStruct& binning) {
 
     int iterationNumber = 8;
 
     // Calculate response matrix and kinematic efficiencies
-    UnfoldData dataContainer = calculateKinematics(fClosureInput, hSelEff_run3style, binning, iterationNumber);
+    UnfoldData dataContainer = calculateKinematics(fClosureInput, hSelEff_run3style, hSelEff_run3_particleLevel, binning, iterationNumber);
 
     // Unfold with "iterationNumber" iterations
     std::vector<TH2D*> hUnfKinCorrected = performUnfolding(dataContainer, hEfficiencyCorrectedData, iterationNumber);

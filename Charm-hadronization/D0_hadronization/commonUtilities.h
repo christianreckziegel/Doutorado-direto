@@ -599,7 +599,7 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
     double sigma = signalSigma1;
     
     // Define area variables
-    double B, Bs, R, Rs, S, Ys;
+    double B, Bs, R, Rs, S, Ys, Sb;
 
     if (leftRange[0] == 0. && leftRange[1] == 0.) {
         // Only right sideband used
@@ -617,6 +617,9 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
 
         // Calculate total fit area in signal region
         Ys = fittings.fitTotal[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+
+        // Calculate signal contribution in the right side-band region
+        Sb = fittings.fitSignalOnly[iHisto]->Integral(rightRange[0], rightRange[1]);
     } else {
         // Both sidebands used
 
@@ -635,10 +638,14 @@ std::array<double, 2> calculateScalingFactor(const size_t iHisto, const FitConta
 
         // Calculate total fit area in signal region
         Ys = fittings.fitTotal[iHisto]->Integral(m_0 - signalSigmas * sigma,m_0 + signalSigmas * sigma);
+
+        // Calculate signal contribution in both side-band regions
+        Sb = fittings.fitSignalOnly[iHisto]->Integral(rightRange[0], rightRange[1]); // right
+        Sb = Sb + fittings.fitSignalOnly[iHisto]->Integral(leftRange[0], leftRange[1]); // right
     }
 
     // Calculate scaling factor
-    double alpha = S / (S + Rs - (Bs/B) * R);
+    double alpha = S / (S + Rs - (Bs/B) * (R + Sb)); // ---> Addition of Sb is new!
     if (std::isnan(alpha)) {
         std::cout << "Error: Invalid scaling factor alpha = " << alpha << " for histogram index " << iHisto << ".\n";
         std::cout << "S = " << S << ", Rs = " << Rs << ", Bs = " << Bs << ", B = " << B << ", R = " << R << ", (S + Rs - (Bs/B) * R) = " << (S + Rs - (Bs/B) * R) << ".\n";

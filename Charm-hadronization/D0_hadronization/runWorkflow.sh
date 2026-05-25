@@ -22,12 +22,12 @@ WORKDIR=/home/christian/cernbox/Analyses/With_Nima/D0_hadronization
   
   # 0.0 - Find optimal BDT score thresholds
   cd $WORKDIR/1-SignalTreatment/BDTOptimization
-  root -b -q BDTOptimization.C > log_bdt_optimization.txt 2>&1
+  #root -b -q BDTOptimization.C > log_bdt_optimization.txt 2>&1
   echo "0.0 - BDT optimization done!"
   cd $WORKDIR
   # 1.1 - MC fit templates
   cd $WORKDIR/1-SignalTreatment/Reflections
-  root -b -q ReflectionsTreatment.C > log_reflections.txt 2>&1
+  #root -b -q ReflectionsTreatment.C > log_reflections.txt 2>&1
   echo "1.1 - MC fit templates done!"
   cd $WORKDIR
   # 1.2 - Side-band subtraction

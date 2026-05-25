@@ -1383,6 +1383,11 @@ SubtractionResult SideBand(SidebandData& dataContainer, const FitModelType& mode
 
         // Account for two sigma only area used for signal region
         double coverage = TMath::Erf(signalSigmas / sqrt(2)); // coverage of a Gaussian in a +/- signalSigmas window
+        double twoSigmaArea = dataContainer.fittings.fitSignalOnly[iHisto]->Integral(m_0 - signalSigmas * sigma, m_0 + signalSigmas * sigma);
+        double minMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmin();
+        double maxMass = dataContainer.histograms1d[iHisto]->GetXaxis()->GetXmax();
+        double totalBoundsArea = dataContainer.fittings.fitSignalOnly[iHisto]->Integral(minMass, maxMass);
+        coverage = twoSigmaArea / totalBoundsArea;
         h_back_subtracted->Scale(1 / coverage);
         // If histogram isn't empty, store it in the container
         bool isHistoEmpty = (h_back_subtracted->GetEntries() != 0) ? true : false;
@@ -1677,7 +1682,77 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
     lScalingFactors->AddEntry(hBeta,"#beta","l");
     lScalingFactors->Draw();
 
-
+    //
+    // Performance plot for hard probes
+    //
+    TCanvas* cPerformanceHardProbes = new TCanvas("cPerformanceHardProbes", "Performance plot", 1800, 1000);
+    double statBoxPos = gPad->GetUxmax(); // Height of the stat box
+    gStyle->SetOptStat(0); // Turn off the default stats box
+    gStyle->SetTextFont(42); // Helvetica-like, cleaner than default
+    cPerformanceHardProbes->cd();
+    TH1D* histogramClone5 = (TH1D*)dataContainer.histograms1d[5]->Clone("histogramClone5");
+    histogramClone5->SetMarkerStyle(kFullCircle); // kFullCircle
+    histogramClone5->SetMarkerColor(kBlack);
+    histogramClone5->SetLineColor(kBlack);
+    TString title = histogramClone5->GetTitle();
+    histogramClone5->SetTitle("");
+    histogramClone5->GetYaxis()->SetTitle(Form("Counts per %.2f MeV/#it{c}^{2}", 1000*histogramClone5->GetBinWidth(1)));
+    histogramClone5->GetXaxis()->SetTitleSize(0.04);
+    histogramClone5->GetYaxis()->SetTitleSize(0.04);
+    histogramClone5->GetYaxis()->SetTitleOffset(1.25); // default = 1.5
+    histogramClone5->SetMinimum(0);
+    histogramClone5->Sumw2(); // Enable error calculation
+    histogramClone5->Draw();
+    histogramClone5->SetMaximum(histogramClone5->GetMaximum() * 1.6); // More vertical space
+    gPad->SetTickx(1);
+    gPad->SetTicky(1);
+    dataContainer.fittings.fitTotal[5]->SetLineStyle(1); // Solid
+    dataContainer.fittings.fitTotal[5]->Draw("same");
+    dataContainer.fittings.fitSignalOnly[5]->SetLineStyle(2); // Dashed
+    dataContainer.fittings.fitSignalOnly[5]->Draw("same");
+    dataContainer.fittings.fitBackgroundOnly[5]->SetLineStyle(3); // Dotted
+    dataContainer.fittings.fitBackgroundOnly[5]->Draw("same");
+    dataContainer.fittings.fitReflectionsOnly[5]->SetLineStyle(4); // Dash-dot
+    dataContainer.fittings.fitReflectionsOnly[5]->Draw("same");
+    double A1Signal = dataContainer.fittings.fitTotal[5]->GetParameter(2); // Get the value of parameter 'A' from primary signal gaussian
+    double m0_1Signal = dataContainer.fittings.fitTotal[5]->GetParameter(4); // Get the value of parameter 'm0' from primary signal gaussian
+    double sigma1Signal = dataContainer.fittings.fitTotal[5]->GetParameter(5); // Get the value of parameter 'sigma' from primary signal gaussian
+    double A2Signal = A1Signal / dataContainer.fittings.fitTotal[5]->GetParameter(3); // Get the value of parameter 'A' from secondary signal gaussian
+    double sigma2Signal = sigma1Signal / dataContainer.fittings.fitTotal[5]->GetParameter(6); // Get the value of parameter 'sigma' from secondary signal gaussian
+    double chi2 = dataContainer.fittings.fitTotal[5]->GetChisquare();
+    double degOfFreedom = dataContainer.fittings.fitTotal[5]->GetNDF();
+    float topY = 0.84; // Top Y position for the text
+    float deltaY = 0.06; // Vertical spacing between lines
+    float middleX = 0.52; // Middle X position for the text
+    float rightX = 0.87; // 0.895 or 0.90, depending on your layout
+    float textSize = 0.04; // Text size for the labels
+    // Allign text to the left
+    TLatex* latexLeft = new TLatex();
+    latexLeft->SetTextSizePixels(24);
+    latexLeft->SetNDC(); // Enables normalized coordinates (0 to 1)
+    latexLeft->SetTextSize(textSize); // default = 0.05
+    latexLeft->DrawLatex(0.13, topY, "ALICE Performance");
+    latexLeft->DrawLatex(0.13, topY-deltaY, "pp, #sqrt{#it{s}} = 13.6 TeV");
+    // Allign text to the right
+    TLatex* latexRight = new TLatex();
+    latexRight->SetTextSizePixels(24);
+    latexRight->SetNDC(); // Enables normalized coordinates (0 to 1)
+    latexRight->SetTextSize(textSize); // default = 0.05
+    latexRight->SetTextAlign(31); // Right-align text to that X position
+    latexRight->DrawLatex(rightX, topY, "D^{0}#rightarrow K^{#minus}+#pi^{+} and ch. conj.");
+    latexRight->DrawLatex(rightX, topY - deltaY, "in ch-particle jets, anti-#it{k}_{T}, #it{R} = 0.4");
+    latexRight->DrawLatex(rightX, topY - 2*deltaY, title+", |#it{y}_{D^{0}}| #leq 0.8");
+    latexRight->DrawLatex(rightX, topY - 3*deltaY, Form("%.0f < #it{p}_{T, ch. jet} < %.0f GeV/#it{c}, |#it{#eta}_{jet}| #leq 0.5", jetptMin, jetptMax)); // right GeV/#it{c} - Raymond
+    TLegend* legPerformance = new TLegend(rightX - 0.3, (topY - 3.5*deltaY), rightX, (topY - 3.5*deltaY) - 0.21);
+    legPerformance->SetTextSize(0.04);
+    legPerformance->SetBorderSize(0);
+    legPerformance->SetFillColor(0);
+    legPerformance->SetFillStyle(0);
+    legPerformance->AddEntry(dataContainer.fittings.fitTotal[5], "Total fit funct.", "l");
+    legPerformance->AddEntry(dataContainer.fittings.fitSignalOnly[5], "Signal", "l");
+    legPerformance->AddEntry(dataContainer.fittings.fitBackgroundOnly[5], "Combinatorial bkg.", "l");
+    legPerformance->AddEntry(dataContainer.fittings.fitReflectionsOnly[5], "Reflection contrib.", "l");
+    legPerformance->Draw();
 
     //
     // Storing images
@@ -1696,7 +1771,8 @@ void PlotHistograms(const SidebandData& dataContainer, const FitModelType& model
     c1d_fit->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf(",jetptMin,jetptMax));
     c_2d->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     cSigPlusBack->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
-    cscallingFactorsArrays->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cscallingFactorsArrays->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cPerformanceHardProbes->Print(imagePath + Form("sb_subtraction_deltaR_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
 }
 
 void SaveData(SidebandData& dataContainer, const BinningStruct& binning, double jetptMin, double jetptMax) {

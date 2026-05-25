@@ -226,8 +226,8 @@ TH1D* createPythiaDistribution(TFile* fSimulatedMCMatched, const BinningStruct& 
     const double MCDetaCut = 0.9 - jetRadius; // on detector level jet
     const double MCPyCut = 0.8; // on particle level HF
     const double MCDyCut = 0.8; // on detector level HF
-    const double MCPDeltaRcut = binning.deltaRBinEdges_particle[binning.deltaRBinEdges_particle.size() - 1]; // on particle level delta R
-    const double MCDDeltaRcut = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 1]; // on detector level delta R
+    const double MCPDeltaRcut = binning.deltaRBinEdges_particle[binning.deltaRBinEdges_particle.size() - 2]; // on particle level delta R, exclude padding bin
+    const double MCDDeltaRcut = binning.deltaRBinEdges_detector[binning.deltaRBinEdges_detector.size() - 2]; // on detector level delta R, exclude padding bin
     const double MCPHfPtMincut = 5.; // binning.ptHFBinEdges_particle[0]; // on particle level HF
     const double MCDHfPtMincut = 5.; // binning.ptHFBinEdges_detector[0]; // on detector level HF
     const double MCPHfPtMaxcut = 20.; // binning.ptHFBinEdges_particle[binning.ptHFBinEdges_particle.size() - 1]; // on particle level HF

@@ -218,7 +218,7 @@ std::pair<FitContainer, HistogramGroup> calculateFitTemplates(TFile* fClosureInp
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
     bool MCDhfprompt;
-    int MCDhfMatchedFrom_notEnum, MCDhfSelectedAs_notEnum;
+    int MCDhfMatchedFrom, MCDhfSelectedAs;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
     int MCDjetNConst;
@@ -249,15 +249,15 @@ std::pair<FitContainer, HistogramGroup> calculateFitTemplates(TFile* fClosureInp
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
-    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom_notEnum);
-    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs_notEnum);
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
         // Convert to enum class for type-safe comparison
-        D0Species hfMatchedFrom = intToD0Species(MCDhfMatchedFrom_notEnum);
-        D0Species hfSelectedAs = intToD0Species(MCDhfSelectedAs_notEnum);
+        D0Species hfMatchedFrom = intToD0Species(MCDhfMatchedFrom);
+        D0Species hfSelectedAs = intToD0Species(MCDhfSelectedAs);
 
         // only matched detector level entries
         bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
@@ -430,8 +430,8 @@ std::pair<FitContainer, HistogramGroup> calculateFitTemplates(TFile* fClosureInp
     return fTemplateFitsAndCanvas;
 };
 
-void PlotHistograms(HistogramGroup histogramTemplates, FitContainer fTemplateFits, const std::vector<TH2D*>& hInvariantMass2D, const std::vector<TH1D*>& hInvariantMass1D, FitContainer& fDataFits,
-                    const std::vector<TH1D*>& hsideBandSubtracted, TH2D* hDeltaR_vs_PtD, const double& jetptMin, const double& jetptMax, const FitModelType& modelToUse, const BinningStruct& binning) {
+void PlotHistograms(HistogramGroup histogramTemplates, FitContainer fTemplateFits, const std::vector<TH2D*>& hInvariantMass2D, const std::vector<TH1D*>& hInvariantMass1D, const std::vector<TH2D*>& hInvariantMass2DOracle, const std::vector<TH1D*>& hInvariantMass1DOracle,
+     FitContainer& fDataFits, const std::vector<TH1D*>& hsideBandSubtracted, TH2D* hDeltaR_vs_PtD, const double& jetptMin, const double& jetptMax, const FitModelType& modelToUse, const BinningStruct& binning) {
     //
     int nHistos = histogramTemplates.signals_and_reflections_1d.size();
     // Start with a square layout (or close to it)
@@ -468,7 +468,9 @@ void PlotHistograms(HistogramGroup histogramTemplates, FitContainer fTemplateFit
         latex->DrawLatex(statBoxPos-0.1,0.42,Form("%.1f < #it{p}_{T,jet} < %.1f GeV/c", jetptMin, jetptMax));
         double chi2red = fTemplateFits.fitSignalsAndReflections[iHisto]->GetChisquare();
         int ndf = fTemplateFits.fitSignalsAndReflections[iHisto]->GetNDF();
-        latex->DrawLatex(statBoxPos-0.1, 0.38,Form("#Chi^{2}_{red} = %.2f",chi2red/ndf));
+        latex->DrawLatex(statBoxPos-0.1, 0.36,Form("#Chi^{2}_{red} = %.2f",chi2red/ndf));
+        latex->DrawLatex(statBoxPos-0.1, 0.26,Form("#sigma_{primary}^{signal} = %.2f",fTemplateFits.fitSignalOnly[iHisto]->GetParameter(3)));
+        latex->DrawLatex(statBoxPos-0.1, 0.16,Form("#sigma_{secondary}^{signal} = %.2f",fTemplateFits.fitSignalOnly[iHisto]->GetParameter(4)));
         // Creating legend for the three components in the final fit
         TLegend* legendMCTemplate = new TLegend(0.6,0.57,0.85,0.77);
         legendMCTemplate->AddEntry(fTemplateFits.fitSignalOnly[iHisto],"Pure signal", "l");
@@ -502,10 +504,12 @@ void PlotHistograms(HistogramGroup histogramTemplates, FitContainer fTemplateFit
             fDataFits.fitTotal[iHisto]->Draw("same");
             double chi2red = fDataFits.fitTotal[iHisto]->GetChisquare();
             int ndf = fDataFits.fitTotal[iHisto]->GetNDF();
+            double statBoxPos = gPad->GetUxmax();
             if (ndf > 0) {
-                double statBoxPos = gPad->GetUxmax();
                 latex->DrawLatex(statBoxPos-0.2, 0.38, Form("#Chi^{2}_{red} = %.2f", chi2red/ndf));
             }
+            latex->DrawLatex(statBoxPos-0.2, 0.48,Form("#sigma_{primary}^{signal} = %.2f",fDataFits.fitSignalOnly[iHisto]->GetParameter(5)));
+            latex->DrawLatex(statBoxPos-0.2, 0.58,Form("#sigma_{secondary}^{signal} = %.2f",fDataFits.fitSignalOnly[iHisto]->GetParameter(5)/fDataFits.fitSignalOnly[iHisto]->GetParameter(6)));
         } else {
             // Use DrawFrame instead of Draw() — avoids degenerate [0,0] y-axis
             // gPad->DrawFrame(minMass, 0, maxMass, 1);
@@ -519,13 +523,125 @@ void PlotHistograms(HistogramGroup histogramTemplates, FitContainer fTemplateFit
     TCanvas* c1d_sideBandSubtracted = new TCanvas(Form("c1d_sideBandSubtracted_%.0f_%.0f", jetptMin, jetptMax),Form("Side-band subtracted histograms %.0f < pT,jet < %0.f GeV/c", jetptMin, jetptMax),1920,1080);
     c1d_sideBandSubtracted->Divide(nCols,nRows); // columns, lines
     for(size_t iHisto = 0; iHisto < nHistos; ++iHisto) {
+        // c1d_sideBandSubtracted->cd(iHisto+1);
+        
+        // // MC truth histogram
+        // TH1D* hsideBandSubtractedMCTruth = (TH1D*) hInvariantMass2DOracle[iHisto]->ProjectionY(Form("hsideBandSubtractedMCTruthProjY_%zu_%.0f_to_%.0fGeV", iHisto, jetptMin, jetptMax));
+        // hsideBandSubtractedMCTruth->SetLineColor(kBlue+2);
+        // hsideBandSubtractedMCTruth->SetLineWidth(1);
+        // hsideBandSubtractedMCTruth->SetLineStyle(kDashed);
+
+        // // Background subtracted histogram from data
+        // hsideBandSubtracted[iHisto]->SetLineColor(kRed+2);
+        // hsideBandSubtracted[iHisto]->SetLineWidth(1);
+        // hsideBandSubtracted[iHisto]->SetTitle(Form("Side-band subtracted histogram for %.1f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c}", binning.ptHFBinEdges_detector[iHisto], binning.ptHFBinEdges_detector[iHisto + 1]));
+        // hsideBandSubtracted[iHisto]->GetXaxis()->SetTitle("#Delta R");
+        // hsideBandSubtracted[iHisto]->GetYaxis()->SetTitle("Counts");
+        // hsideBandSubtracted[iHisto]->GetYaxis()->SetRangeUser(std::min(hsideBandSubtracted[iHisto]->GetMinimum(), hsideBandSubtractedMCTruth->GetMinimum()) * 0.8, std::max(hsideBandSubtracted[iHisto]->GetMaximum(), hsideBandSubtractedMCTruth->GetMaximum()) * 1.2); // Set y-axis range to fit both histograms
+        // hsideBandSubtracted[iHisto]->Draw();
+        // hsideBandSubtractedMCTruth->Draw("same");
+
+        // =====================================================
+        // Select cell in divided canvas
+        // =====================================================
+
         c1d_sideBandSubtracted->cd(iHisto+1);
-        hsideBandSubtracted[iHisto]->SetLineColor(kRed+1);
-        hsideBandSubtracted[iHisto]->SetLineWidth(2);
-        hsideBandSubtracted[iHisto]->SetTitle(Form("Side-band subtracted histogram for %.1f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c}", binning.ptHFBinEdges_detector[iHisto], binning.ptHFBinEdges_detector[iHisto + 1]));
-        hsideBandSubtracted[iHisto]->GetXaxis()->SetTitle("#Delta R");
-        hsideBandSubtracted[iHisto]->GetYaxis()->SetTitle("Counts");
-        hsideBandSubtracted[iHisto]->Draw();
+
+        // =====================================================
+        // Create TOP and BOTTOM pads
+        // =====================================================
+
+        TPad* padTop = new TPad(
+            Form("padTop_%zu", iHisto),"",0.0, 0.30,1.0, 1.0);
+
+        TPad* padBottom = new TPad(Form("padBottom_%zu", iHisto),"",0.0, 0.0,1.0, 0.30);
+
+        padTop->SetBottomMargin(0.02);
+
+        padBottom->SetTopMargin(0.02);
+        padBottom->SetBottomMargin(0.30);
+
+        padTop->Draw();
+        padBottom->Draw();
+
+        // =====================================================
+        // TOP PAD
+        // =====================================================
+
+        padTop->cd();
+
+        // MC truth histogram
+        TH1D* hMC = (TH1D*)hInvariantMass2DOracle[iHisto]->ProjectionY(Form("hsideBandSubtractedMCTruthProjY_%zu_%.0f_to_%.0fGeV",iHisto, jetptMin, jetptMax));
+
+        hMC->SetLineColor(kRed+2);
+        hMC->SetLineWidth(1);
+        hMC->SetLineStyle(kDashed);
+
+        // Data histogram
+        TH1D* hData = hsideBandSubtracted[iHisto];
+
+        hData->SetLineColor(kBlue+2);
+        hData->SetLineWidth(1);
+
+        hData->SetTitle(Form("%.1f < #it{p}_{T,D^{0}} < %.1f GeV/#it{c}",binning.ptHFBinEdges_detector[iHisto],binning.ptHFBinEdges_detector[iHisto + 1]));
+
+        // Hide x-axis labels in top pad
+        hData->GetXaxis()->SetLabelSize(0);
+        hData->GetXaxis()->SetTitleSize(0);
+
+        hData->GetYaxis()->SetTitle("Counts");
+
+        double ymin = std::min(hData->GetMinimum(),hMC->GetMinimum()) * 0.8;
+
+        double ymax = std::max(hData->GetMaximum(),hMC->GetMaximum()) * 1.2;
+
+        hData->GetYaxis()->SetRangeUser(ymin, ymax);
+
+        hData->Draw("E");
+        hMC->Draw("HIST SAME");
+        TLegend* legsubtracted = new TLegend(0.6,0.57,0.85,0.77);
+        legsubtracted->AddEntry(hData,"Subtracted", "l");
+        legsubtracted->AddEntry(hMC,"Truth", "l");
+        legsubtracted->Draw();
+
+        // =====================================================
+        // BOTTOM PAD (RATIO)
+        // =====================================================
+
+        padBottom->cd();
+
+        TH1D* hRatio = (TH1D*) hData->Clone(Form("hRatio_%zu", iHisto));
+
+        hRatio->Divide(hMC);
+
+        hRatio->SetTitle("");
+
+        hRatio->GetYaxis()->SetTitle("Data/MC");
+        hRatio->GetXaxis()->SetTitle("#Delta R");
+
+        hRatio->GetYaxis()->SetNdivisions(505);
+
+        // Axis formatting for small ratio pad
+        hRatio->GetXaxis()->SetTitleSize(0.10);
+        hRatio->GetXaxis()->SetLabelSize(0.08);
+
+        hRatio->GetYaxis()->SetTitleSize(0.08);
+        hRatio->GetYaxis()->SetTitleOffset(0.5);
+        hRatio->GetYaxis()->SetLabelSize(0.08);
+
+        hRatio->SetMinimum(0.5);
+        hRatio->SetMaximum(1.5);
+
+        hRatio->SetMarkerStyle(20);
+        hRatio->SetMarkerSize(0.7);
+
+        hRatio->Draw("EP");
+
+        // Ratio = 1 line
+        TLine* line = new TLine(hRatio->GetXaxis()->GetXmin(),1.0,hRatio->GetXaxis()->GetXmax(),1.0);
+
+        line->SetLineStyle(kDashed);
+        line->Draw("same");
     }
     
     // Delta R vs PtD histogram
@@ -575,26 +691,32 @@ std::pair<TH2D*, std::vector<bool>> AnalyzeJetPtRange(TFile* fClosureInput, cons
     //
     // ----- Create and fill invariant mass distributions with detector level data
     std::vector<TH2D*> hInvariantMass2D;
+    std::vector<TH2D*> hInvariantMass2DOracle;
     for (size_t i = 0; i < binning.ptHFBinEdges_detector.size() - 1; ++i) {
         // So that the title adapts to fractional binning title
         if (std::fmod(binning.ptHFBinEdges_detector[i], 1.0) != 0) { // if the first bin edge is not an integer
             if (std::fmod(binning.ptHFBinEdges_detector[i+1], 1.0) != 0) {
                 hInvariantMass2D.push_back(new TH2D(Form("histMass%zu_jetpt_from_%.0f_to_%.0fGeV",i+1,jetptMin,jetptMax), Form("%.1f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",binning.ptHFBinEdges_detector[i],binning.ptHFBinEdges_detector[i+1]), massBins, minMass, maxMass, binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data()));
-        
+                // MC truth version, only real D⁰s (no reflections, no background)
+                hInvariantMass2DOracle.push_back(new TH2D(Form("histMassOracle%zu_jetpt_from_%.0f_to_%.0fGeV",i+1,jetptMin,jetptMax), Form("%.1f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",binning.ptHFBinEdges_detector[i],binning.ptHFBinEdges_detector[i+1]), massBins, minMass, maxMass, binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data()));
             } else {
                 hInvariantMass2D.push_back(new TH2D(Form("histMass%zu_jetpt_from_%.0f_to_%.0fGeV",i+1,jetptMin,jetptMax), Form("%.1f < #it{p}_{T, D^{0}} < %.0f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",binning.ptHFBinEdges_detector[i],binning.ptHFBinEdges_detector[i+1]), massBins, minMass, maxMass, binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data()));
-        
+                // MC truth version, only real D⁰s (no reflections, no background)
+                hInvariantMass2DOracle.push_back(new TH2D(Form("histMassOracle%zu_jetpt_from_%.0f_to_%.0fGeV",i+1,jetptMin,jetptMax), Form("%.1f < #it{p}_{T, D^{0}} < %.0f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",binning.ptHFBinEdges_detector[i],binning.ptHFBinEdges_detector[i+1]), massBins, minMass, maxMass, binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data()));
             }
         } else {
             if (std::fmod(binning.ptHFBinEdges_detector[i+1], 1.0) != 0) {
                 hInvariantMass2D.push_back(new TH2D(Form("histMass%zu_jetpt_from_%.0f_to_%.0fGeV",i+1,jetptMin,jetptMax), Form("%.0f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",binning.ptHFBinEdges_detector[i],binning.ptHFBinEdges_detector[i+1]), massBins, minMass, maxMass, binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data()));
-        
+                // MC truth version, only real D⁰s (no reflections, no background)
+                hInvariantMass2DOracle.push_back(new TH2D(Form("histMassOracle%zu_jetpt_from_%.0f_to_%.0fGeV",i+1,jetptMin,jetptMax), Form("%.0f < #it{p}_{T, D^{0}} < %.1f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",binning.ptHFBinEdges_detector[i],binning.ptHFBinEdges_detector[i+1]), massBins, minMass, maxMass, binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data()));
             } else {
                 hInvariantMass2D.push_back(new TH2D(Form("histMass%zu_jetpt_from_%.0f_to_%.0fGeV",i+1,jetptMin,jetptMax), Form("%.0f < #it{p}_{T, D^{0}} < %.0f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",binning.ptHFBinEdges_detector[i],binning.ptHFBinEdges_detector[i+1]), massBins, minMass, maxMass, binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data()));
-        
+                // MC truth version, only real D⁰s (no reflections, no background)
+                hInvariantMass2DOracle.push_back(new TH2D(Form("histMassOracle%zu_jetpt_from_%.0f_to_%.0fGeV",i+1,jetptMin,jetptMax), Form("%.0f < #it{p}_{T, D^{0}} < %.0f GeV/#it{c};#it{M}(K#pi) (GeV/#it{c}^{2});#DeltaR",binning.ptHFBinEdges_detector[i],binning.ptHFBinEdges_detector[i+1]), massBins, minMass, maxMass, binning.deltaRBinEdges_detector.size() - 1, binning.deltaRBinEdges_detector.data()));
             }
         }
         hInvariantMass2D[i]->Sumw2();
+        hInvariantMass2DOracle[i]->Sumw2();
     }
     std::cout << "Finished creating 2D invariant mass histograms.\n";
     // ----- Fill data
@@ -623,7 +745,7 @@ std::pair<TH2D*, std::vector<bool>> AnalyzeJetPtRange(TFile* fClosureInput, cons
     float MCDaxisDistance, MCDjetPt, MCDjetEta, MCDjetPhi;
     float MCDhfPt, MCDhfEta, MCDhfPhi, MCDhfMass, MCDhfY;
     bool MCDhfprompt;
-    int MCDhfMatchedFrom_notEnum, MCDhfSelectedAs_notEnum;
+    int MCDhfMatchedFrom, MCDhfSelectedAs;
     // defining ML score variables for accessing the TTree
     float MCDhfMlScore0, MCDhfMlScore1, MCDhfMlScore2;
     int MCDjetNConst;
@@ -654,61 +776,66 @@ std::pair<TH2D*, std::vector<bool>> AnalyzeJetPtRange(TFile* fClosureInput, cons
     tree->SetBranchAddress("fHfMlScore0",&MCDhfMlScore0);
     tree->SetBranchAddress("fHfMlScore1",&MCDhfMlScore1);
     tree->SetBranchAddress("fHfMlScore2",&MCDhfMlScore2);
-    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom_notEnum);
-    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs_notEnum);
+    tree->SetBranchAddress("fHfMatchedFrom",&MCDhfMatchedFrom);
+    tree->SetBranchAddress("fHfSelectedAs",&MCDhfSelectedAs);
     std::cout << "Finished setting branch addresses for the TTree.\n";
     int nEntries = tree->GetEntries();
     for (int entry = 0; entry < nEntries; ++entry) {
         tree->GetEntry(entry);
 
         // Convert to enum class for type-safe comparison
-        D0Species hfMatchedFrom = intToD0Species(MCDhfMatchedFrom_notEnum);
-        D0Species hfSelectedAs = intToD0Species(MCDhfSelectedAs_notEnum);
+        D0Species hfMatchedFrom = intToD0Species(MCDhfMatchedFrom);
+        D0Species hfSelectedAs = intToD0Species(MCDhfSelectedAs);
         bool isReflection = (hfMatchedFrom != hfSelectedAs) ? true : false;
 
         // Apply prompt (real+reflections, only detector level) selection (no b feed-down correction is performed on the 2nd closure test)
         bool MCDhfmatch = (MCDjetNConst != -2) ? true : false;
+        bool isRealD0 = isTrueSignal(MCDhfMatchedFrom, MCDhfSelectedAs);
         if ((!MCDhfprompt) || !MCDhfmatch) {
             continue;
         }
         
         // calculating delta R
         double MCDdeltaR = sqrt(pow(MCDjetEta-MCDhfEta,2) + pow(DeltaPhi(MCDjetPhi,MCDhfPhi),2));
-        
+        double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
+        bool passBDTcut = (MCDhfMlScore0 < maxBkgProb) ? true : false;
         bool recoJetPtRange = (MCDjetPt >= MCDjetptMin) && (MCDjetPt < MCDjetptMax);
         bool recoHfPtRange = (MCDhfPt >= MCDHfPtMincut) && (MCDhfPt < MCDHfPtMaxcut);
         bool recoDeltaRRange = (MCDdeltaR >= binning.deltaRBinEdges_detector[0]) && (MCDdeltaR < MCDDeltaRcut);
         bool recoLevelRange = (abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && recoJetPtRange && recoHfPtRange && recoDeltaRRange; // currently used
 
         // Fill each histogram with their respective pT intervals
-        if (recoLevelRange) {
+        if (recoLevelRange && passBDTcut) {
         //if ((abs(MCDjetEta) < MCDetaCut) && (abs(MCDhfY) < MCDyCut) && ((MCDjetPt >= MCDjetptMin) && (MCDjetPt < MCDjetptMax)) && ((MCDdeltaR >= binning.deltaRBinEdges_detector[0]) && (MCDdeltaR < MCDDeltaRcut))) {
             
             bool filled = false;
             // Loop through pT,D bin edges to find the appropriate histogram and fill it
             for (size_t iEdge = 0; iEdge < binning.ptHFBinEdges_detector.size() - 1 && !filled; iEdge++) {
                 if ((MCDhfPt >= binning.ptHFBinEdges_detector[iEdge]) && (MCDhfPt < binning.ptHFBinEdges_detector[iEdge + 1])) {
-                    // Get the threshold for this pT range
-                    double maxBkgProb = GetBkgProbabilityCut(MCDhfPt, binning.bdtPtCuts);
 
-                    // Fill histogram only if the cut is passed
-                    if (MCDhfMlScore0 < maxBkgProb) {
-                        // use Emma's run 2 cuts in case useEmmaYeatsBins is true
-                        if (!binning.useEmmaYeatsBins || passEmmaCut(MCDjetPt, MCDhfPt)) {
-                            hInvariantMass2D[iEdge]->Fill(MCDhfMass, MCDdeltaR);
+                    // use Emma's run 2 cuts in case useEmmaYeatsBins is true
+                    if (!binning.useEmmaYeatsBins || passEmmaCut(MCDjetPt, MCDhfPt)) {
+                        hInvariantMass2D[iEdge]->Fill(MCDhfMass, MCDdeltaR);
+                        // Fill the "oracle" histogram with true D0s (no reflections, no background)
+                        if (isRealD0) {
+                            hInvariantMass2DOracle[iEdge]->Fill(MCDhfMass, MCDdeltaR);
                         }
+                        
                     }
                     filled = true; // Exit the loop once the correct histogram is found (alternative: break)
                 }
             }
         }
+        
     }
     std::cout << "Finished filling 2D invariant mass histograms with data from the TTree.\n";
     // ----- Obtain 1D projections: invariant mass distributions
     std::vector<TH1D*> hInvariantMass1D;
+    std::vector<TH1D*> hInvariantMass1DOracle; // only real D⁰s (no reflections, no background)
     for (size_t iHisto = 0; iHisto < hInvariantMass2D.size(); iHisto++) {
 
         hInvariantMass1D.push_back(hInvariantMass2D[iHisto]->ProjectionX(Form("h_mass_proj_%zu_%0.f_to_%0.fGeV", iHisto, jetptMin, jetptMax)));
+        hInvariantMass1DOracle.push_back(hInvariantMass2DOracle[iHisto]->ProjectionX(Form("h_mass_proj_oracle_%zu_%0.f_to_%0.fGeV", iHisto, jetptMin, jetptMax)));
     }
     std::cout << "Finished filling histograms with data and obtaining 1D projections.\n";
     // ----- Fit input detector level data using template constraints
@@ -792,10 +919,10 @@ std::pair<TH2D*, std::vector<bool>> AnalyzeJetPtRange(TFile* fClosureInput, cons
             fDataFits.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0123
         } else if (iHisto == 2) {   // 3 < pT,D < 4 GeV/c
             sigma_reference = 0.0139;
-            fDataFits.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0139
+            fDataFits.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 2.0 * sigma_reference); // sigma_1 = 0.0139
         } else if (iHisto == 3) {   // 4 < pT,D < 5 GeV/c
             sigma_reference = 0.0157;
-            fDataFits.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0157
+            fDataFits.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 2.0 * sigma_reference); // sigma_1 = 0.0157
         } else if (iHisto == 4) {   // 5 < pT,D < 6 GeV/c
             sigma_reference = 0.0172;
             fDataFits.fitTotal[iHisto]->SetParLimits(5, 0.5 * sigma_reference, 1.5 * sigma_reference); // sigma_1 = 0.0172
@@ -927,9 +1054,13 @@ std::pair<TH2D*, std::vector<bool>> AnalyzeJetPtRange(TFile* fClosureInput, cons
                 Rs = 0.0;
                 // Scale by S/(S+Rs) to remove reflections
                 h_back_subtracted->Scale(S / (S + Rs));
-                // Account for two sigma only area used for signal region
+                // Account for two sigma_primary only area used for signal region
                 double coverage = TMath::Erf(signalSigmas / sqrt(2)); // coverage of a Gaussian in a +/- signalSigmas window
-                std::cout << "Total scaling factor of " <<  (S / (S + Rs)) / TMath::Erf(sqrt(2)) << std::endl;
+                double twoSigmaArea = fDataFits.fitSignalOnly[iHisto]->Integral(m_0 - signalSigmas * sigma, m_0 + signalSigmas * sigma);
+                double totalBoundsArea = fDataFits.fitSignalOnly[iHisto]->Integral(minMass, maxMass);
+                coverage = twoSigmaArea / totalBoundsArea;
+                std::cout << "2 sigmas for signal region has coverage of " << coverage << std::endl;
+                //std::cout << "Total scaling factor of " <<  (S / (S + Rs)) / TMath::Erf(sqrt(2)) << std::endl;
                 h_back_subtracted->Scale(1 / coverage);
             } else if (std::isnan(S) && std::isnan(Rs)) {
                 std::cout << "Warning: Both Signal area S and Reflections area Rs are NaN for histogram " << iHisto << ". Setting both to 1 and resetting histogram." << std::endl;
@@ -942,7 +1073,11 @@ std::pair<TH2D*, std::vector<bool>> AnalyzeJetPtRange(TFile* fClosureInput, cons
                 h_back_subtracted->Scale(S / (S + Rs));
                 // Account for two sigma only area used for signal region
                 double coverage = TMath::Erf(signalSigmas / sqrt(2)); // coverage of a Gaussian in a +/- signalSigmas window
-                std::cout << "Total scaling factor of " <<  (S / (S + Rs)) / TMath::Erf(sqrt(2)) << std::endl;
+                double twoSigmaArea = fDataFits.fitSignalOnly[iHisto]->Integral(m_0 - signalSigmas * sigma, m_0 + signalSigmas * sigma);
+                double totalBoundsArea = fDataFits.fitSignalOnly[iHisto]->Integral(minMass, maxMass);
+                coverage = twoSigmaArea / totalBoundsArea;
+                std::cout << "2 sigmas for signal region has coverage of " << coverage << std::endl;
+                //std::cout << "Total scaling factor of " <<  (S / (S + Rs)) / TMath::Erf(sqrt(2)) << std::endl;
                 h_back_subtracted->Scale(1 / coverage);
             }
             
@@ -1023,6 +1158,10 @@ std::pair<TH2D*, std::vector<bool>> AnalyzeJetPtRange(TFile* fClosureInput, cons
 
             // Account for two sigma only area used for signal region
             double coverage = TMath::Erf(signalSigmas / sqrt(2)); // coverage of a Gaussian in a +/- signalSigmas window
+            double twoSigmaArea = fDataFits.fitSignalOnly[iHisto]->Integral(m_0 - signalSigmas * sigma, m_0 + signalSigmas * sigma);
+            double totalBoundsArea = fDataFits.fitSignalOnly[iHisto]->Integral(minMass, maxMass);
+            coverage = twoSigmaArea / totalBoundsArea;
+            std::cout << "2 sigmas for signal region has coverage of " << coverage << std::endl;
             // std::cout << "Total scaling factor of " <<  (S / (S + Rs)) / TMath::Erf(sqrt(2)) << std::endl;
             h_back_subtracted->Scale(1 / coverage);
             
@@ -1089,7 +1228,7 @@ std::pair<TH2D*, std::vector<bool>> AnalyzeJetPtRange(TFile* fClosureInput, cons
     }
     std::cout << "Plotting and storing data to PDF file..." << std::endl;
     // Plot histograms and fits for visualization in a file
-    PlotHistograms(histogramTemplates, fTemplateFits, hInvariantMass2D, hInvariantMass1D, fDataFits, hsideBandSubtracted, hDeltaR_vs_PtD, jetptMin, jetptMax, modelToUse, binning);
+    PlotHistograms(histogramTemplates, fTemplateFits, hInvariantMass2D, hInvariantMass1D, hInvariantMass2DOracle, hInvariantMass1DOracle, fDataFits, hsideBandSubtracted, hDeltaR_vs_PtD, jetptMin, jetptMax, modelToUse, binning);
     std::cout << "Sideband closure test completed for pT,jet range: " << jetptMin << " - " << jetptMax << " GeV/c" << std::endl;
     return std::make_pair(hDeltaR_vs_PtD, fDataFits.workingFits);
 }

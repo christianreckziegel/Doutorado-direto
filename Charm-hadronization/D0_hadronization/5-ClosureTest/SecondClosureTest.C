@@ -140,9 +140,9 @@ TH2D* CompareClosureTest(TFile* fClosureInput, const SidebandClosureResult& side
         bool recoLevelRange = recoAcceptance && recoJetPtRange && recoHfPtRange && recoDeltaRRange;
 
         // Should the detector level matched must always satisfy the kinematic cuts as applied to data?
-        if (MCDhfmatch && !recoLevelRange) { // --> this is new!
-            continue;
-        }
+        // if (MCDhfmatch && !recoLevelRange) { // --> is this correct?
+        //     continue;
+        // }
 
         // Fill response matrix and kinematic efficiency histograms
         if (genLevelRange) {
@@ -326,6 +326,17 @@ TH2D* CompareClosureTest(TFile* fClosureInput, const SidebandClosureResult& side
     legEvol->Draw();
     latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
 
+    // 5.1 - Divide green/red distribution of the evolution by the input distribution
+    TCanvas* cEvolDivInput = new TCanvas("cEvolDivInput","Evolution through the analysis steps divided by input",1920,1080);
+    cEvolDivInput->Divide(2,2);
+    TH1D* hEffiCorDivInput = (TH1D*) hEfficienCorr->Clone("hEffiCorDivInput");
+    hEffiCorDivInput->Sumw2();
+    hEffiCorDivInput->Divide(hDeltaRInputMCPProj);
+    hEffiCorDivInput->SetTitle("Efficiency corrected divided by input (green/red)");
+    cEvolDivInput->cd(1);
+    hEffiCorDivInput->Draw();
+    latex->DrawLatex(0.15, 0.85, Form("Projected in p_{T,jet} #in [%.1f, %.1f] GeV/c", reportingJetPtMin, reportingJetPtMax));
+
     // 6 - Evolution through the analysis steps for each pT,jet bin
     std::vector<TCanvas*> cEvolPerJetPt(binning.ptjetBinEdges_particle.size() - 1);
     std::vector<TLegend*> legEvolPerJetPt(binning.ptjetBinEdges_particle.size() - 1);
@@ -390,7 +401,7 @@ TH2D* CompareClosureTest(TFile* fClosureInput, const SidebandClosureResult& side
     // 7 - Ratio of input over fully corrected for each pT,jet bin
     TCanvas* cRatioPerJetPt = new TCanvas("cRatioPerJetPt","Ratio of input over fully corrected for each pT,jet bin",1800,1000); // 1920 x 1080?
     std::vector<TH1D*> hRatioPerJetPt(binning.ptjetBinEdges_particle.size() - 1);
-    TLegend* legRatioPerJetPt = new TLegend(0.6,0.57,0.77,0.77);
+    TLegend* legRatioPerJetPt = new TLegend(0.2,0.70,0.37,0.90);
     double minHistoRange = 1;
     double maxHistoRange = 1;
     // build ratio histograms
@@ -416,9 +427,9 @@ TH2D* CompareClosureTest(TFile* fClosureInput, const SidebandClosureResult& side
     std::cout << "minHistoRange: " << minHistoRange << ", maxHistoRange: " << maxHistoRange << std::endl;
     for (size_t iJetBin = 0; iJetBin < binning.ptjetBinEdges_particle.size() - 1; iJetBin++) {
         if (iJetBin == 0) {
-            minHistoRange = -0.5;
-            maxHistoRange = 2.8;
-            hRatioPerJetPt[iJetBin]->GetYaxis()->SetRangeUser(0.9 * minHistoRange, 1.1 * maxHistoRange);
+            minHistoRange = -0.5; // -0.5, 0.8
+            maxHistoRange = 2.8; // 2.8, 1.3
+            hRatioPerJetPt[iJetBin]->GetYaxis()->SetRangeUser(0.8 * minHistoRange, 1.2 * maxHistoRange);
             hRatioPerJetPt[iJetBin]->Draw();
         } else {
             hRatioPerJetPt[iJetBin]->Draw("same");
@@ -445,7 +456,8 @@ TH2D* CompareClosureTest(TFile* fClosureInput, const SidebandClosureResult& side
     for (size_t iJetBin = 0; iJetBin < binning.ptjetBinEdges_particle.size() - 1; iJetBin++) {
         cEvolPerJetPt[iJetBin]->Print(imagePath + Form("closureTest2_comparison_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
     }
-    cRatioPerJetPt->Print(imagePath + Form("closureTest2_comparison_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
+    cRatioPerJetPt->Print(imagePath + Form("closureTest2_comparison_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf",jetptMin,jetptMax));
+    cEvolDivInput->Print(imagePath + Form("closureTest2_comparison_" + sEmmaBins + "_%.0f_to_%.0fGeV.pdf)",jetptMin,jetptMax));
     
 
     return hDeltaRInputMCP;
@@ -460,7 +472,7 @@ void SecondClosureTest(){
     // Number of unfolding procedure iterations
     int iterationNumber = 4;
 
-    bool useEmmaYeatsBins = false;
+    bool useEmmaYeatsBins = true;
     TString sEmmaBins;
     if (useEmmaYeatsBins) {
         sEmmaBins = "EmmaYeatsBins";
@@ -475,33 +487,33 @@ void SecondClosureTest(){
         std::cerr << "Error: Unable to open the first ROOT binning info file." << std::endl;
     }
     BinningStruct binning = retrieveBinningFromFile(fBinning);
-    // Force by hand new binning regardless of previous steps
-    binning.useEmmaYeatsBins = useEmmaYeatsBins;
-    if (binning.useEmmaYeatsBins) {
-        // pT,jet cuts
-        binning.ptjetBinEdges_detector = {5., 7., 10., 20., 50.};
-        binning.ptjetBinEdges_particle = binning.ptjetBinEdges_detector;
-        // DeltaR bins
-        binning.deltaRBinEdges_detector = {0., 0.01, 0.03, 0.05, 0.12, 0.2};
-        binning.deltaRBinEdges_particle = binning.deltaRBinEdges_detector;
-    }
-    // Choose file period
-    binning.dataPeriod = dataPeriod;
-    if (binning.dataPeriod == "2023") {
-        // DATA
-        binning.inputDATA.first = "JE_HF_LHC23_pass4_Thin_2P3PDstar_D0CJ_4_D0_1";
-        binning.inputDATA.second = "Data/Experimental/Train_643652";
-        // Anchored MC
-        binning.inputMC.first = "HF_LHC24h1c_All_D0";
-        binning.inputMC.second = "Data/MonteCarlo/Train_671273";
-    } else if (binning.dataPeriod == "2022") {
-        // DATA
-        binning.inputDATA.first = "JE_HF_LHC22o_pass7_minBias_2P3PDstar_D0CJ_4_D0_1";
-        binning.inputDATA.second = "Data/Experimental/Train_659513";
-        // Anchored MC
-        binning.inputMC.first = "HF_LHC24g5_All_D0";
-        binning.inputMC.second = "Data/MonteCarlo/Train_669231";
-    }
+    // Force by hand new binning regardless of previous steps (no need for this since the origin binning file is opened)
+    // binning.useEmmaYeatsBins = useEmmaYeatsBins;
+    // if (binning.useEmmaYeatsBins) {
+    //     // pT,jet cuts
+    //     binning.ptjetBinEdges_detector = {5., 7., 10., 20., 50.};
+    //     binning.ptjetBinEdges_particle = binning.ptjetBinEdges_detector;
+    //     // DeltaR bins
+    //     binning.deltaRBinEdges_detector = {0., 0.01, 0.03, 0.05, 0.12, 0.2};
+    //     binning.deltaRBinEdges_particle = binning.deltaRBinEdges_detector;
+    // }
+    // // Choose file period
+    // binning.dataPeriod = dataPeriod;
+    // if (binning.dataPeriod == "2023") {
+    //     // DATA
+    //     binning.inputDATA.first = "JE_HF_LHC23_pass4_Thin_2P3PDstar_D0CJ_4_D0_1";
+    //     binning.inputDATA.second = "Data/Experimental/Train_643652";
+    //     // Anchored MC
+    //     binning.inputMC.first = "HF_LHC24h1c_All_D0";
+    //     binning.inputMC.second = "Data/MonteCarlo/Train_671273";
+    // } else if (binning.dataPeriod == "2022") {
+    //     // DATA
+    //     binning.inputDATA.first = "JE_HF_LHC22o_pass7_minBias_2P3PDstar_D0CJ_4_D0_1";
+    //     binning.inputDATA.second = "Data/Experimental/Train_659513";
+    //     // Anchored MC
+    //     binning.inputMC.first = "HF_LHC24g5_All_D0";
+    //     binning.inputMC.second = "Data/MonteCarlo/Train_669231";
+    // }
     
     double jetptMin = binning.ptjetBinEdges_detector[0];
     double jetptMax = binning.ptjetBinEdges_detector[binning.ptjetBinEdges_detector.size() - 1];
@@ -525,10 +537,11 @@ void SecondClosureTest(){
     // ----2: Perform efficiency correction
     EfficiencyData efficiencyDatacontainer = EfficiencyClosure(fClosureInput, sidebandDataContainer.hBackgroundSubtracted, binning);
     std::vector<TH1D*> hSelEff_run3style = {efficiencyDatacontainer.hSelectionEfficiency.first,efficiencyDatacontainer.hSelectionEfficiency.second};
+    std::vector<TH1D*> hSelEff_run3_particleLevel = {efficiencyDatacontainer.hEfficiency_prompt_part_run3style, efficiencyDatacontainer.hEfficiency_nonprompt_part_run3style};
     TH2D* hEfficiencyCorrectedData = efficiencyDatacontainer.hEfficiencyCorrectedData.second;
 
     // ----3: Perform unfolding
-    UnfoldData unfoldDataContainer = UnfoldingClosure(fClosureInput, hEfficiencyCorrectedData, hSelEff_run3style, binning);
+    UnfoldData unfoldDataContainer = UnfoldingClosure(fClosureInput, hEfficiencyCorrectedData, hSelEff_run3style, hSelEff_run3_particleLevel, binning);
 
     // ----4: Compare input (MC particle level) with output (background subtracted, efficiency corrected, unfolded) distributions
     TH2D* hDeltaRInputMCP = CompareClosureTest(fClosureInput, sidebandDataContainer, efficiencyDatacontainer, unfoldDataContainer, binning);

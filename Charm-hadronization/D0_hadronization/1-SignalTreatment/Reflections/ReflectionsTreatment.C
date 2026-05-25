@@ -783,18 +783,16 @@ void ReflectionsTreatment() {
     }
     std::cout << "]" << std::endl;
 
-    // // Emma Yeats reported analysis bins:
-    binning.useEmmaYeatsBins = useEmmaYeatsBins;
-    if (binning.useEmmaYeatsBins) {
-        // pT,jet cuts
-        binning.ptjetBinEdges_detector = {5., 7., 10., 20., 50.};
-        binning.ptjetBinEdges_particle = binning.ptjetBinEdges_detector;
-        // DeltaR bins
-        binning.deltaRBinEdges_detector = {0., 0.01, 0.03, 0.05, 0.12, 0.2};
-        binning.deltaRBinEdges_particle = binning.deltaRBinEdges_detector;
-        // pT,HF bins, must be the same from the BDT models
-        // binning.ptHFBinEdges_detector = {2., 3., 4., 5., 6., 7., 8., 10., 12., 16., 24., 36.};
-    }
+    // // Emma Yeats reported analysis bins: (no need for this, since the origin binning file is opened)
+    // binning.useEmmaYeatsBins = useEmmaYeatsBins;
+    // if (binning.useEmmaYeatsBins) {
+    //     // pT,jet cuts
+    //     binning.ptjetBinEdges_detector = {5., 7., 10., 20., 50.};
+    //     binning.ptjetBinEdges_particle = binning.ptjetBinEdges_detector;
+    //     // DeltaR bins
+    //     binning.deltaRBinEdges_detector = {0., 0.01, 0.03, 0.05, 0.12, 0.2};
+    //     binning.deltaRBinEdges_particle = binning.deltaRBinEdges_detector;
+    // }
 
     // Container to store the histograms and fits for each pT,jet bin
     JetPtContainerReflections jetPtContainer;    

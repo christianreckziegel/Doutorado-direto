@@ -305,41 +305,48 @@ void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dat
                     // Get efficiency estimate to weight the response matrix
                     //hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_run2style_prompt"); // efficiency_prompt_run3style_particleLevel
                     // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
-                    int bin = dataContainer.hEfficiency_prompt_part_run3style->FindBin(MCDhfPt);
-                    double estimatedEfficiency = dataContainer.hEfficiency_prompt_part_run3style->GetBinContent(bin);
-                    if (estimatedEfficiency == 0) {
-                        std::cout << "Warning: Prompt efficiency is zero for pT,HF = " << MCDhfPt << " GeV/c with bin " << bin << " of efficiency_prompt run 2 histogram. Setting it to 1. How to properly deal with these entries?" << std::endl;
-                        estimatedEfficiency = 1; // Avoid division by zero
+                    int bin = dataContainer.hEfficiency_prompt_part_run3style->FindBin(MCPhfPt);
+                    double effPromptParticle = dataContainer.hEfficiency_prompt_part_run3style->GetBinContent(bin);
+                    if (effPromptParticle == 0) {
+                        std::cout << "Warning: Prompt efficiency is zero for pT,HF = " << MCPhfPt << " GeV/c with bin " << bin << " of efficiency_prompt run 2 histogram. Setting it to 1. How to properly deal with these entries?" << std::endl;
+                        effPromptParticle = 1; // Avoid division by zero
                     }
 
                     // Fill 4D RooUnfoldResponse object
-                    dataContainer.response.first.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
-                    dataContainer.responseProjections.first[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, prompt D^{0}
-                    dataContainer.responseProjections.first[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,HF projection, prompt D^{0}
+                    dataContainer.response.first.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / effPromptParticle); // jet pT shape is influenced by D0 pT efficiency
+                    dataContainer.responseProjections.first[0]->Fill(MCDjetPt, MCPjetPt,1 / effPromptParticle); // pT,jet projection, prompt D^{0}
+                    dataContainer.responseProjections.first[1]->Fill(MCDhfPt, MCPhfPt, 1 / effPromptParticle); // pT,HF projection, prompt D^{0}
                 } else{
 
                     // Get efficiency estimate to weight the response matrix
                     //hEffWeight = (TH1D*) fEffRun2Style->Get("efficiency_run2style_nonprompt");
                     // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency
-                    int bin = dataContainer.hEfficiency_nonprompt_part_run3style->FindBin(MCDhfPt);
-                    double estimatedEfficiency = dataContainer.hEfficiency_nonprompt_part_run3style->GetBinContent(bin);
-                    if (estimatedEfficiency == 0) {
+                    int bin = dataContainer.hEfficiency_nonprompt_part_run3style->FindBin(MCPhfPt);
+                    double effNonpromptParticle = dataContainer.hEfficiency_nonprompt_part_run3style->GetBinContent(bin);
+                    if (effNonpromptParticle == 0) {
                         //std::cout << "Warning: Prompt efficiency is zero for pT = " << MCDhfPt << " with bin " << bin << ". Setting it to 1." << std::endl;
-                        estimatedEfficiency = 1; // Avoid division by zero
+                        effNonpromptParticle = 1; // Avoid division by zero
                     }
 
                     // Fill 4D RooUnfoldResponse object
-                    dataContainer.response.second.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / estimatedEfficiency); // jet pT shape is influenced by D0 pT efficiency
-                    dataContainer.responseProjections.second[0]->Fill(MCDjetPt, MCPjetPt,1 / estimatedEfficiency); // pT,jet projection, non-prompt D^{0}
-                    dataContainer.responseProjections.second[1]->Fill(MCDhfPt, MCPhfPt, 1 / estimatedEfficiency); // pT,HF projection, non-prompt D^{0}
+                    dataContainer.response.second.Fill(MCDjetPt, MCDhfPt, MCPjetPt, MCPhfPt, 1 / effNonpromptParticle); // jet pT shape is influenced by D0 pT efficiency
+                    dataContainer.responseProjections.second[0]->Fill(MCDjetPt, MCPjetPt,1 / effNonpromptParticle); // pT,jet projection, non-prompt D^{0}
+                    dataContainer.responseProjections.second[1]->Fill(MCDhfPt, MCPhfPt, 1 / effNonpromptParticle); // pT,HF projection, non-prompt D^{0}
                 }
             }
         }
         
+        // Get efficiency estimate to weight the response matrix: jet pT shape is influenced by D0 pT efficiency (for now not sure if these should be used as weight to the kinematic efficiency histograms)
+        int bin = dataContainer.hEfficiency_prompt_part_run3style->FindBin(MCPhfPt);
+        double effPromptParticle = dataContainer.hEfficiency_prompt_part_run3style->GetBinContent(bin);
+        bin = dataContainer.hEfficiency_nonprompt_part_run3style->FindBin(MCPhfPt);
+        double effNonpromptParticle = dataContainer.hEfficiency_nonprompt_part_run3style->GetBinContent(bin);
+
         // 3 --- Kinematic efficiencies
         if (MCDhfmatch && isRealD0) {
+            
             // Particle level kinematic efficiency
-            if (genLevelRange && passBDTcut) {
+            if (genLevelRange) {
                 // prompt D0s
                 if (MCPhfprompt) {
                     // fill prompt 2D yield: total particle range (denominator)
@@ -359,7 +366,7 @@ void fillHistograms(TFile* fSimulated, TFile* fEffRun2Style, EfficiencyData& dat
             }
 
             // Detector level kinematic efficiency
-            if (recoLevelRange && passBDTcut) {
+            if (recoLevelRange) {
                 if (MCPhfprompt) {
                     // fill prompt 2D yield: total detector range
                     dataContainer.hKEffRecoTotalDetector.first->Fill(MCDjetPt, MCDhfPt);
@@ -429,20 +436,28 @@ void performEfficiencyCorrection(TFile* fBackSub, EfficiencyData& dataContainer,
 
     // 3.1 - Obtain pT projection histograms
     int minBin, maxBin;
+    // minBin = dataContainer.hYieldTruth.first->GetXaxis()->FindBin(jetptMin);
+    // maxBin = dataContainer.hYieldTruth.first->GetXaxis()->FindBin(jetptMax - 1e-6); // // Tiny epsilon to stay within range: This includes the nearest bin center for jetptMax, but if jetptMax lies between two bins, it might give slightly unintuitive results
     minBin = dataContainer.hYieldTruth.first->GetXaxis()->FindBin(jetptMin);
-    maxBin = dataContainer.hYieldTruth.first->GetXaxis()->FindBin(jetptMax - 1e-6); // // Tiny epsilon to stay within range: This includes the nearest bin center for jetptMax, but if jetptMax lies between two bins, it might give slightly unintuitive results
+    maxBin = dataContainer.hYieldTruth.first->GetNbinsX() + 1;
     dataContainer.hHfPtYieldTruth.first = dataContainer.hYieldTruth.first->ProjectionY("hHfPtYieldTruthPrompt", minBin, maxBin);
     dataContainer.hHfPtYieldTruth.first->SetTitle("Denominator prompt D^{0} p_{T} distribution before correction; #it{p}_{T, D^{0}}^{gen}; Counts");
+    // minBin = dataContainer.hYieldTruth.second->GetXaxis()->FindBin(jetptMin);
+    // maxBin = dataContainer.hYieldTruth.second->GetXaxis()->FindBin(jetptMax - 1e-6);
     minBin = dataContainer.hYieldTruth.second->GetXaxis()->FindBin(jetptMin);
-    maxBin = dataContainer.hYieldTruth.second->GetXaxis()->FindBin(jetptMax - 1e-6);
+    maxBin = dataContainer.hYieldTruth.second->GetNbinsX() + 1;
     dataContainer.hHfPtYieldTruth.second = dataContainer.hYieldTruth.second->ProjectionY("hHfPtYieldTruthNonPrompt", minBin, maxBin);
     dataContainer.hHfPtYieldTruth.second->SetTitle("Denominator non-prompt D^{0} p_{T} distribution before correction; #it{p}_{T, D^{0}}^{gen}; Counts");
+    // minBin = dataContainer.hYieldTruthCorrected.first->GetXaxis()->FindBin(jetptMin);
+    // maxBin = dataContainer.hYieldTruthCorrected.first->GetXaxis()->FindBin(jetptMax - 1e-6);
     minBin = dataContainer.hYieldTruthCorrected.first->GetXaxis()->FindBin(jetptMin);
-    maxBin = dataContainer.hYieldTruthCorrected.first->GetXaxis()->FindBin(jetptMax - 1e-6);
+    maxBin = dataContainer.hYieldTruthCorrected.first->GetNbinsX() + 1;
     dataContainer.hHfPtYieldTruthCorrected.first = dataContainer.hYieldTruthCorrected.first->ProjectionY("hHfPtYieldTruthCorrectedPrompt", minBin, maxBin);
     dataContainer.hHfPtYieldTruthCorrected.first->SetTitle("Denominator prompt D^{0} p_{T} distribution after correction; #it{p}_{T, D^{0}}^{gen}; Counts");
+    // minBin = dataContainer.hYieldTruthCorrected.second->GetXaxis()->FindBin(jetptMin);
+    // maxBin = dataContainer.hYieldTruthCorrected.second->GetXaxis()->FindBin(jetptMax - 1e-6);
     minBin = dataContainer.hYieldTruthCorrected.second->GetXaxis()->FindBin(jetptMin);
-    maxBin = dataContainer.hYieldTruthCorrected.second->GetXaxis()->FindBin(jetptMax - 1e-6);
+    maxBin = dataContainer.hYieldTruthCorrected.second->GetNbinsX() + 1;
     dataContainer.hHfPtYieldTruthCorrected.second = dataContainer.hYieldTruthCorrected.second->ProjectionY("hHfPtYieldTruthCorrectedNonPrompt", minBin, maxBin);
     dataContainer.hHfPtYieldTruthCorrected.second->SetTitle("Denominator non-prompt D^{0} p_{T} distribution after correction; #it{p}_{T, D^{0}}^{gen}; Counts");
 
